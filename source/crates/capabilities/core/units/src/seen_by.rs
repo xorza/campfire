@@ -39,7 +39,7 @@ impl SeenBy {
 }
 
 impl SimComponent for SeenBy {
-    const NAME: &'static str = "vision.seen_by";
+    const NAME: &'static str = "units.seen_by";
     type Host = UnitEntity;
 
     // A set of teams, which a reader only asks about the teams it has.

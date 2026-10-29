@@ -102,7 +102,7 @@ impl Arena {
     /// The pool `name` of the arena's mode.
     pub fn pool(&self, name: &str) -> PoolId {
         let data = self.packages.data().section_or_default::<ModePoolsData>();
-        let pools: Names<PoolId> = data.0.keys().map(DeclaredName::as_str).collect();
+        let pools: Names<PoolId> = Names::unique(data.0.keys().map(DeclaredName::as_str));
         pools
             .named(name)
             .unwrap_or_else(|| panic!("no pool {name}"))

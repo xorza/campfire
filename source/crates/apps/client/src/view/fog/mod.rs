@@ -1,18 +1,16 @@
 use bevy::app::{App, Plugin, PostStartup, Update};
 use bevy::asset::{Assets, Handle, RenderAssetUsages, uuid_handle};
-use bevy::ecs::query::{Allow, Changed, Or};
+use bevy::ecs::change_detection::DetectChanges;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::common_conditions::resource_exists;
-use bevy::ecs::system::{Commands, Local, Query, Res, ResMut};
+use bevy::ecs::system::{Commands, Local, Res, ResMut};
 use bevy::image::{Image, ImageSampler, ImageSamplerDescriptor};
 use bevy::math::Vec3;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::render::storage::ShaderBuffer;
-use campfire_client_files::{FogFile, FogLevel};
-use campfire_players::Player;
-use campfire_sim::Unpredicted;
-use campfire_vision::{CellBits, ExploredCells, SeenCells, VisionBook, VisionGrid};
+use campfire_client_files::FogFile;
+use campfire_vision::{CellBits, VisionBook, VisionGrid};
 
 use crate::own_player::OwnPlayer;
 use crate::view::client_data::ClientLoad;
@@ -31,17 +29,16 @@ pub(crate) struct MatchFog {
     shroud: bool,
 }
 
-/// The players whose cells changed since the fog's last paint, whose entities the client holds
-/// as the server sent them.
-type ChangedCells<'w, 's> = Query<
-    'w,
-    's,
-    (&'static Player, &'static SeenCells, &'static ExploredCells),
-    (
-        Or<(Changed<SeenCells>, Changed<ExploredCells>)>,
-        Allow<Unpredicted>,
-    ),
->;
+/// What a client's player sees of the fog's cells: every cell, as a spectator does, or its team's
+/// seen and explored cells.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum FogSight<'a> {
+    All,
+    Cells {
+        seen: &'a CellBits,
+        explored: &'a CellBits,
+    },
+}
 
 /// The fog of a match whose mode has vision.
 #[derive(Debug)]
@@ -99,7 +96,11 @@ impl MatchFog {
         let mut image = Self::image(fog.columns, rows, [u8::MAX; 4]);
         let texels = image.data.as_mut().expect("a fog holds its texels");
         let none = CellBits::default();
-        fog.texels(&none, &none, texels);
+        let sight = FogSight::Cells {
+            seen: &none,
+            explored: &none,
+        };
+        fog.texels(sight, texels);
         images
             .insert(Self::IMAGE.id(), image)
             .expect("the fog's handle is its own");
@@ -114,30 +115,33 @@ impl MatchFog {
     fn paint(
         fog: Res<'_, Self>,
         own: OwnPlayer<'_, '_>,
-        players: ChangedCells<'_, '_>,
         mut images: ResMut<'_, Assets<Image>>,
         mut cleared: Local<'_, bool>,
     ) {
-        let Some(own) = own.player_slot() else {
+        if own.player_slot().is_none() {
             // A spectator sees every point in all of its light, written once.
             if !*cleared {
                 let mut image = images.get_mut(&Self::IMAGE).expect("the fog loaded");
                 let texels = image.data.as_mut().expect("a fog holds its texels");
-                fog.clear_texels(texels);
+                fog.texels(FogSight::All, texels);
                 *cleared = true;
             }
             return;
-        };
+        }
         *cleared = false;
-        let changed = players
-            .iter()
-            .find(|(player, _, _)| player.player_slot() == own);
-        let Some((_, seen, explored)) = changed else {
+        let (Some(seen), Some(explored)) = (own.seen_cells(), own.explored_cells()) else {
             return;
         };
+        if !seen.is_changed() && !explored.is_changed() {
+            return;
+        }
         let mut image = images.get_mut(&Self::IMAGE).expect("the fog loaded");
         let texels = image.data.as_mut().expect("a fog holds its texels");
-        fog.texels(seen.cells(), explored.cells(), texels);
+        let sight = FogSight::Cells {
+            seen: seen.cells(),
+            explored: explored.cells(),
+        };
+        fog.texels(sight, texels);
     }
 
     /// The cell of the grid under `at`, a point of the drawn world; none past the grid.
@@ -156,31 +160,26 @@ impl MatchFog {
         Some(row * self.columns + column)
     }
 
-    /// Writes into `texels`, 4 bytes a cell, a seen cell's light in each.
-    fn clear_texels(&self, texels: &mut [u8]) {
-        let [r, g, b] = self.file.light(self.file.seen);
-        for texel in texels.as_chunks_mut::<4>().0 {
-            *texel = [r, g, b, u8::MAX];
-        }
+    /// The light of `cell` as `sight` shows it: a seen cell's, an explored one's, as is each of a
+    /// map that starts known, or a shrouded one's.
+    pub(crate) fn light(&self, sight: FogSight<'_>, cell: usize) -> [u8; 3] {
+        let file = &self.file;
+        let level = match sight {
+            FogSight::All => file.seen,
+            FogSight::Cells { seen, .. } if seen.holds(cell) => file.seen,
+            FogSight::Cells { explored, .. } if !self.shroud || explored.holds(cell) => {
+                file.explored
+            }
+            FogSight::Cells { .. } => file.shrouded,
+        };
+        file.light(level)
     }
 
-    /// Writes into `texels`, 4 bytes a cell, each cell's light: a seen one's, an explored one's,
-    /// as is each of a map that starts known, or a shrouded one's.
-    fn texels(&self, seen: &CellBits, explored: &CellBits, texels: &mut [u8]) {
-        let file = &self.file;
-        let light = |level: FogLevel| {
-            let [r, g, b] = file.light(level);
-            [r, g, b, u8::MAX]
-        };
-        let [clear, fogged, shrouded] = [file.seen, file.explored, file.shrouded].map(light);
+    /// Writes into `texels`, 4 bytes a cell, each cell's light as `sight` shows it.
+    fn texels(&self, sight: FogSight<'_>, texels: &mut [u8]) {
         for (cell, texel) in texels.as_chunks_mut::<4>().0.iter_mut().enumerate() {
-            *texel = if seen.holds(cell) {
-                clear
-            } else if !self.shroud || explored.holds(cell) {
-                fogged
-            } else {
-                shrouded
-            };
+            let [r, g, b] = self.light(sight, cell);
+            *texel = [r, g, b, u8::MAX];
         }
     }
 

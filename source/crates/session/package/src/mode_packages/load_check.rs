@@ -61,10 +61,10 @@ impl<'a> LoadCheck<'a> {
     pub(crate) fn run(packages: &'a ModePackages, api: &'a ScriptApi) -> Result<Books, LoadError> {
         let manifest = &packages.base.manifest;
         let fail = |problem| LoadError::of(&manifest.header.name, problem);
-        Self::sections_owned(packages, &Release::sections())?;
+        Self::sections_owned(packages, Release::sections())?;
         let engine = Release::engine_tags();
         let rate = MatchRate::new(manifest.tick_hz.fastest());
-        let input = packages.book_input(rate, &engine);
+        let input = packages.book_input(rate, engine);
         // The modules' rules of their data come first, so a script that names what a broken rule
         // leaves out shows the rule; the books come of the same build.
         let checked = Release::checked_books(&input, |names| {
@@ -206,11 +206,11 @@ impl<'a> LoadCheck<'a> {
             };
             text(mode, &named.name, &Place::Team(team.name.clone()))?;
         }
-        let manifest = &packages.base.manifest.teams;
+        let manifest = &packages.base.manifest;
         if let Some(name) = data
             .teams
             .keys()
-            .find(|name| !manifest.iter().any(|team| team.name == **name))
+            .find(|name| manifest.team_named(name.as_str()).is_none())
         {
             return Err(LoadProblem::Unknown {
                 of: Team::NAMES,

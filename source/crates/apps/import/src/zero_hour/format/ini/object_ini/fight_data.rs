@@ -1,3 +1,4 @@
+use crate::zero_hour::format::game_frames;
 use crate::zero_hour::format::ini::error::IniError;
 use crate::zero_hour::format::ini::ini_text::{FlagSet, IniLine};
 use crate::zero_hour::format::ini::object_ini::SLOTS;
@@ -296,7 +297,7 @@ impl IniTurret {
     /// `DEFAULT_TURN_RATE`, 0.01 radians a frame at 30 frames a second, in degrees a second, each
     /// step in the game's `f32`; `DEFAULT_PITCH_RATE` is the same.
     fn default_turn_rate() -> f32 {
-        0.01 * 30.0 / (std::f32::consts::PI / 180.0)
+        0.01 * game_frames::PER_SECOND / (std::f32::consts::PI / 180.0)
     }
 }
 

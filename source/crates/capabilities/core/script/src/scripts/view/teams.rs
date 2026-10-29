@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn player_slots_fill_the_teams_in_order_and_a_team_with_none_does_not_play() {
         let build = |names: &[&str], player_slots: &[u32], players| {
-            let names = names.iter().copied().collect();
+            let names = Names::unique(names.iter().copied());
             Teams::new(names, player_slots.iter().copied(), players)
         };
         let teams = build(&["a", "camps", "b"], &[2, 0, 1], 3).unwrap();
@@ -102,7 +102,7 @@ mod tests {
         assert!(Teams::default().playing().is_empty());
         // A battle royale's 100 one-player teams: player 99 on team 99, every team playing.
         let solo_names: Vec<String> = (0..100).map(|at| format!("solo{at}")).collect();
-        let solo_table = solo_names.iter().map(String::as_str).collect();
+        let solo_table = Names::unique(solo_names.iter().map(String::as_str));
         let solos = Teams::new(solo_table, [1; 100], 100).unwrap();
         assert_eq!(solos.of(PlayerSlot::new(99)), Some(team(99)));
         assert_eq!((solos.count(), solos.playing().len()), (100, 100));

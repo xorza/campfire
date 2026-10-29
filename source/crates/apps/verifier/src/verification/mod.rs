@@ -5,7 +5,7 @@ use campfire_common::StateHash;
 use campfire_host::SnapshotDir;
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageStore;
-use campfire_protocol::{Checkpoint, SessionLog, SessionTerms, SnapshotFingerprint};
+use campfire_protocol::{Checkpoint, SessionLog, SessionTerms};
 use campfire_runner::{Replay, ResumeAt, SessionRules, SessionWorld};
 use campfire_sim::SimWorld;
 use campfire_store::InputFile;
@@ -14,33 +14,6 @@ use tracing::warn;
 use crate::verification::error::VerifyError;
 
 pub(crate) mod error;
-
-/// Where a verification finds the snapshot of each checkpoint a log holds.
-pub trait SnapshotSource {
-    /// The snapshot of fingerprint `fingerprint`; none from a source that holds no snapshot, so
-    /// the verification checks none; an error for one it does not read.
-    fn snapshot(
-        &mut self,
-        fingerprint: SnapshotFingerprint,
-    ) -> Option<Result<Vec<u8>, VerifyError>>;
-}
-
-/// No snapshot: the verification replays the log alone.
-impl SnapshotSource for () {
-    fn snapshot(&mut self, _: SnapshotFingerprint) -> Option<Result<Vec<u8>, VerifyError>> {
-        None
-    }
-}
-
-/// The snapshots of a session's directory, each named by its fingerprint in hex.
-impl SnapshotSource for SnapshotDir {
-    fn snapshot(
-        &mut self,
-        fingerprint: SnapshotFingerprint,
-    ) -> Option<Result<Vec<u8>, VerifyError>> {
-        Some(self.read(fingerprint).map_err(VerifyError::ReadSnapshot))
-    }
-}
 
 /// The state hash after the last tick of the log file at `log`, replayed with the packages
 /// under `packages`, once each checkpoint's snapshot under `snapshots`, when given, checks,
@@ -56,15 +29,13 @@ pub fn verify_file(
         warn!(dir = %failure.dir.display(), error = %ErrorReport::of(&failure.error), "a package does not read");
     }
     let bytes = InputFile::read(log, SessionLog::MAX_FILE_LEN).map_err(VerifyError::ReadLog)?;
-    match snapshots {
-        Some(dir) => verify_log(&bytes, &store, &mut SnapshotDir::at(dir.to_owned())),
-        None => verify_log(&bytes, &store, &mut ()),
-    }
+    let mut snapshots = snapshots.map(|dir| SnapshotDir::at(dir.to_owned()));
+    verify_log(&bytes, &store, snapshots.as_mut())
 }
 
 /// The state hash after the last tick of the log file `log`, replayed with the packages of
-/// `store` its terms name, once the snapshot `snapshots` gives of each checkpoint, if any,
-/// checks: the log decoded, its replay started, from tick 0 or from the snapshot of the
+/// `store` its terms name, once each checkpoint's snapshot in the directory `snapshots`, when
+/// given, checks: the log decoded, its replay started, from tick 0 or from the snapshot of the
 /// checkpoint the file starts at, which it needs, each later snapshot checked, and every tick
 /// replayed. A file that starts at a checkpoint trusts only what the server signed there: the
 /// snapshot's fingerprint and its state hash are the record's
@@ -72,7 +43,7 @@ pub fn verify_file(
 pub fn verify_log(
     log: &[u8],
     store: &PackageStore,
-    snapshots: &mut impl SnapshotSource,
+    mut snapshots: Option<&mut SnapshotDir>,
 ) -> Result<StateHash, VerifyError> {
     let decoded = SessionLog::decode(log).map_err(VerifyError::Decode)?;
     let packages = mode_packages(store, &decoded.header().terms)?;
@@ -82,9 +53,10 @@ pub fn verify_log(
     let mut replay = match first {
         None => Replay::of(decoded, &packages).map_err(VerifyError::Start)?,
         Some((segment, fingerprint)) => {
-            let snapshot = snapshots
-                .snapshot(fingerprint)
-                .ok_or(VerifyError::MissingSnapshot { segment })??;
+            let dir = snapshots
+                .as_deref_mut()
+                .ok_or(VerifyError::MissingSnapshot { segment })?;
+            let snapshot = dir.read(fingerprint).map_err(VerifyError::ReadSnapshot)?;
             let at = ResumeAt {
                 segment,
                 snapshot: &snapshot,
@@ -100,13 +72,15 @@ pub fn verify_log(
         .filter(|record| first.is_none_or(|(segment, _)| record.segment != segment))
         .cloned()
         .collect();
-    for record in &records {
-        let Some(snapshot) = snapshots.snapshot(record.snapshot) else {
-            break;
-        };
-        replay
-            .check_snapshot(record, &snapshot?)
-            .map_err(VerifyError::Snapshot)?;
+    if let Some(dir) = snapshots {
+        for record in &records {
+            let snapshot = dir
+                .read(record.snapshot)
+                .map_err(VerifyError::ReadSnapshot)?;
+            replay
+                .check_snapshot(record, &snapshot)
+                .map_err(VerifyError::Snapshot)?;
+        }
     }
     replay.run().map_err(VerifyError::Replay)?;
     Ok(replay.game().state_hash())

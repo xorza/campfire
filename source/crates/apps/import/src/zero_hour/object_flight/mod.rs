@@ -7,8 +7,8 @@ use campfire_values::FilterData;
 
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::locomotor_ini::{Appearance, Locomotor, LocomotorIni};
-use crate::zero_hour::format::ini::object_ini::IniObject;
 use crate::zero_hour::format::ini::object_ini::fight_data::{IniMissile, IniShell};
+use crate::zero_hour::format::ini::object_ini::ini_object::IniObject;
 use crate::zero_hour::format::ini::weapon_ini::IniWeapon;
 use crate::zero_hour::game_time;
 use crate::zero_hour::rules_names::RulesNames;

@@ -108,7 +108,7 @@ impl Native {
     pub(crate) fn open_no_follow(path: &Path) -> io::Result<Option<File>> {
         match OpenOptions::new()
             .read(true)
-            .custom_flags(libc::O_NOFOLLOW)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
             .open(path)
         {
             Ok(file) => Ok(Some(file)),
@@ -152,6 +152,8 @@ impl Native {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs::{PermissionsExt, symlink};
     use std::os::unix::process::CommandExt;
     use std::path::Path;
@@ -197,6 +199,16 @@ pub(crate) mod internals {
 
         pub(crate) fn link_dir(target: &Path, link: &Path) -> io::Result<()> {
             symlink(target, link)
+        }
+
+        pub(crate) fn make_pipe(path: &Path) -> io::Result<bool> {
+            let path = CString::new(path.as_os_str().as_bytes())
+                .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
+            // SAFETY: a path that lives through the call.
+            if unsafe { libc::mkfifo(path.as_ptr(), 0o600) } != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(true)
         }
 
         pub(crate) fn exposure_at(path: &Path) -> io::Result<Option<String>> {

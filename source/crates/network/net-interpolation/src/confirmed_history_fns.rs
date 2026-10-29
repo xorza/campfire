@@ -6,7 +6,7 @@ use crate::pending_diffs::{Diffs, PendingDiffs, WholeValues};
 use bevy_app::{App, Update};
 use bevy_ecs::entity::EntityLocation;
 use bevy_ecs::prelude::*;
-use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
+use bevy_replicon::shared::replication::diff::Diffable;
 use bevy_replicon::shared::replication::storage::ReplicationStorage;
 use bevy_utils::prelude::DebugName;
 use campfire_net_replication::ComponentTypeId;
@@ -44,7 +44,7 @@ impl ConfirmedHistoryFns {
     }
 
     /// From replicated diffs.
-    pub(crate) fn diff<C: HistoryComponent + RepliconDiffable>() -> Self {
+    pub(crate) fn diff<C: HistoryComponent + Diffable>() -> Self {
         Self {
             replication: ReplicationKind::Diff,
             install: |app| {

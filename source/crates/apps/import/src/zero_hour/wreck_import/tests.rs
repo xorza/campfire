@@ -163,7 +163,9 @@ fn a_death_throws_its_lists_hulks_and_debris_and_an_aircraft_falls() {
         },
         spin: num(PI / 32.0 * 0.1 * 30.0),
         sink: WreckSink {
-            life: Some(num(1550.0 / 1000.0)),
+            // The mean of 1,500 and 1,600 ms is 1,550, ⌈46.5⌉ = 47 frames of the game, 1,566 ms,
+            // as the sim counts a death's delay.
+            life: Some(num(1566.0 / 1000.0)),
             delay: num(1.5),
             rate: num(2.0),
             gone: num(8.0),

@@ -31,7 +31,7 @@ impl ProbeArg {
     pub(crate) fn of_play(&self, dir: &Path) -> PlayProbe {
         PlayProbe {
             spec: self.spec.clone(),
-            file: dir.join(format!("{}.probe", self.play.name())),
+            file: dir.join(format!("{}.probe", self.play)),
         }
     }
 }

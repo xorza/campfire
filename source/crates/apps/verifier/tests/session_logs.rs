@@ -99,7 +99,7 @@ fn from_store(log: &SessionLog) -> ModePackages {
 /// What refuses the replay of `log` on the packages its terms name in `store`, as the verifier's
 /// binary starts one; none when it starts.
 fn refusal(log: &SessionLog, store: &PackageStore) -> Option<VerifyError> {
-    verify_log(&encoded(log), store, &mut ()).err()
+    verify_log(&encoded(log), store, None).err()
 }
 
 /// A session of the test lane mode at its 30 ticks a second, for its one player, whose inputs

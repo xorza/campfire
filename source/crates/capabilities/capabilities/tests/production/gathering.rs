@@ -430,8 +430,7 @@ fn a_node_frees_to_its_waiting_worker_as_its_holder_dies_or_takes_another_order(
                     z: Num::ZERO,
                 },
             };
-            let payload = Order::payload(&[Order::one(first, away)]);
-            game.step_with(&[(PlayerSlot::new(0), &payload)]);
+            game.step_orders(PlayerSlot::new(0), &[Order::one(first, away)]);
         }
         let gathers = GatherStep::Gathering {
             since: Tick::new(1),

@@ -1,4 +1,4 @@
-data_version 97
+data_version 98
 actions.player_cooldowns e392c93f37f118db
 actions.progress cf0f07e0b1cf07cf
 actions.slot_times e81a763b4f0f5285
@@ -19,6 +19,7 @@ combat.recent_attackers 2d636b06899c6163
 combat.respawn b5032795d09dab8f
 combat.shot_streak 8a6a9cb82924ef1f
 combat.turret_aim fa45bc37a1eb10aa
+combat.unanswered_deaths 3c226b7314e31a07
 deliveries.dash_delivering 776ca8dc66220523
 interaction.riders cd6c680a3ecb9068
 interaction.riding 6ff2625efa5dd9ea
@@ -34,7 +35,6 @@ mode.player_state_team 7066bbbee0842a57
 mode.state e2a0c0774cc893a4
 mode.state_all 317e73cbd321e7ca
 mode.timers 1cca90becfbe974b
-mode.unanswered_deaths c5f0a062cde4b924
 mode.unanswered_player_slot_events a62aa5e9b4a021fa
 mode.victory_holders 0a042fbbe0f1bd88
 navigation.altitude 56d74ab1b4bb0bc5
@@ -67,15 +67,12 @@ production.doors 84cdc2ec5b713bf5
 production.gatherer d610187bdebae0ad
 production.held_places 4232d80591188070
 production.kept_spawns a547cf3f5ad273a6
-production.leader 38f27f78ec03c9db
-production.living_spawns e605f0bdccbdac4b
 production.made_at d632a7e80fb6f481
 production.node 024f1723ff67fb73
 production.rally 3dfad42e3fcd1064
 production.site cdbba5f2eae6c68f
 production.site_progress e458cddc4fb70b3b
 production.sold ffc96ab57b36357e
-production.spawn_of a94eded38a67aa2d
 production.train_queue eddf577bb3fa6bed
 production.trained_units 2fde87a764f18cfd
 progression.experience 59054d8a3dd78ffe
@@ -92,7 +89,6 @@ sim.id_allocator a493b45660c2f1f3
 sim.position fade50b9f1588dc0
 sim.tick 3328d301c5649b40
 stats.level ad5ac71447c2fd50
-stats.life 40ac46e305f71e63
 stats.modifier_clocks 5af3c8c15034127c
 stats.modifiers 9b0346a69679eb38
 stats.player_modifiers a8df3177805e52f3
@@ -106,12 +102,17 @@ units.facing a90d70522fa19de5
 units.firing_rider 38f27f78ec03c9db
 units.flight_goal 55163cfcdb4ea8ec
 units.forced_move 092cc3655c7865aa
+units.leader 38f27f78ec03c9db
 units.leaving 631977ddad03a1fb
+units.life 1465bdd26b9c182e
 units.lifespan 0db406d8bacb40e8
+units.living_spawns 6f3024d2b20a5ad7
 units.move_step 3d0d7b40666bb0c3
 units.owner 9d77d0186c3d6499
 units.relations b9d987aebd309938
 units.seeing_rider 38f27f78ec03c9db
+units.seen_by 3fea01bd71fc6811
+units.spawn_of d0b47ccd9c60474c
 units.spawn_point ff8287b22b37cc00
 units.state 93e25215c6d8a651
 units.state_all 088faffb8282fbc2
@@ -125,5 +126,4 @@ units.unit_type 2d8b3ae97840b414
 units.variation 2b6b61ddfe1958ed
 vision.explored_cells 4c28a214e2e8b49f
 vision.reveals 590ad77e2a7fa792
-vision.seen_by b2fd23206ed6a23e
 vision.sight 855db72791142132

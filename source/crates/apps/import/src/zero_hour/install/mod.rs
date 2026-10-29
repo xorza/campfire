@@ -26,6 +26,8 @@ pub(crate) struct Install {
     archives: Vec<Archive>,
     /// Each file by its key, the first archive's.
     files: BTreeMap<ArchivePath, Located>,
+    /// The language directory the game reads first, as `Install::language_of` finds it once.
+    language: Option<String>,
 }
 
 /// One archive: its path in the install, with `/` between names, and its file, open once as its
@@ -50,24 +52,6 @@ struct Located {
 pub(crate) struct InstallMap {
     pub(crate) path: ArchivePath,
     pub(crate) dir: String,
-}
-
-/// A texture's file format.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TextureKind {
-    Dds,
-    Tga,
-}
-
-impl TextureKind {
-    /// The format of the texture at `path`, by its extension; none for a file of another kind.
-    pub(crate) fn of(path: &ArchivePath) -> Option<Self> {
-        match path.extension()? {
-            "dds" => Some(Self::Dds),
-            "tga" => Some(Self::Tga),
-            _ => None,
-        }
-    }
 }
 
 /// One archive of the install and the SHA-256 of its bytes, as a version check compares them.
@@ -148,7 +132,12 @@ impl Install {
             }
             archives.push(Archive { name, file });
         }
-        Ok(Self { archives, files })
+        let language = Self::language_of(&files)?;
+        Ok(Self {
+            archives,
+            files,
+            language,
+        })
     }
 
     /// `into` after `read` read each INI file of `name`, in the game's order.
@@ -182,7 +171,7 @@ impl Install {
     /// The maps the game lists, as `MapCache::loadMapsFromDisk` finds them: each `.map` under
     /// `Maps\` in a directory of its own name, in the order of their keys; one elsewhere is none.
     pub(crate) fn maps(&self) -> Vec<InstallMap> {
-        self.under("maps\\")
+        Self::under(&self.files, "maps\\")
             .filter_map(|path| {
                 let names: Vec<&str> = path.names().collect();
                 let ["maps", map_dir, file] = names[..] else {
@@ -198,8 +187,11 @@ impl Install {
 
     /// The keys of the files under `prefix`, a key's start that ends in `\\`, in their order: a
     /// range of the keys, as their order is their text's.
-    fn under<'a>(&'a self, prefix: &'a str) -> impl Iterator<Item = &'a ArchivePath> {
-        self.files
+    fn under<'a>(
+        files: &'a BTreeMap<ArchivePath, Located>,
+        prefix: &'a str,
+    ) -> impl Iterator<Item = &'a ArchivePath> {
+        files
             .range(ArchivePath::of(prefix)..)
             .map(|(path, _)| path)
             .take_while(move |path| path.as_str().starts_with(prefix))
@@ -210,12 +202,18 @@ impl Install {
         self.files.contains_key(path)
     }
 
-    /// The language directory the game reads first, `Data\<language>\`: the one whose `Art\` the
-    /// archives hold; `None` if none does, and an error if several do, as the importer cannot
-    /// tell which the player's game reads.
-    pub(crate) fn language(&self) -> Result<Option<String>, ZeroHourError> {
-        let mut languages: Vec<&str> = self
-            .under("data\\")
+    /// The language directory the game reads first, `Data\<language>\`; none if no archive holds
+    /// one's `Art\`.
+    pub(crate) fn language(&self) -> Option<&str> {
+        self.language.as_deref()
+    }
+
+    /// The language directory of `files`: the one whose `Art\` they hold; `None` if none does,
+    /// and an error if several do, as the importer cannot tell which the player's game reads.
+    fn language_of(
+        files: &BTreeMap<ArchivePath, Located>,
+    ) -> Result<Option<String>, ZeroHourError> {
+        let mut languages: Vec<&str> = Self::under(files, "data\\")
             .filter_map(|path| {
                 let mut names = path.names().skip(1);
                 let language = names.next()?;
@@ -251,8 +249,7 @@ impl Install {
             }
             let depth = base.names().count();
             let base_dir = format!("{base}\\");
-            let (direct, deeper): (Vec<&ArchivePath>, Vec<_>) = self
-                .under(&base_dir)
+            let (direct, deeper): (Vec<&ArchivePath>, Vec<_>) = Self::under(&self.files, &base_dir)
                 .filter(|path| path.extension() == Some("ini"))
                 .partition(|path| path.names().count() == depth + 1);
             inis.extend(direct.into_iter().cloned());
@@ -394,10 +391,10 @@ pub(crate) mod samples {
 
     /// An install whose archives each hold `shared.ini`: `A.big`, which also holds the fixture map
     /// in its directory, a map outside one, the two textures, a terrain texture, the terrain types,
-    /// the game data, the mouse's, the object INI files, the models, `Rock01.w3d` in the
-    /// language directory `English` and, unread, outside it, and the animations; `b.big`, `c.BIG`, base Generals'
-    /// `ZH_Generals/base.big`, and the duplicate `Data/INI/INIZH.big`, beside a file that is no
-    /// archive.
+    /// the game data, the mouse's, the object INI files, the models, `Rock01.w3d` in the language
+    /// directory `English` and, unread, outside it, and the animations; `b.big`, `c.BIG`, base
+    /// Generals' `ZH_Generals/base.big`, and the duplicate `Data/INI/INIZH.big`, beside a file that
+    /// is no archive.
     pub(crate) fn fixture(test_dir: &TestDir) {
         let packed = packed_map();
         let [rock_texture, sign] = textures();

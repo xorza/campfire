@@ -121,7 +121,7 @@ impl ViewApi {
         )
         .method(
             method(
-                "reaches",
+                "can_reach",
                 &[&["unit", "range"]],
                 "whether `range` from the edge of its body reaches the other's, as a weapon's range and `nearest_visible` measure, boxes too",
             ),

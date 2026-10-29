@@ -76,8 +76,8 @@ fn a_bots_think_reads_what_it_sees_and_orders_as_an_order_script_does() {
     let script = r#"
 fn on_bot_think(ctx) {
     let me = ctx.player;
-    let heroes = ctx.own(ctx.params.hero);
-    let barracks = ctx.own("barracks");
+    let heroes = ctx.own_units(ctx.params.hero);
+    let barracks = ctx.own_units("barracks");
     let chose = ctx.chosen(me, "hero");
     let markers = ctx.map.markers("barracks");
     let seen = ctx.find_visible(heroes[0], heroes[0].position, 50, "enemies:avatar");
@@ -112,11 +112,11 @@ fn on_bot_think(ctx) {
 fn a_bots_think_fails_on_what_is_no_unit_no_directive_not_its_own_or_past_its_budget() {
     // A list with a number in it, a table of no directive, a read of the other player's gold,
     // which its player's client does not receive, and an order to the allies it sees, not all its
-    // own, as `may_start` and `idle` refuse one, each fail the think, which gives no order.
+    // own, as `can_start` and `is_idle` refuse one, each fail the think, which gives no order.
     for (body, error) in [
         ("ctx.order([1], #{ orders: \"stop\" });", ApiError::NotAUnit),
         (
-            "ctx.order(ctx.own(\"hero-lancer\"), #{ orders: #{ fly: 1 } });",
+            "ctx.order(ctx.own_units(\"hero-lancer\"), #{ orders: #{ fly: 1 } });",
             ApiError::NotADirective,
         ),
         (
@@ -124,7 +124,7 @@ fn a_bots_think_fails_on_what_is_no_unit_no_directive_not_its_own_or_past_its_bu
             ApiError::Unreceived(DataKind::Resources),
         ),
         (
-            "let h = ctx.own(ctx.params.hero)[0]; \
+            "let h = ctx.own_units(ctx.params.hero)[0]; \
              ctx.order(ctx.find_visible(h, h.position, 500, \"allies\"), #{ orders: \"stop\" });",
             ApiError::NotForRole,
         ),
@@ -144,7 +144,7 @@ fn a_bots_think_fails_on_what_is_no_unit_no_directive_not_its_own_or_past_its_bu
     // A think whose budget its loop spends finds the budget spent, which its driver answers by
     // thinking again in the next tick; the same think from a budget that holds it gives its
     // order.
-    let script = "fn on_bot_think(ctx) { for i in 0..20 {} ctx.order(ctx.own(\"barracks\"), \
+    let script = "fn on_bot_think(ctx) { for i in 0..20 {} ctx.order(ctx.own_units(\"barracks\"), \
                   #{ orders: \"stop\" }); }";
     let tree = proving(script);
     let (packages, mut fixed) = (
@@ -192,9 +192,9 @@ fn a_bots_think_reads_what_its_units_may_start() {
     // stop goes to both barracks in one order.
     let script = r#"
 fn on_bot_think(ctx) {
-    let barracks = ctx.own("barracks");
-    let hero = ctx.own(ctx.params.hero)[0];
-    if ctx.may_start(barracks[0], "train_guard") && !ctx.may_start(hero, "fan") {
+    let barracks = ctx.own_units("barracks");
+    let hero = ctx.own_units(ctx.params.hero)[0];
+    if ctx.can_start(barracks[0], "train_guard") && !ctx.can_start(hero, "fan") {
         ctx.order(barracks, #{ orders: "stop" });
     }
 }
@@ -234,7 +234,7 @@ fn a_paced_bot_thinks_in_its_phase_and_waits_out_a_spent_budget() {
     // 0, 4 and 8. Out of phase, tick 1 gives nothing. In tick 4 a budget of 10 operations is spent
     // before its loop ends: no order, and the bot waits, so it thinks in tick 5, out of its phase,
     // and gives its stop; in tick 6 it is out of phase again.
-    let script = "fn on_bot_think(ctx) { for i in 0..20 {} ctx.order(ctx.own(\"barracks\"), \
+    let script = "fn on_bot_think(ctx) { for i in 0..20 {} ctx.order(ctx.own_units(\"barracks\"), \
                   #{ orders: \"stop\" }); }";
     let tree = proving(script);
     let (packages, mut fixed) = (
@@ -274,8 +274,8 @@ fn a_bots_think_reads_which_of_its_units_stand_idle() {
     // finds it busy and orders nothing.
     let script = "
 fn on_bot_think(ctx) {
-    let hero = ctx.own(ctx.params.hero);
-    if ctx.idle(hero[0]) {
+    let hero = ctx.own_units(ctx.params.hero);
+    if ctx.is_idle(hero[0]) {
         ctx.order(hero, #{ orders: #{ move: #{ to: [5, 5] } } });
     }
 }

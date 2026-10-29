@@ -3,22 +3,16 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use campfire_capabilities::{Match, Release};
-use campfire_common::{DeclaredName, Ticks};
+use campfire_common::Ticks;
 use campfire_math::Num;
 use campfire_script::{Filter, UnknownName};
 use campfire_stats::*;
 use campfire_units::{StatId, UnitTypes};
 use campfire_values::{
-    FilterData, ModifierId, NameId, Named, Names, Number, Param, ParamRef, Ranked, Scalar, Stat,
+    FilterData, ModifierId, NameId, Named, Names, Number, Param, Ranked, Scalar, Stat,
 };
 
-fn name(text: &str) -> DeclaredName {
-    DeclaredName::new(text).unwrap()
-}
-
-fn param(text: &str) -> Number {
-    Number::Param(ParamRef { param: name(text) })
-}
+use crate::stats::{name, param};
 
 #[test]
 fn a_spec_resolves_every_name_of_its_modifier_at_load() {

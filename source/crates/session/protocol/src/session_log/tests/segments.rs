@@ -225,14 +225,12 @@ fn a_checkpoint_or_a_result_the_log_does_not_hold_is_refused() {
     log.record_checkpoint(second.clone(), &sign(&second), Some(&mut journal))
         .unwrap();
     assert_eq!(log.begun_checkpoint(), None);
-    assert_eq!(log.checkpoints().collect::<Vec<_>>(), [&record, &second]);
+    // The log forgets the first as its journal holds it.
+    assert_eq!(log.checkpoints().collect::<Vec<_>>(), [&second]);
     drop(journal);
     let journal = file.bytes();
     let rebuilt = SessionLog::from_journal(JournalFrames::new(&journal).unwrap(), RELEASE).unwrap();
-    assert_eq!(
-        rebuilt.checkpoints().collect::<Vec<_>>(),
-        [&record, &second]
-    );
+    assert_eq!(rebuilt.checkpoints().collect::<Vec<_>>(), [&second]);
     // Once taken, a third checkpoint at the same tick would end a segment of no tick.
     assert_eq!(log.begin_checkpoint(None), Err(CheckpointError::Empty));
 
@@ -346,21 +344,40 @@ fn flawed_segments_in_a_log_file_are_refused() {
             error: CheckpointError::Segment,
         })
     );
-    let forged = |change: fn(&mut Checkpoint)| {
+    // Its first segment numbered 1,024, the most a seed chain has, or u32::MAX, the file is
+    // refused before a seed is hashed or held.
+    for first in [SeedChain::MAX_LEN.get(), u32::MAX] {
+        let mut number = Vec::new();
+        put(&mut number, &first);
+        let past = [&based[..based_at - 2], &number, &based[based_at - 1..]].concat();
+        assert_eq!(
+            SessionLog::decode(&past).err(),
+            Some(LogError::PastLastSegment { segment: first })
+        );
+    }
+    let forge = |change: fn(&mut Checkpoint)| {
         let mut forged = record.clone();
         change(&mut forged);
         let mut bytes = Vec::new();
         forged.encode(&mut bytes);
         let signature = signed_by(&forged, &TestKey::server()).to_bytes();
-        let file = [
+        [
             &based[..based_at],
             &bytes,
             &signature,
             &based[signature_at + 64..],
         ]
-        .concat();
-        SessionLog::decode(&file).err()
+        .concat()
     };
+    let forged = |change| SessionLog::decode(&forge(change)).err();
+    // A checkpoint at tick 2⁴⁰, its pending input due there, holds no tick's end before it: the
+    // file decodes in what its own ticks take, and its next tick is the checkpoint's.
+    let far = SessionLog::decode(&forge(|record| {
+        record.tick = Tick::new(1 << 40);
+        record.carry.pending[0].tick = record.tick;
+    }))
+    .unwrap();
+    assert_eq!(far.next_tick(), Tick::new(1 << 40));
     // Each flaw of a carry the server key signs is refused with its own: an input due before the
     // boundary; one player slot of the header's two; player 1's stamps counting u64::MAX inputs,
     // past the 2 of its chain, or 3 of one stamp, past the max of 2 a tick; player 0's main key on
@@ -580,4 +597,38 @@ fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
         (Tick::new(2), Some(1))
     );
     assert_eq!(rebuilt.carry(), record.carry);
+}
+
+#[test]
+fn a_log_of_a_journal_forgets_each_checkpoint_before_its_base() {
+    // Saves at ticks 2 and 3, segments 1 and 2: a log of a journal forgets what came before the
+    // second, its first checkpoint's record and boundary among it, so it holds the second alone,
+    // loads it, and refuses segment 1 as one no checkpoint starts.
+    let mut log = two_ticks();
+    let file = MemorySink::new();
+    let mut journal = Journal::start(&log, file.boxed());
+    for byte in [3, 4] {
+        let record = checkpoint(&log, byte);
+        log.begin_checkpoint(Some(&mut journal)).unwrap();
+        log.record_checkpoint(
+            record.clone(),
+            &signed_by(&record, &TestKey::server()),
+            Some(&mut journal),
+        )
+        .unwrap();
+        drop(log.seal_tick(Some(&mut journal)));
+    }
+    assert_eq!(log.base(), Some(2));
+    assert_eq!(
+        log.checkpoints()
+            .map(|record| record.segment)
+            .collect::<Vec<_>>(),
+        [2]
+    );
+    assert_eq!(
+        log.load(1, Some(&mut journal)),
+        Err(LogLoadError::NoCheckpoint)
+    );
+    log.load(2, Some(&mut journal)).unwrap();
+    assert_eq!((log.next_tick(), log.segment()), (Tick::new(3), 2));
 }

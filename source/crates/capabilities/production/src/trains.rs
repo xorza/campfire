@@ -1,3 +1,5 @@
+use std::iter;
+
 use bevy_ecs::change_detection::Mut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, QueryFilter, QueryState, Without};
@@ -23,7 +25,6 @@ use campfire_units::{
     OpenCellAsk, OpenCellRun, Owner, SpawnAt, Spawner, Walk,
 };
 use campfire_values::{ActionId, Motion, Relation, Team, UnitTags, UnitType};
-use std::iter;
 
 use crate::door_times::DoorTimes;
 use crate::doors::Doors;
@@ -726,49 +727,64 @@ pub(crate) struct ResearchCheck<'a, 'w, 's, F: QueryFilter> {
 
 impl<F: QueryFilter> ResearchCheck<'_, '_, '_, F> {
     /// Whether the research `spec`, ordered of the unit `id` of `entity`, is refused: its modifier,
-    /// or one that holds back an upgrade of it or that it holds back, by its producer's type's
-    /// upgrades, is held or queued already: a player research's by its producer's player, or in
-    /// the queue of any unit of that player; a producer research's by its producer, from itself, or
-    /// in its own queue (04-capabilities/production.md, An upgrade is a modifier;
-    /// riders-and-upgrades.md, A conflicting upgrade is refused). A player research of a producer
-    /// of no player counts as held, as no player could hold it.
+    /// or one its modifier withholds by its producer's type's upgrades, is held or queued already,
+    /// a player research's by its producer's player or in the queue of any unit of that player, a
+    /// producer research's by its producer, from itself, or in its own queue
+    /// (04-capabilities/production.md, An upgrade is a modifier); or a modifier that withholds an
+    /// upgrade its modifier triggers is held by the player or the producer, or queued as a player
+    /// research by the player's units or as any research by the producer, as the upgrade's own test
+    /// reads the player's and the unit's modifiers alike, so no research pays for an upgrade its
+    /// conflict then withholds (riders-and-upgrades.md, A conflicting upgrade is refused). A player
+    /// research of a producer of no player counts as held, as no player could hold it.
     pub(crate) fn refuses(&self, spec: ResearchSpec, id: StableId, entity: Entity) -> bool {
         let (_, &unit_type, owner, queue, carried) =
             self.queues.get(entity).expect("a producer has a queue");
+        if spec.holder == ResearchHolder::Player && owner.is_none() {
+            return true;
+        }
         let upgrades = self.upgrades.and_then(|upgrades| upgrades.get(unit_type));
-        let refused = || {
-            let conflicting = upgrades.into_iter();
-            let conflicting = conflicting.flat_map(|upgrades| upgrades.conflicting(spec.modifier));
-            iter::once(spec.modifier).chain(conflicting)
-        };
-        let queued_in = |queue: &TrainQueue| {
+        let player = self.players.of(owner);
+        let player_holds = |modifier| player.is_some_and(|held| held.holds(modifier));
+        let own_holds =
+            |modifier| carried.is_some_and(|carried| carried.get(modifier, Some(id)).is_some());
+        // Whether `queue` holds a research of `modifier`, of `holder` or of either.
+        let queued = |queue: &TrainQueue, holder: Option<ResearchHolder>, modifier| {
             queue.entries().iter().any(|queued| {
                 self.researches.get(queued.action).is_some_and(|queued| {
-                    queued.holder == spec.holder && refused().any(|held| held == queued.modifier)
+                    queued.modifier == modifier
+                        && holder.is_none_or(|holder| queued.holder == holder)
                 })
             })
         };
-        match spec.holder {
+        let player_queued = |holder: Option<ResearchHolder>, modifier| {
+            owner.is_some_and(|owner| {
+                self.queues.iter().any(|(_, _, unit_owner, queue, _)| {
+                    unit_owner
+                        .is_some_and(|unit_owner| unit_owner.player_slot() == owner.player_slot())
+                        && queued(queue, holder, modifier)
+                })
+            })
+        };
+        let withheld = upgrades
+            .into_iter()
+            .flat_map(|upgrades| upgrades.withheld(spec.modifier));
+        let mut own = iter::once(spec.modifier).chain(withheld);
+        let held = own.any(|modifier| match spec.holder {
             ResearchHolder::Producer => {
-                let held = carried.is_some_and(|carried| {
-                    refused().any(|held| carried.get(held, Some(id)).is_some())
-                });
-                held || queued_in(queue)
+                own_holds(modifier) || queued(queue, Some(spec.holder), modifier)
             }
             ResearchHolder::Player => {
-                let Some(owner) = owner else {
-                    return true;
-                };
-                let held = self
-                    .players
-                    .of(Some(owner))
-                    .is_some_and(|players| refused().any(|held| players.holds(held)));
-                let player = owner.player_slot();
-                held || self.queues.iter().any(|(_, _, unit_owner, queue, _)| {
-                    unit_owner.is_some_and(|unit_owner| unit_owner.player_slot() == player)
-                        && queued_in(queue)
-                })
+                player_holds(modifier) || player_queued(Some(spec.holder), modifier)
             }
-        }
+        });
+        let mut withholding = upgrades
+            .into_iter()
+            .flat_map(|upgrades| upgrades.withholding(spec.modifier));
+        held || withholding.any(|conflict| {
+            player_holds(conflict)
+                || own_holds(conflict)
+                || queued(queue, None, conflict)
+                || player_queued(Some(ResearchHolder::Player), conflict)
+        })
     }
 }

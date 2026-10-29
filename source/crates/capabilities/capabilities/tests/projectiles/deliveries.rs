@@ -22,6 +22,7 @@ use campfire_script::{
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, StableId};
 use campfire_stats::{ModifierData, ModifierEffectData, Modifiers, RestoreEffectData, Stats};
+use campfire_units::internals::Spawn;
 use campfire_units::{AudienceNone, UnitState, UnitTypeCore, Units};
 use campfire_values::{PackageIndex, Param, Ranked, Scalar, Team, TypeScope, UnitType};
 
@@ -68,7 +69,9 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
     "#;
     let action = Abilities::load(&mut game, "shot", &shot, source);
     let caster = Abilities::caster(&mut game, action, 1);
-    let target = Abilities::spawn_combatant(&mut game, (3, 0, 0), Team::new(1), ());
+    let target = Spawn::named(&game, "combatant", (3, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     // The damage the hook deals carries the bolt's hit, which the target's `watch` reads, and
     // answers with 1 damage to its source: the hit's target, the unit the cast aimed at, after
     // 3 m flown, in the direction it flew.
@@ -154,7 +157,9 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
             let source = format!("fn on_resolve(ctx, caster, target) {{ {call}; }}");
             let action = Abilities::load(&mut game, "shot", &shot, &source);
             let caster = Abilities::caster(&mut game, action, 1);
-            let target = Abilities::spawn_combatant(&mut game, (3, 0, 0), Team::new(1), ());
+            let target = Spawn::named(&game, "combatant", (3, 0, 0))
+                .team(Team::new(1))
+                .place(&mut game);
             Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
             game.run_until(1);
             let mut projectiles = game.query::<&Projectile>();
@@ -249,7 +254,9 @@ fn a_delivery_a_script_creates_spawns_with_the_id_its_call_took_and_the_state_it
             );
             let action = Abilities::load(&mut game, "shot", &shot, &source);
             let caster = Abilities::caster(&mut game, action, 1);
-            let target = Abilities::spawn_combatant(&mut game, (3, 0, 0), enemy, ());
+            let target = Spawn::named(&game, "combatant", (3, 0, 0))
+                .team(enemy)
+                .place(&mut game);
             assert_eq!([caster, target].map(StableId::get), [0, 1]);
             Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
             game.run_until(1);
@@ -263,7 +270,9 @@ fn a_delivery_a_script_creates_spawns_with_the_id_its_call_took_and_the_state_it
             let failed = Abilities::failed_calls(&mut game).len();
             if fails {
                 assert_eq!((spawned, failed), (vec![], 1), "{area}");
-                let next = Abilities::spawn_combatant(&mut game, (5, 0, 0), enemy, ());
+                let next = Spawn::named(&game, "combatant", (5, 0, 0))
+                    .team(enemy)
+                    .place(&mut game);
                 assert_eq!(next.get(), 2, "{area}");
             } else {
                 let both = vec![(2, state(3)), (3, state(0))];
@@ -376,9 +385,14 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
         point(Num::int(8), Num::ZERO),
         point(Num::int(-2), Num::ZERO),
     ]
-    .map(|position| Abilities::spawn_combatant(&mut game, position, Team::new(1), ()));
-    let ally =
-        Abilities::spawn_combatant(&mut game, point(Num::int(2), Num::ZERO), Team::new(0), ());
+    .map(|position| {
+        Spawn::named(&game, "combatant", position)
+            .team(Team::new(1))
+            .place(&mut game)
+    });
+    let ally = Spawn::named(&game, "combatant", point(Num::int(2), Num::ZERO))
+        .team(Team::new(0))
+        .place(&mut game);
     Abilities::cast(
         &mut game,
         caster,

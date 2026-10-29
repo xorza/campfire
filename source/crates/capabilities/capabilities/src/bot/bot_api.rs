@@ -37,7 +37,7 @@ impl BotApi {
         )
         .call(
             bot(MemberDecl::call(
-                "own",
+                "own_units",
                 &[&["type"]],
                 "the bot's own living units of `type`, by stable id, its sites among them",
             )),
@@ -50,22 +50,22 @@ impl BotApi {
         )
         .call(
             bot(MemberDecl::call(
-                "may_start",
+                "can_start",
                 &[&["unit", "action"]],
                 "whether `unit`, the bot's own, may start the train or the build of its slot \
                      that holds the action `action`, of any package, as the think began, as the \
                      order's own checks find it; a build's place its order finds",
             )),
-            |ctx: &mut Ctx, unit: Unit, action: ScriptText| Self::may_start(ctx, &unit, &action),
+            |ctx: &mut Ctx, unit: Unit, action: ScriptText| Self::can_start(ctx, &unit, &action),
         )
         .call(
             bot(MemberDecl::call(
-                "idle",
+                "is_idle",
                 &[&["unit"]],
                 "whether `unit`, the bot's own, stood idle as the think began: no action \
                      under way, no target, nowhere to walk, no gather and no build",
             )),
-            |ctx: &mut Ctx, unit: Unit| Self::idle(ctx, &unit),
+            |ctx: &mut Ctx, unit: Unit| Self::is_idle(ctx, &unit),
         )
         .call(
             bot(MemberDecl::call(
@@ -81,7 +81,7 @@ impl BotApi {
     }
 
     /// Whether the bot's own `unit` may start the action named `action`; one not its own fails.
-    fn may_start(ctx: &Ctx, unit: &Unit, action: &ScriptText) -> Checked<bool> {
+    fn can_start(ctx: &Ctx, unit: &Unit, action: &ScriptText) -> Checked<bool> {
         Self::own(ctx, unit)?;
         let names = ctx.view().names();
         let frame = ctx.frame();
@@ -93,7 +93,7 @@ impl BotApi {
     }
 
     /// Whether the bot's own `unit` stood idle; one not its own fails.
-    fn idle(ctx: &Ctx, unit: &Unit) -> Checked<bool> {
+    fn is_idle(ctx: &Ctx, unit: &Unit) -> Checked<bool> {
         Self::own(ctx, unit)?;
         let frame = ctx.frame();
         let call = frame
@@ -118,7 +118,7 @@ impl BotApi {
     }
 
     /// Queues the order `directive` to `units`; a list with a value that is no unit, a unit that
-    /// is not the bot's own, as `may_start` and `idle` refuse one, or a table that reads as no
+    /// is not the bot's own, as `can_start` and `is_idle` refuse one, or a table that reads as no
     /// directive, fails the call.
     fn order(ctx: &Ctx, units: &ScriptList, directive: ScriptMap) -> Checked<()> {
         let units = units

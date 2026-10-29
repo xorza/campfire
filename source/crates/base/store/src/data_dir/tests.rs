@@ -1,18 +1,18 @@
 use std::fs;
 
-use tempfile::TempDir;
+use crate::test_dir::TestDir;
 
 use super::*;
 
 #[test]
 fn a_data_directory_is_made_its_users_only_and_holds_one_holder() {
-    let scratch = TempDir::new().unwrap();
-    let path = scratch.path().join("nested").join("data");
+    let scratch = TestDir::new();
+    let path = scratch.root().join("nested").join("data");
     let first = DataDir::open(&path).unwrap();
     assert_eq!(first.path(), path);
     // Each directory it made and its lock are their user's only.
     for made in [
-        scratch.path().join("nested"),
+        scratch.root().join("nested"),
         path.clone(),
         path.join("lock"),
     ] {
@@ -36,11 +36,11 @@ fn a_data_directory_is_made_its_users_only_and_holds_one_holder() {
     ));
     drop(again);
     // A file in its place is no directory.
-    let file = scratch.path().join("file");
+    let file = scratch.root().join("file");
     fs::write(&file, b"").unwrap();
     assert!(matches!(DataDir::open(&file), Err(DataDirError::Create(_))));
     // A directory others may open is refused, with who they are, before its lock is made.
-    let exposed = scratch.path().join("exposed");
+    let exposed = scratch.root().join("exposed");
     fs::create_dir(&exposed).unwrap();
     UserOnly::expose(&exposed);
     let exposure = UserOnly::exposure_at(&exposed).unwrap().unwrap();

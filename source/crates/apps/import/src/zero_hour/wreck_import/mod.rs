@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::f32::consts::PI;
 
 use campfire_client_files::{
-    ClientUnit, DeathFall, DeathWrecks, FallStage, GroundDeath, SelfSpin, Spiral, Wreck,
+    ClientUnit, DeathFall, DeathLook, DeathWrecks, FallStage, GroundDeath, SelfSpin, Spiral, Wreck,
     WreckLaunch, WreckList, WreckSink,
 };
 use campfire_common::DeclaredName;
@@ -14,13 +14,15 @@ use crate::zero_hour::dropped::{Dropped, Losses};
 use crate::zero_hour::effect_drop_cause::EffectDropCause;
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::game_float;
+use crate::zero_hour::format::game_frames;
 use crate::zero_hour::format::ini::creation_list_ini::{Creation, CreationListIni, CreationNugget};
 use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
+use crate::zero_hour::format::ini::object_ini::ObjectIni;
 use crate::zero_hour::format::ini::object_ini::ini_fall::{FallKind, IniFall};
-use crate::zero_hour::format::ini::object_ini::{IniObject, ObjectIni};
+use crate::zero_hour::format::ini::object_ini::ini_object::IniObject;
 use crate::zero_hour::game_path;
-use crate::zero_hour::game_time::FRAMES_PER_SECOND;
-use crate::zero_hour::import_name::ImportName;
+use crate::zero_hour::game_time;
+use crate::zero_hour::type_name::TypeName;
 
 /// The wrecks of the install's deaths, as each look names them (02-engine-core.md, A death names
 /// its wrecks by phase; 02-engine-core.md, An aircraft's death falls as a wreck): the hulks and the
@@ -62,9 +64,9 @@ impl<'a> WreckImport<'a> {
         let debris = match generic {
             Some(death) => WreckSink {
                 life: None,
-                delay: Self::num(DEBRIS, death.sink_delay_ms / 1000.0)?,
+                delay: Self::seconds(DEBRIS, death.sink_delay_ms)?,
                 rate: Self::num(DEBRIS, death.sink_rate)?,
-                gone: Self::num(DEBRIS, death.delay_ms / 1000.0)?,
+                gone: Self::seconds(DEBRIS, death.delay_ms)?,
             },
             None => WreckSink {
                 life: None,
@@ -73,7 +75,7 @@ impl<'a> WreckImport<'a> {
                 gone: Num::ZERO,
             },
         };
-        let frame = gravity / (FRAMES_PER_SECOND * FRAMES_PER_SECOND);
+        let frame = gravity / (game_frames::PER_SECOND * game_frames::PER_SECOND);
         Ok(Self {
             objects,
             lists,
@@ -94,23 +96,43 @@ impl<'a> WreckImport<'a> {
     ) -> Result<Vec<Dropped<EffectDropCause>>, ZeroHourError> {
         let mut converted = Converted::default();
         for object in self.objects.objects() {
-            let Some(look) = looks.get_mut(&ImportName::object(object).declared()?) else {
+            let Some(look) = looks.get_mut(TypeName::of(object)?.declared()) else {
                 continue;
             };
-            let phases = object.slow_death().map(|death| &death.phases);
-            let mut wrecks = DeathWrecks::NONE;
-            if let Some(phases) = phases {
-                let [start, middle, end] = phases.each_ref().map(|phase| &phase.objects);
-                wrecks.start = self.lists(&object.name, start, written, &mut converted)?;
-                wrecks.middle = self.lists(&object.name, middle, written, &mut converted)?;
-                wrecks.end = self.lists(&object.name, end, written, &mut converted)?;
+            let mut death = look.death.clone();
+            match self.throw(object, &mut death, written, &mut converted) {
+                Ok(()) => look.death = death,
+                // A number of one object's wrecks the engine cannot hold drops its wrecks and its
+                // fall alone (09-zero-hour.md, A fault of one object drops its part).
+                Err(ZeroHourError::Wreck { .. }) => {
+                    self.losses.drop(&object.name, EffectDropCause::Number);
+                }
+                Err(error) => return Err(error),
             }
-            if let Some(fall) = object.fall() {
-                look.death.fall = Some(self.fall(object, fall, written, &mut converted)?);
-            }
-            look.death.wrecks = wrecks;
         }
         Ok(self.losses.into_iter().collect())
+    }
+
+    /// Writes into `death` the wrecks each phase of `object`'s death throws, and its fall.
+    fn throw(
+        &mut self,
+        object: &IniObject,
+        death: &mut DeathLook,
+        written: &mut dyn FnMut(&str) -> Result<bool, ZeroHourError>,
+        converted: &mut Converted,
+    ) -> Result<(), ZeroHourError> {
+        let mut wrecks = DeathWrecks::NONE;
+        if let Some(phases) = object.slow_death().map(|death| &death.phases) {
+            let [start, middle, end] = phases.each_ref().map(|phase| &phase.objects);
+            wrecks.start = self.lists(&object.name, start, written, converted)?;
+            wrecks.middle = self.lists(&object.name, middle, written, converted)?;
+            wrecks.end = self.lists(&object.name, end, written, converted)?;
+        }
+        if let Some(fall) = object.fall() {
+            death.fall = Some(self.fall(object, fall, written, converted)?);
+        }
+        death.wrecks = wrecks;
+        Ok(())
     }
 
     /// The fall of `fall`, of `object`, its stages' wrecks alone, their effects named after; a
@@ -150,7 +172,7 @@ impl<'a> WreckImport<'a> {
         };
         Ok(DeathFall {
             gravity: Self::num(name, fall.gravity)?,
-            roll: Self::num(name, fall.roll * FRAMES_PER_SECOND)?,
+            roll: Self::num(name, fall.roll * game_frames::PER_SECOND)?,
             spiral,
             start,
             hit,
@@ -183,7 +205,7 @@ impl<'a> WreckImport<'a> {
         });
         let radians = |degrees: f32| Self::num(name, degrees.to_radians());
         Ok(Spiral {
-            push: Self::num(name, fall.speed * FRAMES_PER_SECOND / object.mass())?,
+            push: Self::num(name, fall.speed * game_frames::PER_SECOND / object.mass())?,
             turn: radians(fall.turn)?,
             fade: Self::num(name, fall.damping)?,
             braking: Self::num(name, braking)?,
@@ -192,7 +214,7 @@ impl<'a> WreckImport<'a> {
                 least: radians(fall.spin[0])?,
                 most: radians(fall.spin[1])?,
                 change: radians(fall.spin_change)?,
-                every: Self::num(name, fall.spin_delay_ms / 1000.0)?,
+                every: Self::seconds(name, fall.spin_delay_ms)?,
             },
         })
     }
@@ -276,13 +298,10 @@ impl<'a> WreckImport<'a> {
         let [least, most] = hulk.lifetime_ms().unwrap_or_default();
         let death = hulk.slow_death();
         Ok(WreckSink {
-            life: Some(Self::num(name, f32::midpoint(least, most) / 1000.0)?),
-            delay: Self::num(
-                name,
-                death.map_or(0.0, |death| death.sink_delay_ms) / 1000.0,
-            )?,
+            life: Some(Self::seconds(name, f32::midpoint(least, most))?),
+            delay: Self::seconds(name, death.map_or(0.0, |death| death.sink_delay_ms))?,
             rate: Self::num(name, death.map_or(0.0, |death| death.sink_rate))?,
-            gone: Self::num(name, death.map_or(0.0, |death| death.delay_ms) / 1000.0)?,
+            gone: Self::seconds(name, death.map_or(0.0, |death| death.delay_ms))?,
         })
     }
 
@@ -328,7 +347,7 @@ impl<'a> WreckImport<'a> {
         let speed = |force: f32| {
             Self::num(
                 name,
-                force / mass.max(f32::MIN_POSITIVE) * FRAMES_PER_SECOND,
+                force / mass.max(f32::MIN_POSITIVE) * game_frames::PER_SECOND,
             )
         };
         let launch = if disposition.send_it_flying {
@@ -359,9 +378,10 @@ impl<'a> WreckImport<'a> {
             WreckLaunch::Grounded
         };
         // A spin rate of none is π/32 a frame times the intensity.
-        let spin = creation
-            .spin
-            .map_or(PI / 32.0 * intensity * FRAMES_PER_SECOND, f32::to_radians);
+        let spin = creation.spin.map_or(
+            PI / 32.0 * intensity * game_frames::PER_SECOND,
+            f32::to_radians,
+        );
         let offset = axes::y_up(creation.offset);
         Ok(Some(Wreck {
             models,
@@ -376,6 +396,17 @@ impl<'a> WreckImport<'a> {
             spin: Self::num(name, spin)?,
             sink,
         }))
+    }
+
+    /// The seconds of the game's frames that `ms` of the wreck of `name` take, as the sim's death
+    /// delay of the same time counts them (09-zero-hour.md, Thirty frames a second, the original's
+    /// times), so a wreck sinks and its unit goes on one frame; an error for a time the game takes
+    /// no frames of.
+    fn seconds(name: &str, ms: f32) -> Result<Num, ZeroHourError> {
+        let frames = game_time::of_duration(ms).map_err(|_| ZeroHourError::Wreck {
+            name: name.to_owned(),
+        })?;
+        Self::num(name, frames as f32 / 1000.0)
     }
 
     /// `value` of the wreck of `name` as a number; an error for one not finite or past a number.

@@ -10,7 +10,7 @@ use serde::Serialize;
 use crate::zero_hour::error::TypeError;
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::locomotor_ini::{Appearance, Locomotor};
-use crate::zero_hour::format::ini::object_ini::IniObject;
+use crate::zero_hour::format::ini::object_ini::ini_object::IniObject;
 
 /// A type's Zero Hour mover, of a locomotor of `TREADS`, `TWO_LEGS`, `FOUR_WHEELS` or `MOTORCYCLE`
 /// that drives it on the ground (04-capabilities/navigation.md, Each appearance moves as its

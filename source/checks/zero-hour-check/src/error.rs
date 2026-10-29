@@ -72,8 +72,8 @@ pub(crate) enum ProbeArgError {
 /// Why the command line's plays and probes make no run.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub(crate) enum SelectionError {
-    #[error("two probes name the play {}", .0.name())]
+    #[error("two probes name the play {0}")]
     Twice(Play),
-    #[error("a probe names the play {}, which the run does not play", .0.name())]
+    #[error("a probe names the play {0}, which the run does not play")]
     Unplayed(Play),
 }

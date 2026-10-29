@@ -4,7 +4,9 @@
 use campfire_capabilities::Match;
 use campfire_combat::internals::Armed;
 use campfire_math::{Num, Vec3};
-use campfire_values::UnitType;
+use campfire_values::{Share, UnitType};
+use serde::Deserialize;
+use serde::de::{IntoDeserializer, value};
 
 mod abilities;
 mod areas;
@@ -25,6 +27,11 @@ mod vision;
 /// The point `(x, z)` in halves of a meter.
 fn halves(x: i64, z: i64) -> Vec3 {
     Vec3::new(Num::HALF * x, Num::ZERO, Num::HALF * z)
+}
+
+/// The share `text` gives, as data reads it.
+fn share(text: &str) -> Share {
+    Share::deserialize(IntoDeserializer::<value::Error>::into_deserializer(text)).unwrap()
 }
 
 /// `health`, and `damage` within `range`, a windup and a period in ticks.

@@ -87,6 +87,7 @@ pub(crate) mod terrain_view;
 pub(crate) mod unit_looks;
 pub(crate) mod unit_models;
 pub(crate) mod view_console;
+pub(crate) mod view_dice;
 
 /// Draws the match: the map's lights, its ground as a plane over its bounds where no terrain draws
 /// it, a capsule for every unit the client holds, colored by team, a projectile's models turned

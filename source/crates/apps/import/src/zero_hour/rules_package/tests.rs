@@ -28,7 +28,7 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
         default: 100,
     };
     let data = |combat: &CombatImport| {
-        mode_data(ModeImport {
+        ModeImport {
             start: &start,
             production: &ProductionImport::default(),
             combat,
@@ -41,7 +41,8 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
             movers: &MoverImport::default(),
             second_lives: &SecondLifeImport::default(),
             propaganda: &PropagandaImport::default(),
-        })
+        }
+        .data()
     };
     // An empty table would write `actions = {}` into `[params]`, and `armors = {}` under a
     // second `[combat]`.
@@ -74,7 +75,7 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
         }
     );
     assert_eq!(retaliation(AiRetaliation::default(), &names).unwrap(), None);
-    let written = mode_data(ModeImport {
+    let written = ModeImport {
         start: &start,
         production: &ProductionImport::default(),
         combat: &CombatImport::default(),
@@ -87,7 +88,8 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
         movers: &MoverImport::default(),
         second_lives: &SecondLifeImport::default(),
         propaganda: &PropagandaImport::default(),
-    });
+    }
+    .data();
     assert!(
         written.contains("[retaliation]\naggressors = \"enemies:!air_target\"\nchase_ms = 10000\ndistance = \"200\"\nradius = \"120\""),
         "{written}"

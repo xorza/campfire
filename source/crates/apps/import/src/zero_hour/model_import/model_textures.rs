@@ -18,7 +18,7 @@ impl ModelTextures {
         meshes
             .into_iter()
             .flat_map(|mesh| &mesh.textures)
-            .map(|texture| (texture.name.clone(), assets.texture(&texture.name)))
+            .map(|texture| (texture.name.clone(), assets.art().texture(&texture.name)))
             .collect()
     }
 

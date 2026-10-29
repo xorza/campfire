@@ -27,7 +27,7 @@ pub struct Match {
 }
 
 impl Match {
-    /// The match of `spec`, of `books`, of `kind`, built in a new world.
+    /// The match of `setup`, of `books`, of `kind`, built in a new world.
     pub fn new(setup: MatchSetup, books: Books, kind: MatchKind<'_>) -> Self {
         let mut world = World::new();
         Release::build(&mut world, setup, books, kind);
@@ -75,21 +75,24 @@ pub(crate) mod internals {
     use bevy_ecs::world::World;
     use campfire_actions::{SlotKindBook, SlotKindData, SlotKinds};
     use campfire_combat::Combat;
-    use campfire_common::{DeclaredName, SegmentSeed};
+    use campfire_common::{DeclaredName, PlayerSlot, SegmentSeed};
     use campfire_declarations::internals::BookLoad;
     use campfire_declarations::{CapabilitySet, Role};
     use campfire_log::internals::LogCheck;
     use campfire_players::Players;
     use campfire_script::{BudgetSetup, ScriptLimits};
+    use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{Capability, MatchRate};
     use campfire_units::PoolId;
 
+    use crate::order::Order;
     use crate::release::Release;
     use crate::release::client_holds::ClientHolds;
     use crate::release::r#match::Match;
     use crate::release::match_kind::MatchKind;
     use crate::release::match_setup::MatchSetup;
     use crate::release::predicted_parts::PredictedParts;
+    use crate::release::release_catalog::ReleaseCatalog;
 
     impl Match {
         /// The match, which fails the test that holds it on any warning `log`, started before
@@ -103,6 +106,12 @@ pub(crate) mod internals {
                 world,
                 _log: Some(log),
             }
+        }
+
+        /// Runs a tick in which `player` gives `orders`, and no other player an input.
+        pub fn step_orders(&mut self, player: PlayerSlot, orders: &[Order]) {
+            let payload = Order::payload(orders);
+            self.step_with(&[(player, &payload)]);
         }
 
         /// The MOBA's 30 ticks a second.
@@ -129,7 +138,7 @@ pub(crate) mod internals {
         /// the start.
         fn test_of(setup: MatchSetup, set: CapabilitySet) -> Self {
             let log = LogCheck::start();
-            let books = Release::empty_books(setup.rate(), set);
+            let books = Release::empty_books(setup.tick_rate(), set);
             let mut world = World::new();
             Release::build(&mut world, setup.open(), books, MatchKind::Rules);
             // A mode declares the kinds its units' slots are of: here one, whose one rank comes
@@ -241,7 +250,7 @@ pub(crate) mod internals {
         /// The capabilities declared, with each one they need, theirs in turn, in the order
         /// first named.
         fn with_needs(&self) -> Vec<Capability> {
-            let rows = Release::rows();
+            let catalog = ReleaseCatalog::get();
             let mut declared = Vec::new();
             let mut next = self.declared.clone();
             next.reverse();
@@ -250,7 +259,7 @@ pub(crate) mod internals {
                     continue;
                 }
                 declared.push(capability);
-                let needs = rows
+                let needs = catalog
                     .needs(capability)
                     .expect("every capability has a module of the release");
                 next.extend(needs.iter().rev().filter(|need| !declared.contains(need)));

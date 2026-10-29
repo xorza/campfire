@@ -3,19 +3,21 @@ use std::fmt::{self, Display, Formatter};
 use campfire_common::MapName;
 use serde::{Deserialize, Serialize};
 
-use crate::zero_hour::animation_import::AnimationDropCause;
+use crate::zero_hour::animation_drop_cause::AnimationDropCause;
+use crate::zero_hour::button_drop_cause::ButtonDropCause;
 use crate::zero_hour::contain_drop_cause::ContainDropCause;
 use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::dropped_roads::DroppedRoads;
 use crate::zero_hour::effect_drop_cause::EffectDropCause;
-use crate::zero_hour::format::ini::object_ini::build_variations::VariationDropCause;
-use crate::zero_hour::model_writer::{DroppedStates, SkipReason, SkippedModel};
+use crate::zero_hour::model_converter::SkipReason;
+use crate::zero_hour::model_converter::SkippedModel;
+use crate::zero_hour::model_writer::DroppedStates;
 use crate::zero_hour::panel_drop_cause::PanelDropCause;
 use crate::zero_hour::power_drop_cause::PowerDropCause;
-use crate::zero_hour::production_import::ButtonDropCause;
 use crate::zero_hour::sound_drop_cause::SoundDropCause;
-use crate::zero_hour::supply_import::SupplyDropCause;
-use crate::zero_hour::upgrade_import::UpgradeDropCause;
+use crate::zero_hour::supply_drop_cause::SupplyDropCause;
+use crate::zero_hour::upgrade_drop_cause::UpgradeDropCause;
+use crate::zero_hour::variation_drop_cause::VariationDropCause;
 use crate::zero_hour::weapon_drop_cause::WeaponDropCause;
 
 /// What the import does not hold of the install as the original holds it, each with what it is
@@ -32,6 +34,9 @@ pub enum ImportLoss {
     Texture(String),
     /// Cells of a map whose terrain draws a tile of no texture, by their count.
     UntexturedCells { map: MapName, cells: usize },
+    /// The looks of objects of no unit type, which nothing draws, by their count, with each model,
+    /// animation and texture no other look draws (09-zero-hour.md, A look is a unit type's).
+    UnnamedLooks { looks: usize },
     /// A waypoint of a map past its bounds, by its name, which the import drops.
     Waypoint { map: MapName, waypoint: String },
     /// A map's road segments of a type the import does not draw (09-zero-hour.md, A road's type is
@@ -108,6 +113,7 @@ impl Display for ImportLoss {
                 "a model names a texture no archive holds, and draws the game's MissingTexture: \
                  {texture}"
             ),
+            Self::UnnamedLooks { looks } => write!(f, "{looks} looks of no unit type"),
             Self::UntexturedCells { map, cells } => write!(
                 f,
                 "a map's terrain draws cells of a tile with no texture: {map}, {cells} cells"

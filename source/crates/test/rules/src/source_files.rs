@@ -6,6 +6,7 @@ use campfire_store::{DirEntries, EntryKind, InputFile};
 use campfire_threads::Parallel;
 
 use crate::source_file::{Gate, SourceFile};
+use crate::workspace::Workspace;
 
 /// The most bytes a test reads of a source file: far past any the workspace holds.
 const MAX_LEN: usize = 1 << 20;
@@ -66,6 +67,42 @@ impl SourceFiles {
             }
         }
     }
+}
+
+pub(crate) fn a_module_is_gated_by_a_bare_cfg_of_test_or_internals(workspace: &Workspace) {
+    let found: Vec<String> = workspace
+        .sources()
+        .iter()
+        .flat_map(|file| {
+            (file.gate_breaches().into_iter()).map(move |line| format!("{}:{line}", file.path))
+        })
+        .collect();
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn a_gate_the_rules_cannot_read_is_a_breach() {
+    // Of each module declaration, a bare `test` or `internals` gate reads, and one of `any` or
+    // `not` keeps the module in a production build, as the rules read it; one of `all`, or a
+    // `#[path]`, is a breach, and an inner `#![cfg(test)]` too; a `cfg` of neither name, and a
+    // gate on an item, are none of the rules' concern.
+    let breaches =
+        |text: &str| SourceFile::new("src/lib.rs".to_owned(), text.to_owned()).gate_breaches();
+    assert_eq!(
+        breaches("#[cfg(test)]\nmod a;\n#[cfg(feature = \"internals\")]\nmod b;\n"),
+        Vec::<usize>::new()
+    );
+    assert_eq!(breaches("#[cfg(all(test, unix))]\nmod a;\n"), [1]);
+    assert_eq!(
+        breaches("#[cfg(any(test, unix))]\nmod a;\n#[cfg(not(test))]\nmod b;\n"),
+        Vec::<usize>::new()
+    );
+    assert_eq!(breaches("#[path = \"x.rs\"]\nmod a;\n"), [1]);
+    assert_eq!(breaches("//! A crate.\n#![cfg(test)]\nmod a;\n"), [2]);
+    assert_eq!(
+        breaches("#[cfg(unix)]\nmod a;\n#[cfg(all(test, unix))]\nfn f() {}\n"),
+        Vec::<usize>::new()
+    );
 }
 
 #[test]

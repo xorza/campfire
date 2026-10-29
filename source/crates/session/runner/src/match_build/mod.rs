@@ -39,7 +39,7 @@ impl MatchBuild {
         players: u32,
         picks: &HostPicks,
     ) {
-        let books = packages.books(match_setup.rate());
+        let books = packages.books(match_setup.tick_rate());
         let scripts = packages.scripts();
         let setup = ModeSetup {
             scripts: packages.mode_scripts(),

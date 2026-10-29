@@ -145,7 +145,7 @@ fn play(dir: &Path) -> Result<Verdict, CheckError> {
     }
 
     let mode = Path::new(PACKAGES_DIR).join(MODE);
-    let speed = RunnerSpeed::of(env::var_os("NEXTEST_PROFILE").as_deref());
+    let speed = RunnerSpeed::of(env::var_os("CI").as_deref());
     let mut lan = LanMatch::new(&binaries, dir, &mode, &scripts, speed);
     let played = lan.play()?;
     let mut verdict = Verdict::default();

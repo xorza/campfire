@@ -7,7 +7,7 @@ use bevy::ecs::query::{Allow, Changed, With};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::common_conditions::{not, resource_exists};
-use bevy::ecs::system::{Commands, Query, Res, ResMut, Single};
+use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy::input::ButtonInput;
 use bevy::input::keyboard::KeyCode;
 use bevy::input::mouse::{MouseButton, MouseScrollUnit, MouseWheel};
@@ -217,12 +217,16 @@ impl PlayerCameraPlugin {
     }
 
     /// Whether the camera's place or field of view may differ from the rig's: the rig moved, or
-    /// the window changed its shape.
+    /// the window changed its size, not merely its cursor.
     fn is_moved(
         rig: Res<'_, CameraRig>,
-        resized: Query<'_, '_, (), (Changed<Window>, With<PrimaryWindow>)>,
+        window: Option<Single<'_, '_, &Window, With<PrimaryWindow>>>,
+        mut shown_size: Local<'_, Vec2>,
     ) -> bool {
-        rig.is_changed() || !resized.is_empty()
+        let size = window.map_or(Vec2::ZERO, |window| window.size());
+        let resized = *shown_size != size;
+        *shown_size = size;
+        rig.is_changed() || resized
     }
 
     /// Keeps the cursor within the window while the window has the focus, and lets it go when

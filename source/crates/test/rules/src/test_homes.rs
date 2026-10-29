@@ -2,22 +2,15 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::allowlist::Allowlist;
 use crate::dev_dependencies::is_test_support;
-use crate::source_file::SourceFile;
+use crate::source_file::{SourceFile, names_crate};
 use crate::workspace::{Crate, DevEdges, Workspace, holder, test_build};
 
-/// The crates of `crates` whose paths `code` names, `campfire_x::` for `campfire-x`.
+/// The crates of `crates` whose paths `code` names, `campfire_x::` for `campfire-x`, as the
+/// first segment of a path.
 fn named_crates<'a>(crates: &'a [Crate], code: &str) -> BTreeSet<&'a str> {
     crates
         .iter()
-        .filter(|krate| {
-            let path = format!("{}::", krate.name.replace('-', "_"));
-            code.match_indices(&path).any(|(at, _)| {
-                !code[..at]
-                    .chars()
-                    .next_back()
-                    .is_some_and(|before| before.is_alphanumeric() || before == '_')
-            })
-        })
+        .filter(|krate| names_crate(code, &krate.name))
         .map(|krate| krate.name.as_str())
         .collect()
 }

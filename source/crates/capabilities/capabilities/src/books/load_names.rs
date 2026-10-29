@@ -1,17 +1,12 @@
 use std::collections::BTreeSet;
 
 use campfire_actions::CostTarget;
-use campfire_combat::{Armor, ModeCombatData};
 use campfire_common::DeclaredName;
-use campfire_declarations::{BookCx, BookError, NamedScripts, NamedTexts, StateFields};
-use campfire_items::ItemsData;
-use campfire_mode::{ChoiceId, MapData, MarkerTag, ModeData, TimerId};
-use campfire_navigation::ModeNavigationData;
+use campfire_declarations::{BookCx, BookError, NameSets, NamedScripts, NamedTexts, StateFields};
+use campfire_mode::{ChoiceId, MapData, ModeData, TimerId};
 use campfire_script::{Filter, NameTables};
 use campfire_units::{PoolId, TypeParamsData};
-use campfire_values::{
-    ActionId, ItemId, ModifierId, NameKind, Named, Names, PackageIndex, Param, ResourceId, TextId,
-};
+use campfire_values::{ActionId, ModifierId, NameKind, Named, Names, Param, ResourceId, TextId};
 
 /// The names of a match's packages that scripts and data name, each kind of id as the names its
 /// module declares, and the names of no id of their own as the modules' sections give them: what
@@ -21,11 +16,7 @@ use campfire_values::{
 #[derive(Debug)]
 pub struct LoadNames {
     tables: NameTables,
-    armors: BTreeSet<DeclaredName>,
-    /// The tags of the markers the mode's units spawn at and of the map's markers.
-    marker_tags: BTreeSet<DeclaredName>,
-    /// The mode's item types, whose ids the item book gives as it builds on the actions.
-    items: BTreeSet<DeclaredName>,
+    sets: NameSets,
     scripts: NamedScripts,
     texts: NamedTexts,
     state_fields: StateFields,
@@ -39,14 +30,9 @@ impl LoadNames {
     /// for the first a builder refuses.
     pub(crate) fn of(cx: &mut BookCx<'_>) -> Result<Self, BookError> {
         let tables = cx.name_tables()?;
-        let combat = cx.mode_section::<ModeCombatData>();
-        let armors = combat.into_iter().flat_map(|combat| combat.armors.keys());
-        let spawns = cx.mode_section::<ModeNavigationData>().into_iter();
-        let spawns = spawns.flat_map(|navigation| &navigation.spawn_tags);
         let map = cx
             .given::<MapData>()
             .expect("the load gives the mode's map");
-        let marked = map.markers.iter().flat_map(|marker| &marker.tags);
         let type_params = cx
             .types()
             .iter()
@@ -60,17 +46,13 @@ impl LoadNames {
             .chain(declared)
             .cloned()
             .collect();
-        let items = cx.package(PackageIndex::MODE).content.get::<ItemsData>();
-        let items = items.into_iter().flat_map(|items| items.0.keys());
         Ok(Self {
             tables,
-            items: items.cloned().collect(),
+            sets: cx.take_fact::<NameSets>()?.unwrap_or_default(),
             scripts: cx.take_fact::<NamedScripts>()?.unwrap_or_default(),
             texts: cx.take_fact::<NamedTexts>()?.unwrap_or_default(),
             state_fields: cx.take_fact::<StateFields>()?.unwrap_or_default(),
             handle_params,
-            armors: armors.cloned().collect(),
-            marker_tags: spawns.chain(marked).cloned().collect(),
         })
     }
 
@@ -97,10 +79,13 @@ impl LoadNames {
 
     /// Whether the match has the name `name` of `kind`, a unit type of the mode's scope; none for
     /// a kind whose names are a package's own, as its modifiers and abilities, which the load
-    /// reads of the package itself.
+    /// reads of the package itself. A kind of no module the match runs has no name.
     pub fn has(&self, kind: NameKind, name: &str) -> Option<bool> {
         if let Some(has) = self.tables.has(kind, name) {
             return has;
+        }
+        if let Some(has) = self.sets.has(kind, name) {
+            return Some(has);
         }
         Some(match kind {
             CostTarget::NAMES => {
@@ -114,9 +99,6 @@ impl LoadNames {
                 let resources = resources.map_or(&no_resources, |resources| &**resources);
                 CostTarget::named(pools, resources, name).is_some()
             }
-            Armor::NAMES => self.armors.contains(name),
-            MarkerTag::NAMES => self.marker_tags.contains(name),
-            ItemId::NAMES => self.items.contains(name),
             ModifierId::NAMES
             | ActionId::NAMES
             | TextId::NAMES
@@ -124,7 +106,7 @@ impl LoadNames {
             | Filter::NAMES
             | ChoiceId::NAMES
             | TimerId::NAMES => return None,
-            kind => unreachable!("no module of the release declares the names of every {kind}"),
+            _ => false,
         })
     }
 }

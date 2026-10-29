@@ -98,9 +98,9 @@ impl UnitsFixtures for Units {
     }
 
     fn name_kinds(world: &mut World, damage_kinds: &[&str], pools: &[&str], resources: &[&str]) {
-        let resources = Arc::new(resources.iter().copied().collect());
-        let kinds = Arc::new(damage_kinds.iter().copied().collect());
-        let pools: Names<PoolId> = pools.iter().copied().collect();
+        let resources = Arc::new(Names::unique(resources.iter().copied()));
+        let kinds = Arc::new(Names::unique(damage_kinds.iter().copied()));
+        let pools: Names<PoolId> = Names::unique(pools.iter().copied());
         let mut names = world.resource_mut::<MatchNames>();
         names.set_table::<DamageKind>(kinds);
         names.set_table::<ResourceId>(resources);
@@ -140,6 +140,6 @@ pub trait FilterFixtures {
 
 impl FilterFixtures for Filter {
     fn of_release_relations(relations: RelationSet) -> Filter {
-        Self::of_relations(relations, &TagNames::new(&Release::engine_tags()))
+        Self::of_relations(relations, &TagNames::new(Release::engine_tags()))
     }
 }

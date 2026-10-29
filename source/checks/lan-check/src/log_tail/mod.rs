@@ -8,6 +8,9 @@ use crate::error::CheckError;
 use crate::process::Process;
 use crate::process_log::ProcessLog;
 
+/// The most bytes a process's log holds as its tail opens it: far past what a LAN match logs.
+const MAX_LOG_LEN: usize = 1 << 30;
+
 /// A process's log as it grows: its file open where the last read ended, so each read takes only
 /// what the process wrote since, and the lines read so far, each parsed once.
 #[derive(Debug)]
@@ -52,7 +55,7 @@ impl LogTail {
     pub(crate) fn read(&mut self) -> Result<&ProcessLog, CheckError> {
         let file = match &mut self.file {
             Some(file) => file,
-            None => match InputFile::stream(&self.path) {
+            None => match InputFile::stream(&self.path, MAX_LOG_LEN) {
                 Ok(file) => self.file.insert(file),
                 Err(PathError {
                     error: ReadError::Missing,

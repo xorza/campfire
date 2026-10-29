@@ -5,10 +5,11 @@ use bevy::asset::{Assets, Handle, RenderAssetUsages};
 use bevy::camera::visibility::Visibility;
 use bevy::camera::{Camera, Camera3d};
 use bevy::color::ColorToPacked;
-use bevy::ecs::change_detection::DetectChangesMut;
+use bevy::ecs::change_detection::{DetectChanges, DetectChangesMut, Ref};
 use bevy::ecs::component::Component;
+use bevy::ecs::lifecycle::RemovedComponents;
 use bevy::ecs::message::MessageWriter;
-use bevy::ecs::query::{Allow, With, Without};
+use bevy::ecs::query::{Added, Allow, Changed, Or, With, Without};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::common_conditions::resource_exists;
@@ -24,19 +25,18 @@ use bevy::ui::{Node, PositionType, RelativeCursorPosition, Val};
 use campfire_client_files::{Minimap, RadarShown, TerrainQuads};
 use campfire_net::PendingOrders;
 use campfire_orders::OrdersDirective;
-use campfire_players::Player;
 use campfire_script::MatchNames;
 use campfire_sim::{Position, Unpredicted};
 use campfire_units::{Dead, HeightGrid, Owner, TypeOriginBook};
 use campfire_values::{NameId, Tag, Team, UnitTags, UnitType};
-use campfire_vision::SeenCells;
+use campfire_vision::{CellBits, ExploredCells, SeenCells};
 
 use crate::own_player::OwnPlayer;
 use crate::selection::{Selection, SelectionVoice};
 use crate::view::camera_rig::CameraRig;
 use crate::view::client_data::ClientLoad;
 use crate::view::float_num::{FloatNum, ground_point};
-use crate::view::fog::MatchFog;
+use crate::view::fog::{FogSight, MatchFog};
 use crate::view::match_colors::MatchColors;
 use crate::view::match_hud::MatchHud;
 use crate::view::terrain_image::TerrainImage;
@@ -69,15 +69,14 @@ struct Frame {
     size: Vec2,
 }
 
-/// The minimap as the client shows it: its look, its image, which it writes again each frame,
-/// its radar, each cell's fog cell, once the fog loaded, and the fog's texels of the frame.
+/// The minimap as the client shows it: its look, its image, which it writes again as what it
+/// draws changes, its radar, and each cell's fog cell, once the fog loaded.
 #[derive(Resource, Debug)]
 pub(crate) struct MinimapView {
     look: Minimap,
     image: Handle<Image>,
     radar: Radar,
     fog_cells: Vec<Option<usize>>,
-    fog: Vec<u8>,
     /// The sRGB colors of the match's teams, by their places.
     teams: Vec<[u8; 3]>,
     /// Who sees a unit of each type on the minimap, by the type's place.
@@ -110,6 +109,23 @@ const SIDE_PX: f32 = 256.0;
 const INSET_PX: f32 = 12.0;
 /// The color of the camera's view on the minimap.
 const VIEW: [u8; 3] = [255, 255, 255];
+
+/// The units the minimap draws whose place, team or owner changed, or that died, since its last
+/// frame; those that left or lived again are read apart, as their parts went.
+type ChangedUnits<'w, 's> = Query<
+    'w,
+    's,
+    (),
+    (
+        Or<(
+            Changed<Position>,
+            Changed<Team>,
+            Changed<Owner>,
+            Added<Dead>,
+        )>,
+        Allow<Unpredicted>,
+    ),
+>;
 
 impl Plugin for MinimapPlugin {
     fn build(&self, app: &mut App) {
@@ -325,7 +341,6 @@ impl MinimapView {
             image,
             radar,
             fog_cells: Vec::new(),
-            fog: Vec::new(),
             teams,
             shown,
         });
@@ -369,37 +384,55 @@ impl MinimapView {
     }
 
     /// Writes the minimap's image again: the terrain, darkened by the fog, each unit its player's
-    /// team sees as a square of its team's color, and the camera's view on the ground.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "a system takes each resource and query it reads"
-    )]
+    /// team sees as a square of its team's color, and the camera's view on the ground. It writes
+    /// only as one of those changes, or as it shows again: an image written changes its texture,
+    /// which the renderer uploads whole.
     fn draw(
         (ground, fog): (Res<'_, MinimapGround>, Option<Res<'_, MatchFog>>),
         mut view: ResMut<'_, Self>,
         mut images: ResMut<'_, Assets<Image>>,
         own: OwnPlayer<'_, '_>,
-        players: Query<'_, '_, (&Player, &SeenCells), Allow<Unpredicted>>,
-        units: Query<
-            '_,
-            '_,
-            (&Position, &Team, &UnitType, Option<&Owner>),
-            (Without<Dead>, Allow<Unpredicted>),
-        >,
+        (units, changed, mut gone, mut revived): (
+            Query<
+                '_,
+                '_,
+                (&Position, &Team, &UnitType, Option<&Owner>),
+                (Without<Dead>, Allow<Unpredicted>),
+            >,
+            ChangedUnits<'_, '_>,
+            RemovedComponents<'_, '_, Position>,
+            RemovedComponents<'_, '_, Dead>,
+        ),
         (colors, camera): (
             Res<'_, MatchColors>,
-            Single<'_, '_, (&Camera, &GlobalTransform), With<Camera3d>>,
+            Single<'_, '_, (Ref<'_, Camera>, Ref<'_, GlobalTransform>), With<Camera3d>>,
         ),
-        node: Single<'_, '_, &Visibility, With<MinimapNode>>,
+        node: Single<'_, '_, Ref<'_, Visibility>, With<MinimapNode>>,
     ) {
+        // Each frame reads the units that left or lived again, so a frame that shows again reads
+        // none of before.
+        let units_changed =
+            gone.read().count() > 0 || revived.read().count() > 0 || !changed.is_empty();
         if **node == Visibility::Hidden {
+            return;
+        }
+        let (seen, explored) = (own.seen_cells(), own.explored_cells());
+        let (camera, place) = &*camera;
+        let changed = node.is_changed()
+            || units_changed
+            || colors.is_changed()
+            || fog.as_ref().is_some_and(DetectChanges::is_changed)
+            || camera.is_changed()
+            || place.is_changed()
+            || seen.as_ref().is_some_and(DetectChanges::is_changed)
+            || explored.as_ref().is_some_and(DetectChanges::is_changed);
+        if !changed {
             return;
         }
         let side = ground.side;
         let Self {
             image,
             fog_cells,
-            fog: fog_texels,
             teams,
             look,
             shown,
@@ -413,14 +446,14 @@ impl MinimapView {
                 fog.cell_at(Vec3::new(center.x, 0.0, center.y))
             }));
         }
-        fog_texels.clear();
-        if !fog_cells.is_empty()
-            && let Some(data) = images
-                .get(&MatchFog::IMAGE)
-                .and_then(|fog| fog.data.as_deref())
-        {
-            fog_texels.extend_from_slice(data);
-        }
+        let none = CellBits::default();
+        let sight = match own.player_slot() {
+            None => FogSight::All,
+            Some(_) => FogSight::Cells {
+                seen: seen.as_deref().map_or(&none, SeenCells::cells),
+                explored: explored.as_deref().map_or(&none, ExploredCells::cells),
+            },
+        };
         let Some(mut target) = images.get_mut(&*image) else {
             return;
         };
@@ -432,13 +465,9 @@ impl MinimapView {
             .zip(&ground.colors)
             .enumerate()
         {
-            let fog_texel = fog_cells
-                .get(at)
-                .copied()
-                .flatten()
-                .and_then(|cell| fog_texels.get(cell * 4..cell * 4 + 3));
-            let light = match fog_texel {
-                Some(&[r, g, b]) => [r, g, b],
+            let cell = fog_cells.get(at).copied().flatten();
+            let light = match (fog.as_deref(), cell) {
+                (Some(fog), Some(cell)) => fog.light(sight, cell),
                 _ => [u8::MAX; 3],
             };
             let lit: [u8; 3] = std::array::from_fn(|channel| {
@@ -448,11 +477,8 @@ impl MinimapView {
             });
             *texel = [lit[0], lit[1], lit[2], u8::MAX];
         }
+        let seen = seen.as_deref().map(SeenCells::cells);
         let own = own.player_slot();
-        let seen = players
-            .iter()
-            .find(|(player, _)| Some(player.player_slot()) == own)
-            .map(|(_, seen)| seen.cells());
         let dot = NonZeroUsize::from(look.dot).get();
         for (position, &team, unit_type, owner) in &units {
             let mine = owner.is_some_and(|owner| Some(owner.player_slot()) == own);
@@ -482,7 +508,6 @@ impl MinimapView {
                 square(texels, side, cell, dot, color);
             }
         }
-        let (camera, place) = *camera;
         let corners = view_corners(camera, place);
         if let Some(corners) = corners {
             let cells = corners.map(|corner| ground.frame.cells_at(side, corner));

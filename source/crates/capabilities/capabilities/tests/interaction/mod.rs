@@ -161,10 +161,9 @@ fn object(game: &mut Match, object: UnitType, x: i16, team: u8) -> StableId {
         .place(game)
 }
 
-/// Runs a tick in which player 0 orders `unit` `directive`.
-fn order(game: &mut Match, unit: StableId, directive: OrdersDirective) {
-    let payload = Order::payload(&[Order::one(unit, directive)]);
-    game.step_with(&[(PlayerSlot::new(0), &payload)]);
+/// Runs a tick in which player `player` orders `unit` `directive`.
+fn order(game: &mut Match, player: u32, unit: StableId, directive: OrdersDirective) {
+    game.step_orders(PlayerSlot::new(player), &[Order::one(unit, directive)]);
 }
 
 const fn use_of(target: StableId) -> OrdersDirective {
@@ -199,11 +198,11 @@ fn a_use_runs_on_its_object_and_its_held_use_ends_whole_or_by_an_order_a_block_a
             x += 20;
             let user = user(game, "walking caster", x);
             let used = object(game, object_type, x + 1, 0);
-            order(game, user, use_of(used));
+            order(game, 0, user, use_of(used));
             let mut seen = vec![Stats::health(game, used)];
             for tick in 1..=14 {
                 match (tick == 8).then(|| cut(game, user)).flatten() {
-                    Some(action) => order(game, user, action),
+                    Some(action) => order(game, 0, user, action),
                     None => game.step(),
                 }
                 seen.push(Stats::health(game, used));
@@ -273,18 +272,21 @@ fn a_use_is_dropped_by_a_unit_with_no_use_slot_one_its_users_refuse_or_one_beyon
     // A combatant of player 0 has no use slot: it starts nothing, and the shrine keeps its
     // health past the tick a use would resolve in.
     let owner = Owner::new(PlayerSlot::new(0));
-    let unslotted = Abilities::spawn_combatant(&mut game, (0, 0, 0), Team::new(0), owner);
-    order(&mut game, unslotted, use_of(shrine));
+    let unslotted = Spawn::named(&game, "combatant", (0, 0, 0))
+        .team(Team::new(0))
+        .parts(owner)
+        .place(&mut game);
+    order(&mut game, 0, unslotted, use_of(shrine));
     assert_eq!(game.part::<ActionProgress>(unslotted).in_progress(), None);
     // An altar of team 1 admits its allies alone, and the user is of team 0: its slot stays
     // empty. An altar of the user's team admits it: ordered in tick 2, its offering resolves in
     // tick 5.
     let user = user(&mut game, "walking caster", 0);
     let foreign = object(&mut game, objects.altar, 1, 1);
-    order(&mut game, user, use_of(foreign));
+    order(&mut game, 0, user, use_of(foreign));
     assert_eq!((held(&game, user), is_busy(&game, user)), (None, false));
     let own = object(&mut game, objects.altar, -1, 0);
-    order(&mut game, user, use_of(own));
+    order(&mut game, 0, user, use_of(own));
     assert!(is_busy(&game, user));
     game.run_until(6);
     assert_eq!(
@@ -292,23 +294,28 @@ fn a_use_is_dropped_by_a_unit_with_no_use_slot_one_its_users_refuse_or_one_beyon
         [500, 500, 499]
     );
     // A unit that is no object, the combatant, is no use's target.
-    order(&mut game, user, use_of(unslotted));
+    order(&mut game, 0, user, use_of(unslotted));
     assert!(!is_busy(&game, user));
     // An order of the use slot by its index starts nothing: only a use runs a use.
     let target = ActionTarget::Unit(shrine);
-    order(&mut game, user, OrdersDirective::Slot { slot: 0, target });
+    order(
+        &mut game,
+        0,
+        user,
+        OrdersDirective::Slot { slot: 0, target },
+    );
     assert!(!is_busy(&game, user));
     // A user that stands 5 m from the shrine, beyond the prayer's 2 m, fills its slot but drops
     // the use as it would start; one that walks walks in range, 1 m a tick, and uses it.
     let standing = self::user(&mut game, "caster", 6);
     let walking = self::user(&mut game, "walking caster", -4);
-    order(&mut game, standing, use_of(shrine));
+    order(&mut game, 0, standing, use_of(shrine));
     assert_eq!(
         (held(&game, standing), is_busy(&game, standing)),
         (Some(objects.pray), false)
     );
     let now = game.now().get();
-    order(&mut game, walking, use_of(shrine));
+    order(&mut game, 0, walking, use_of(shrine));
     assert_eq!(
         (held(&game, walking), is_busy(&game, walking)),
         (Some(objects.pray), true)
@@ -351,7 +358,7 @@ fn a_second_use_of_one_object_keeps_its_slot_and_a_use_of_another_fills_it_afres
     let ready = |game: &Match| game.part::<SlotTimes>(user).slot(0).unwrap().ready_at;
     // The prayer resolves in tick 3, which spends its slot: no cooldown, so it is ready from
     // tick 3.
-    order(&mut game, user, use_of(shrine));
+    order(&mut game, 0, user, use_of(shrine));
     game.run_until(14);
     assert_eq!(
         (held(&game, user), is_busy(&game, user), ready(&game)),
@@ -359,12 +366,12 @@ fn a_second_use_of_one_object_keeps_its_slot_and_a_use_of_another_fills_it_afres
     );
     // A second prayer, in tick 14, keeps the slot as it is; a draw at the well, in tick 15,
     // fills it afresh, ready at once, and replaces the prayer before it resolves.
-    order(&mut game, user, use_of(shrine));
+    order(&mut game, 0, user, use_of(shrine));
     assert_eq!(
         (held(&game, user), is_busy(&game, user), ready(&game)),
         (Some(objects.pray), true, Tick::new(3))
     );
-    order(&mut game, user, use_of(well));
+    order(&mut game, 0, user, use_of(well));
     assert_eq!(
         (held(&game, user), is_busy(&game, user), ready(&game)),
         (Some(objects.draw), true, Tick::ZERO)

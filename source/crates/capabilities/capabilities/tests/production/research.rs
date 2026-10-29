@@ -264,6 +264,13 @@ fn a_research_is_refused_while_its_player_holds_or_queues_one_its_upgrade_confli
         let holder = ResearchHolder::Player;
         Production::add_research(&mut game, modifier, holder, Ticks::new(2), Some(cost))
     });
+    let own_gun = Production::add_research(
+        &mut game,
+        gun,
+        ResearchHolder::Producer,
+        Ticks::new(2),
+        Some(cost),
+    );
     let [gunner, builder] = [(); 2].map(|()| Production::allocate_id(&mut game));
     for (id, x, research) in [(gunner, 10, by_gun), (builder, 20, by_tower)] {
         let queue = TrainQueue::default();
@@ -292,8 +299,34 @@ fn a_research_is_refused_while_its_player_holds_or_queues_one_its_upgrade_confli
     Production::order_train(&mut game, builder);
     game.step();
     assert_eq!((queued(&game, builder), gold(&game)), (0, 60));
-    // Of `gun` alone, the upgrade's conflicts are `tower`, and of `tower` its triggers, `gun`.
-    assert_eq!(upgrades.conflicting(gun).collect::<Vec<_>>(), [tower]);
-    assert_eq!(upgrades.conflicting(tower).collect::<Vec<_>>(), [gun]);
-    assert_eq!(upgrades.conflicting(gunned).count(), 0);
+    // A research of `gun` for the producer itself is refused while its player holds `tower`, as
+    // the upgrade reads the player's modifiers and the unit's alike, so `gunned` would be withheld.
+    game.player_modifiers_mut(player).unwrap().add(tower);
+    let own_gunner = Production::allocate_id(&mut game);
+    let queue = TrainQueue::default();
+    shop.producer(
+        &mut game,
+        own_gunner,
+        30,
+        Team::new(0),
+        Some(player),
+        own_gun,
+        queue,
+    );
+    Production::order_train(&mut game, own_gunner);
+    game.step();
+    assert_eq!((queued(&game, own_gunner), gold(&game)), (0, 60));
+    // `gun` triggers the upgrade `tower` withholds, and `tower` withholds the one `gun` triggers;
+    // `gunned` takes part in none.
+    assert_eq!(upgrades.withholding(gun).collect::<Vec<_>>(), [tower]);
+    assert_eq!(upgrades.withheld(gun).count(), 0);
+    assert_eq!(upgrades.withheld(tower).collect::<Vec<_>>(), [gun]);
+    assert_eq!(upgrades.withholding(tower).count(), 0);
+    assert_eq!(
+        upgrades
+            .withholding(gunned)
+            .chain(upgrades.withheld(gunned))
+            .count(),
+        0
+    );
 }

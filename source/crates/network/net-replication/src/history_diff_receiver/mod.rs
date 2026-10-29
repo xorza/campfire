@@ -10,9 +10,7 @@ use bevy_ecs::error::BevyError;
 use bevy_ecs::prelude::{Entity, Query, ResMut};
 use bevy_replicon::shared::replication::deferred_entity::DeferredEntity;
 use bevy_replicon::shared::replication::diff::ComponentDelta;
-use bevy_replicon::shared::replication::diff::{
-    DiffBuffer, Diffable as RepliconDiffable, diff_index::DiffIndex,
-};
+use bevy_replicon::shared::replication::diff::{DiffBuffer, Diffable, diff_index::DiffIndex};
 use bevy_replicon::shared::replication::registry::ctx::WriteCtx;
 use bevy_replicon::shared::replication::storage::{EntityStorageCtx, ReplicationStorage};
 use bytes::Bytes;
@@ -61,27 +59,6 @@ struct PendingDiffMessage<Diff> {
 }
 
 impl<Diff> PendingDiffMessage<Diff> {
-    /// The message for `diffs` from `first_diff_index`, whose count a cursor range must span.
-    fn new(
-        tick: NetTick,
-        first_diff_index: DiffIndex,
-        diffs: Vec<Diff>,
-    ) -> Result<Self, HistoryDiffError> {
-        let offset = diffs
-            .len()
-            .checked_sub(1)
-            .expect("empty diff messages are not queued");
-        let offset = u16::try_from(offset).map_err(|_| HistoryDiffError::TooManyDiffs {
-            diff_count: diffs.len(),
-        })?;
-        Ok(Self {
-            tick,
-            first_diff_index,
-            cursor: first_diff_index + offset,
-            diffs,
-        })
-    }
-
     fn base_cursor(&self) -> DiffIndex {
         self.first_diff_index - 1
     }
@@ -126,7 +103,7 @@ impl<Diff> PendingDiffMessage<Diff> {
 ///    [`Self::clear_before_tick`] promotes the newest usable cursor at its
 ///    retained floor and drains older cursor/pending state.
 #[derive(Debug, Clone)]
-pub struct HistoryDiffReceiver<C: RepliconDiffable> {
+pub struct HistoryDiffReceiver<C: Diffable> {
     base_cursor: Option<DiffIndex>,
     base_tick: Option<NetTick>,
     /// Materialized cursors newer than `base_cursor`, paired with the confirmed-history tick that
@@ -159,7 +136,7 @@ pub struct HistoryDiffReceiver<C: RepliconDiffable> {
     marker: PhantomData<fn() -> C>,
 }
 
-impl<C: RepliconDiffable> Default for HistoryDiffReceiver<C> {
+impl<C: Diffable> Default for HistoryDiffReceiver<C> {
     fn default() -> Self {
         Self {
             base_cursor: None,
@@ -171,14 +148,15 @@ impl<C: RepliconDiffable> Default for HistoryDiffReceiver<C> {
     }
 }
 
-impl<C: HistoryComponent + RepliconDiffable> HistoryDiffReceiver<C> {
-    /// Writes a diff message of `C` into its confirmed history: a snapshot's value, then each queued
-    /// diff that the history now gives a base for, in order. `before_write` sees each value before
-    /// the history records it, so a caller can act on it.
+impl<C: HistoryComponent + Diffable> HistoryDiffReceiver<C> {
+    /// Writes a diff message of `C` into its confirmed history: a snapshot's value, then each
+    /// queued diff that the history now gives a base for, in order. `before_write` sees each value
+    /// before the history records it, so a caller can act on it.
     ///
-    /// A message that the entity's confirmed ticks do not map is dropped. An entity without a confirmed
-    /// history gets one: its values are written there and read back for the diffs they make ready,
-    /// as the entity's own component goes on only when the message's changes are flushed.
+    /// A message that the entity's confirmed ticks do not map is dropped. An entity without a
+    /// confirmed history gets one: its values are written there and read back for the diffs they
+    /// make ready, as the entity's own component goes on only when the message's changes are
+    /// flushed.
     pub fn receive(
         ctx: &mut WriteCtx<'_>,
         entity: &mut DeferredEntity<'_>,
@@ -247,7 +225,7 @@ impl<C: HistoryComponent + RepliconDiffable> HistoryDiffReceiver<C> {
     }
 }
 
-impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
+impl<C: Diffable> HistoryDiffReceiver<C> {
     /// Gives `entity` a receiver whose base is the last diff Replicon applied to it, confirmed at
     /// `tick`: the diffs after it then resolve against the value that `tick` holds. An entity
     /// that has a receiver keeps it, and one with no applied diff gets none.
@@ -404,32 +382,11 @@ impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
         self.earliest_pending_tick_at_or_before(tick).is_some()
     }
 
-    /// Queues a diff message for historical materialization.
-    ///
-    /// `queue_diffs` only records the diff message. It does not apply the
-    /// diffs immediately; callers should invoke [`Self::take_ready_update`]
-    /// afterwards, usually in a loop.
-    ///
-    /// The message is ignored when its final cursor is at or before the retained
-    /// base cursor, or when the exact message is already known/pending. Otherwise
-    /// it is buffered until its `base_cursor` is available in this receiver.
-    ///
-    /// The method does not look up `ConfirmedHistory`; readiness is checked by
-    /// [`Self::take_ready_update`], which is why out-of-order diff ranges can
-    /// be queued before their base state arrives.
-    pub(crate) fn queue_diffs(
-        &mut self,
-        tick: NetTick,
-        first_diff_index: DiffIndex,
-        diffs: Vec<C::Diff>,
-    ) -> Result<(), HistoryDiffError> {
-        if diffs.is_empty() {
-            return Ok(());
-        }
-        let mut pending = PendingDiffMessage::new(tick, first_diff_index, diffs)?;
+    /// Queues `pending`, unless its final cursor is retired or known, or it is pending already.
+    fn queue_pending(&mut self, mut pending: PendingDiffMessage<C::Diff>) {
         let cursor = pending.cursor;
         if self.is_retired_cursor(cursor) || self.tick_for_cursor(Some(cursor)).is_some() {
-            return Ok(());
+            return;
         }
 
         if let Some(base_cursor) = self.base_cursor
@@ -438,23 +395,20 @@ impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
             let retained_first_diff = base_cursor + 1;
             let drop_count = retained_first_diff.distance_after(pending.first_diff_index) as usize;
             if drop_count >= pending.diffs.len() {
-                return Ok(());
+                return;
             }
             pending.diffs.drain(0..drop_count);
             pending.first_diff_index = retained_first_diff;
         }
 
-        if self.tick_for_cursor(Some(cursor)).is_some()
-            || self.pending.iter().any(|queued| {
-                queued.tick == pending.tick
-                    && queued.first_diff_index == pending.first_diff_index
-                    && queued.cursor == cursor
-            })
-        {
-            return Ok(());
+        if self.pending.iter().any(|queued| {
+            queued.tick == pending.tick
+                && queued.first_diff_index == pending.first_diff_index
+                && queued.cursor == cursor
+        }) {
+            return;
         }
         self.pending.push(pending);
-        Ok(())
     }
 
     /// Queues a Replicon diff message encoded as the final cursor plus all
@@ -475,7 +429,13 @@ impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
         // DiffIndex arithmetic wraps, so this also handles ranges that cross
         // u16::MAX, e.g. final index 3 with 10 diffs starts at 65530.
         let first_diff_index = index - offset;
-        self.queue_diffs(tick, first_diff_index, diffs)
+        self.queue_pending(PendingDiffMessage {
+            tick,
+            first_diff_index,
+            cursor: index,
+            diffs,
+        });
+        Ok(())
     }
 
     /// Attempts to materialize one queued diff message from `history`.
@@ -546,19 +506,34 @@ impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use bevy_replicon::shared::replication::diff::{
-        Diffable as RepliconDiffable, diff_index::DiffIndex,
-    };
+    use bevy_replicon::shared::replication::diff::{Diffable, diff_index::DiffIndex};
     use campfire_net_core::{NetTick, Ticked};
 
     use crate::confirmed_history::ConfirmedHistory;
     use crate::history_diff_receiver::{HistoryDiffError, HistoryDiffReceiver};
 
     /// The bridge's writes, for another crate's test that stands in for it.
-    impl<C: RepliconDiffable> HistoryDiffReceiver<C> {
+    impl<C: Diffable> HistoryDiffReceiver<C> {
         /// Records `cursor` at `tick`, as the bridge's `record_cursor` does.
         pub fn bridge_record_cursor(&mut self, tick: NetTick, cursor: Option<DiffIndex>) {
             self.record_cursor(tick, cursor);
+        }
+
+        /// Queues a message of `diffs` from `first_diff_index`, as `queue_diff` queues the diffs
+        /// ending at the cursor it gives.
+        pub fn queue_diffs(
+            &mut self,
+            tick: NetTick,
+            first_diff_index: DiffIndex,
+            diffs: Vec<C::Diff>,
+        ) -> Result<(), HistoryDiffError> {
+            let Some(last) = diffs.len().checked_sub(1) else {
+                return Ok(());
+            };
+            let offset = u16::try_from(last).map_err(|_| HistoryDiffError::TooManyDiffs {
+                diff_count: diffs.len(),
+            })?;
+            self.queue_diff(tick, first_diff_index + offset, diffs)
         }
 
         /// Queues a message of `diffs` from `first_diff_index`, as the bridge's `queue_diffs`

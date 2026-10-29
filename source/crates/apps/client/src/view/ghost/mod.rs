@@ -7,10 +7,8 @@ use bevy::ecs::query::{Added, Allow, Has};
 use bevy::ecs::system::{Commands, Query, Res};
 use bevy::math::Vec3;
 use bevy::transform::components::Transform;
-use campfire_players::Player;
 use campfire_sim::Unpredicted;
 use campfire_units::Dead;
-use campfire_vision::SeenCells;
 
 use crate::own_player::OwnPlayer;
 use crate::view::drawing::{Drawing, DrawingOf, TornOff};
@@ -61,10 +59,6 @@ impl Left<'_> {
 #[derive(Component, Debug)]
 pub(crate) struct LeavesGhost;
 
-/// The players' cells, whose entities the client holds as the server sent them.
-type PlayerCells<'w, 's> =
-    Query<'w, 's, (&'static Player, Ref<'static, SeenCells>), Allow<Unpredicted>>;
-
 impl Ghost {
     /// As a drawing's unit leaves the client: keeps a drawing that leaves a ghost, in a match of
     /// fog, as a ghost of its cell, and takes every other down, but one torn off its unit, which
@@ -111,21 +105,17 @@ impl Ghost {
     /// cells change, once the frame's replication brought both.
     pub(crate) fn clear(
         own: OwnPlayer<'_, '_>,
-        players: PlayerCells<'_, '_>,
         ghosts: Query<'_, '_, (Entity, Ref<'_, Self>)>,
         mut commands: Commands<'_, '_>,
     ) {
         // A spectator holds every unit, so a unit that leaves it is gone, and leaves no ghost.
-        let Some(own) = own.player_slot() else {
+        if own.player_slot().is_none() {
             for (root, _) in &ghosts {
                 commands.entity(root).despawn();
             }
             return;
-        };
-        let Some((_, seen)) = players
-            .iter()
-            .find(|(player, _)| player.player_slot() == own)
-        else {
+        }
+        let Some(seen) = own.seen_cells() else {
             return;
         };
         let changed = seen.is_changed();

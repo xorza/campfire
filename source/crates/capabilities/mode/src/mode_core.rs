@@ -1,10 +1,10 @@
-use crate::mode_queue::ModeQueues;
 use std::num::NonZeroU8;
 
 use campfire_actions::{LoadoutRanks, SlotClaims, SlotError, SlotKind, SlotKinds};
 use campfire_common::DeclaredName;
 use campfire_declarations::{
-    BookCx, BookError, BookPlace, ById, Declarations, InstallCx, Module, NoSystems, SourceKind,
+    BookCx, BookError, BookPlace, ById, Declarations, InstallCx, Module, NameSets, NoSystems,
+    SourceKind,
 };
 use campfire_navigation::{ModeNavigationData, NavigationBook, WalkCheck, Walker, WalkerBook};
 use campfire_script::{Audience, UnknownName};
@@ -18,9 +18,12 @@ use crate::choice_data::Offers;
 use crate::error::ModeDataError;
 use crate::income_data::IncomeData;
 use crate::input_book::InputBook;
+use crate::map_data::MapData;
+use crate::marker_tag::MarkerTag;
 use crate::match_end::MatchEnd;
 use crate::mode_data::ModeData;
 use crate::mode_map::ModeMap;
+use crate::mode_queue::ModeQueues;
 use crate::mode_units::ModeUnits;
 use crate::player_control::PlayerControl;
 use crate::player_slot_picks::PlayerSlotPicks;
@@ -45,6 +48,7 @@ impl Module for ModeCore {
         d.own::<ModeQueues>();
         d.fact::<LoadoutRanks>(Self::loadout_ranks);
         d.fact::<ModeMap>(ModeMap::build);
+        d.extend::<NameSets>(Self::marker_tags);
         d.fact::<ModeUnits>(ModeUnits::build);
         d.section::<VictoryData>();
         d.section::<ModeBountyData>();
@@ -65,6 +69,22 @@ impl Module for ModeCore {
 }
 
 impl ModeCore {
+    /// Adds to `sets` the tags of the markers the mode's units spawn at and of the map's markers.
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "a book's builder and an extension take the build's signature"
+    )]
+    fn marker_tags(cx: &BookCx<'_>, sets: &mut NameSets) -> Result<(), BookError> {
+        let spawns = cx.mode_section::<ModeNavigationData>().into_iter();
+        let spawns = spawns.flat_map(|navigation| &navigation.spawn_tags);
+        let map = cx
+            .given::<MapData>()
+            .expect("the load gives the mode's map");
+        let marked = map.markers.iter().flat_map(|marker| &marker.tags);
+        sets.extend(MarkerTag::NAMES, spawns.chain(marked));
+        Ok(())
+    }
+
     /// The rules of the mode's own data: a bot takes a leaver's place only where players join
     /// late, a player controls an avatar only where the mode has one, no field of its state goes
     /// to an owner or a team, and no option shares a param's name.

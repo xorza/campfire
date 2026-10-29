@@ -3,6 +3,7 @@ use bevy_replicon::prelude::AppMarkerExt;
 use bevy_replicon::shared::replication::receive_markers::MarkerConfig;
 use campfire_net_replication::Interpolated;
 use campfire_net_replication::InterpolatedSend;
+use campfire_net_replication::MarkerPriority;
 
 /// Registers Replicon's interpolation markers for the shared client/server protocol.
 ///
@@ -16,12 +17,12 @@ impl Plugin for InterpolationMarkerPlugin {
         // `InterpolatedSend` is replicated; it must be applied first so the rest
         // of the update uses the interpolation receive functions.
         app.register_marker_with::<InterpolatedSend>(MarkerConfig {
-            priority: 100,
+            priority: MarkerPriority::INTERPOLATED,
             need_history: true,
             affects_same_update: true,
         });
         app.register_marker_with::<Interpolated>(MarkerConfig {
-            priority: 100,
+            priority: MarkerPriority::INTERPOLATED,
             need_history: true,
             affects_same_update: false,
         });

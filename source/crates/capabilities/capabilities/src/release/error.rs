@@ -21,8 +21,10 @@ pub enum CapabilityError {
 
 /// Why a checked build of a match's books gave none: its books refused the data, or the caller's
 /// check between the rules and the books failed.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum CheckedBooksError<E> {
-    Book(BookError),
+    #[error(transparent)]
+    Book(#[from] BookError),
+    #[error("{0}")]
     Check(E),
 }

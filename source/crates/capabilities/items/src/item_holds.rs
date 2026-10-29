@@ -2,8 +2,8 @@ use bevy_ecs::change_detection::{DetectChanges, Ref};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_sim::StableId;
-use campfire_stats::{Grant, GrantFrom, Grants, Hold, ModifierBook, ModifierParams, Modifiers};
-use campfire_values::{ModifierId, Rank};
+use campfire_stats::{GrantFrom, Grants, Hold, ModifierBook, ModifierParams, Modifiers};
+use campfire_values::ModifierId;
 
 use crate::inventory::Inventory;
 use crate::item_book::ItemBook;
@@ -43,17 +43,12 @@ impl ItemHolds {
             }));
             held.sort_unstable();
             held.dedup();
-            let mut run = grants.of(entity, id);
-            for &modifier in items.modifiers() {
-                let holds = held.binary_search(&modifier).is_ok();
-                run.push(Grant {
-                    modifier,
-                    from: GrantFrom::Itself,
-                    hold: Hold::Item,
-                    action: None,
-                    rank: holds.then_some(Rank::FIRST),
-                });
-            }
+            grants.of(entity, id).hold_exactly(
+                Hold::Item,
+                GrantFrom::Itself,
+                &held,
+                Some(&modifiers),
+            );
         }
     }
 }

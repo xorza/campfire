@@ -13,7 +13,7 @@ use campfire_actions::{ActionSlots, ActionsSystems};
 use campfire_combat::{Weigh, Weighers};
 use campfire_common::{EnumAll, PlayerSlot};
 use campfire_declarations::{ById, Declarations, InstallCx, Module, ModuleSystems, SetPlace};
-use campfire_navigation::{ModeNavigationData, Navigation, NavigationBook, OnPath, WalkerOnPath};
+use campfire_navigation::{ModeNavigationData, NavigationBook, OnPath, WalkerOnPath};
 use campfire_players::{
     MatchEntity, Player, PlayerSlotHolder, Players, PlayersWorld, StartingPlayerSlot,
 };
@@ -374,14 +374,13 @@ impl Module for Mode {
 
 impl Mode {
     /// Loads the mode of `setup` into a match whose capabilities, mode and books are installed and
-    /// whose unit types, abilities and AI are loaded, with what `inputs` takes from the books: the
-    /// map's pathing grid, for its walkers, its teams, and the units the mode spawns. Each player
+    /// whose unit types, abilities and AI and the map's pathing grid are loaded, with what `inputs`
+    /// takes from the books: its teams, and the units the mode spawns. Each player
     /// slot's choices start as its host picked them, so the start reads them (08-sessions.md, The
     /// terms hold each player slot's picks).
     pub fn load(world: &mut World, setup: ModeSetup<'_>, inputs: ModeInputs) {
         let ModeInputs { units, load } = inputs;
         let ModeLoad { map, loadout_ranks } = load;
-        Navigation::load_map(world);
         let ModeMap {
             teams,
             relations,

@@ -62,9 +62,10 @@ pub enum RunStop {
 }
 
 impl RunAsk {
-    /// The wall time of a run that names none: two minutes, Claude Code's wait for a call
-    /// before it sends the call to the background.
-    pub const WALL: Duration = Duration::from_secs(120);
+    /// The wall time of a run that names none: under the two minutes Claude Code waits for a call
+    /// before it sends the call to the background (08-sessions.md, A console's local match starts
+    /// paused).
+    pub const WALL: Duration = Duration::from_secs(110);
 
     /// The wall time it names, or `WALL`.
     pub fn wall(&self) -> Duration {

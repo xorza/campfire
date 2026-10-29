@@ -1,17 +1,19 @@
+use bevy::ecs::change_detection::Ref;
 use bevy::ecs::query::Allow;
 use bevy::ecs::system::{Query, Res, SystemParam};
 use campfire_common::PlayerSlot;
 use campfire_host::JoinState;
 use campfire_players::{PlayerResources, PlayerRows, ResourceAmount};
-use campfire_sim::Unpredicted;
+use campfire_sim::{EntityIndex, StableId, Unpredicted};
 use campfire_stats::PlayerModifiers;
 use campfire_units::{Commanded, PlayerUnits};
 use campfire_values::{ModifierId, Relation, Relations, ResourceId, Team, TeamSet};
+use campfire_vision::{ExploredCells, SeenCells};
 
 /// The client's own player as a system reads it: its player slot and team, once the client plays,
 /// the avatar it commands, its amounts of the player resources, the modifiers it holds, how its
-/// side regards each team by the relations on the match's entity, and, for a spectator, the teams
-/// it chose to watch.
+/// side regards each team by the relations on the match's entity, the cells its team sees and
+/// explored, and, for a spectator, the teams it chose to watch.
 #[derive(SystemParam, Debug)]
 pub(crate) struct OwnPlayer<'w, 's> {
     state: Res<'w, JoinState>,
@@ -19,6 +21,9 @@ pub(crate) struct OwnPlayer<'w, 's> {
     resources: PlayerRows<'w, 's, PlayerResources>,
     modifiers: PlayerRows<'w, 's, PlayerModifiers>,
     relations: Query<'w, 's, &'static Relations, Allow<Unpredicted>>,
+    index: Res<'w, EntityIndex>,
+    seen: Query<'w, 's, Ref<'static, SeenCells>, Allow<Unpredicted>>,
+    explored: Query<'w, 's, Ref<'static, ExploredCells>, Allow<Unpredicted>>,
 }
 
 impl OwnPlayer<'_, '_> {
@@ -77,6 +82,19 @@ impl OwnPlayer<'_, '_> {
             .player_slot()
             .and_then(|player_slot| self.modifiers.of_player_slot(player_slot));
         held.is_some_and(|held| held.holds(modifier))
+    }
+
+    /// The cells the player's team sees, changed since the system last ran or not; none before
+    /// it plays, or in a match with no vision.
+    pub(crate) fn seen_cells(&self) -> Option<Ref<'_, SeenCells>> {
+        let entity = self.index.get(StableId::of_player(self.player_slot()?))?;
+        self.seen.get(entity).ok()
+    }
+
+    /// The cells the player's team explored, as `OwnPlayer::seen_cells` gives those it sees.
+    pub(crate) fn explored_cells(&self) -> Option<Ref<'_, ExploredCells>> {
+        let entity = self.index.get(StableId::of_player(self.player_slot()?))?;
+        self.explored.get(entity).ok()
     }
 
     /// The avatar the client commands; none before it plays, or before the avatar spawns.

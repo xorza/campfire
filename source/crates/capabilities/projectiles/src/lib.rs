@@ -20,6 +20,9 @@ use campfire_sim::{Capability, Position, SimWorld, StableId};
 use campfire_units::{Body, MapBook, UnitGrid, UnitTypes};
 use campfire_values::{EngineTag, TagProperties, UnitType};
 
+use crate::homers::Homers;
+use crate::projectile::LaunchAim;
+
 mod curve;
 mod error;
 mod flight_state;
@@ -49,8 +52,6 @@ pub use crate::launching::Launching;
 pub use crate::projectile::{Flight, Payload, Projectile};
 pub use crate::projectile_launches::{Launch, LaunchPayload, ProjectileLaunches};
 
-use crate::homers::Homers;
-use crate::projectile::LaunchAim;
 pub use crate::projectile_data::{
     CruiseData, CurveData, ProjectileData, ProjectileDataBuilder, ProjectileHits, SteerData,
     SteerDataBuilder,
@@ -140,12 +141,11 @@ impl Projectiles {
     pub const TAG: EngineTag =
         EngineTag::new(4, "projectile", TagProperties::NONE.with_named_only());
 
-    /// ProjectileLaunches the fan of `launcher`, which aimed at `target` from `from`: a homing projectile
-    /// at a unit for a homing type; a curve or a steered projectile from its caster's center to
-    /// its unit's center or to its point for a curve or a steered type; or the fan's projectiles
-    /// along lines spread evenly over its
-    /// spread around the aim, which for an action aimed at a point end there at the latest;
-    /// nothing for no target, a unit that is gone, or an aim of no direction.
+    /// Launches the fan of `launcher`, which aimed at `target` from `from`: a homing projectile at
+    /// a unit for a homing type; a curve or a steered projectile from its caster's center to its
+    /// unit's center or to its point for a curve or a steered type; or the fan's projectiles along
+    /// lines spread evenly over its spread around the aim, which for an action aimed at a point end
+    /// there at the latest; nothing for no target, a unit that is gone, or an aim of no direction.
     fn deliver(world: &mut World, launcher: Launcher, from: Vec3, target: ActionTarget) {
         let Launcher {
             by,
@@ -309,9 +309,9 @@ pub mod internals {
             ById::<UnitType, ProjectileSpec>::amend(world, |_, book| book.set(unit_type, spec));
         }
 
-        /// ProjectileLaunches a projectile of the line type `unit_type` from `source` at the origin along
-        /// the unit vector `direction`, up to the map's bounds as a cast flies, carrying 10
-        /// damage, from the next tick.
+        /// Launches a projectile of the line type `unit_type` from `source` at the origin along the
+        /// unit vector `direction`, up to the map's bounds as a cast flies, carrying 10 damage,
+        /// from the next tick.
         pub fn fire_line(
             world: &mut World,
             source: StableId,
@@ -337,7 +337,7 @@ pub mod internals {
             });
         }
 
-        /// ProjectileLaunches a projectile of the steered type `unit_type` from `source` at `from`, a point
+        /// Launches a projectile of the steered type `unit_type` from `source` at `from`, a point
         /// in space, at the unit `target`'s center, carrying 10 damage, from the next tick; none
         /// for a target that is gone.
         pub fn fire_steered(

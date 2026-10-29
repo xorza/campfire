@@ -11,7 +11,8 @@ use campfire_store::internals::TestDir;
 use campfire_test_packages::TestMode;
 use campfire_units::GroundPoint;
 
-use crate::in_process_match::{CONNECT_FRAMES, End, InProcessMatch, InProcessSetup, StepCost};
+use crate::in_process_match::in_process_setup::InProcessSetup;
+use crate::in_process_match::{CONNECT_FRAMES, End, InProcessMatch, StepCost};
 
 /// A quarter meter a tick crosses the 10 m between the two targets in 40 ticks, so a new
 /// order every 40 frames keeps the avatar walking and the server sending updates.

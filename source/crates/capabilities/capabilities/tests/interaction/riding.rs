@@ -1,7 +1,6 @@
 use std::num::NonZeroI64;
 use std::sync::Arc;
 
-use crate::halves;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::system::RunSystemOnce;
@@ -47,17 +46,19 @@ use campfire_values::{
     TypeScope, UnitType,
 };
 
+use crate::halves;
+use crate::interaction::order;
+
 /// The kind of every rider's one use slot.
 const USES: SlotKind = SlotKind::new(0);
 
-/// The containers of a match of riders, each of 500 life that stays as it dies: a `humvee`,
-/// which drives a meter a tick, takes 3 of its allies' riders by their sizes, lets them out 2
-/// ticks apart, and deals each half its life as it falls; a `bunker`, which stands, takes 2
-/// riders of anyone, one each, lets them out at once, takes its first rider's side, deals each
-/// all its life as it falls, lets them out at 35 % of its own, and lets them see from it; and a
-/// `crawler`, which comes
-/// with 2 walking casters. Each is entered by `board`, which reaches 1 m and winds up 100 ms, 3
-/// ticks at 30 a second. The riders are the types `walking caster`, of size 1, which walks a
+/// The containers of a match of riders, each of 500 life that stays as it dies: a `humvee`, which
+/// drives a meter a tick, takes 3 of its allies' riders by their sizes, lets them out 2 ticks
+/// apart, and deals each half its life as it falls; a `bunker`, which stands, takes 2 riders of
+/// anyone, one each, lets them out at once, takes its first rider's side, deals each all its life
+/// as it falls, lets them out at 35 % of its own, and lets them see from it; and a `crawler`, which
+/// comes with 2 walking casters. Each is entered by `board`, which reaches 1 m and winds up 100 ms,
+/// 3 ticks at 30 a second. The riders are the types `walking caster`, of size 1, which walks a
 /// meter a tick, and `caster`, of size 2, which stands; `combatant`, with a use slot and no size,
 /// rides nothing.
 #[derive(Debug, Clone, Copy)]
@@ -228,12 +229,6 @@ fn container(
         Some(player) => spawn.parts(Owner::new(PlayerSlot::new(player))).place(game),
         None => spawn.place(game),
     }
-}
-
-/// Runs a tick in which player `player` orders `unit` `directive`.
-fn order(game: &mut Match, player: u32, unit: StableId, directive: OrdersDirective) {
-    let payload = Order::payload(&[Order::one(unit, directive)]);
-    game.step_with(&[(PlayerSlot::new(player), &payload)]);
 }
 
 /// The riders `container` holds, in their order.
@@ -477,11 +472,13 @@ fn a_riders_walk_follows_a_container_that_drives_and_ends_short_of_one_walled_of
     let humvee = container(&mut game, rides.humvee, 2, 0, Some(0));
     let follower = rider(&mut game, "walking caster", 0, 0, 0);
     let to = GroundPoint::new(Num::int(8), Num::ZERO);
-    let orders = Order::payload(&[
-        Order::one(humvee, OrdersDirective::Move { to }),
-        Order::one(follower, OrdersDirective::Enter { target: humvee }),
-    ]);
-    game.step_with(&[(PlayerSlot::new(0), &orders)]);
+    game.step_orders(
+        PlayerSlot::new(0),
+        &[
+            Order::one(humvee, OrdersDirective::Move { to }),
+            Order::one(follower, OrdersDirective::Enter { target: humvee }),
+        ],
+    );
     game.steps(12);
     assert_eq!(ground(&game, humvee), (16, 0));
     assert_eq!(riders(&game, humvee), [follower]);
@@ -921,7 +918,21 @@ fn a_flier_lands_for_its_riders_and_climbs_once_none_waits() {
         (8, 1),
         (8, 1),
     ];
-    assert_eq!(trace(&mut game, 22), [&down[..], &board, &up].concat());
+    // While the rider waits and the chinook comes down, no tick changes who boards it, so its
+    // riders' part is not marked changed, sent or hashed again.
+    let changed = |game: &Match| {
+        let entity = game.unit_entity(flier);
+        game.entity(entity)
+            .get_change_ticks::<Riders>()
+            .unwrap()
+            .changed
+    };
+    let mut traced = trace(&mut game, 4);
+    let waiting = changed(&game);
+    traced.extend(trace(&mut game, 3));
+    assert_eq!(changed(&game), waiting);
+    traced.extend(trace(&mut game, 15));
+    assert_eq!(traced, [&down[..], &board, &up].concat());
     // Its rider's exit, ordered in the air, lands it, and the rider leaves on the ground; then
     // it climbs again.
     let payload = Order::payload(&[Order::one(flier, OrdersDirective::Exit { rider })]);

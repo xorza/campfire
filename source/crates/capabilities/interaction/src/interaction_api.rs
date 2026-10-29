@@ -3,9 +3,10 @@ use campfire_script::{ApiBuilder, ApiHolder, MemberDecl, Unit};
 use crate::use_data::UseData;
 use crate::uses_data::UsesData;
 
-/// The data of `interaction`: a unit type's `use` and `uses`. Its first cut gives scripts no
-/// name it runs: the `use` order starts a use, and the use's action runs its hooks; a unit's
-/// `inside` and `passengers` wait for enter and exit.
+/// The data of `interaction`: a unit type's `use` and `uses`. It gives scripts no name it runs: the
+/// `use` and `enter` orders start a use and an entry, whose actions run their hooks; a unit's
+/// `inside` and `passengers` wait for the script view to hold riders
+/// (04-capabilities/interaction.md, The casts' pipeline runs a use and an entry).
 #[derive(Debug)]
 pub struct InteractionApi;
 

@@ -9,6 +9,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
+use campfire_declarations::NamesFn;
 use campfire_declarations::{
     Book, BuildFn, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind,
     EntityParts, ExtendFn, Fact, KindSpawn, KindVisitor, Listed, ModuleSystems, OneShot, Report,
@@ -26,10 +27,9 @@ use campfire_sim::{
 use campfire_states::{Replication, StateTypes};
 use campfire_units::EntityKinds;
 use campfire_values::EngineTag;
+use campfire_values::{MatchScope, NameId, Named, Names};
 
 use crate::release::Release;
-use campfire_declarations::NamesFn;
-use campfire_values::{MatchScope, NameId, Named, Names};
 
 /// A scratch resource, by its name, and whether a world holds it clear.
 #[derive(Debug, Clone, Copy)]

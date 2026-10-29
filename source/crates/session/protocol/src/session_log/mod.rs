@@ -170,8 +170,8 @@ impl ServerServe<'_, '_> {
     }
 }
 
-/// An input the log applied: its player slot, its stamp, and the tick it took effect in, a server
-/// bot's among them.
+/// An input the log applied: its player slot, its stamp, and the tick it took effect in, a
+/// server bot's among them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AppliedInput {
     pub player_slot: PlayerSlot,
@@ -766,7 +766,7 @@ impl SessionLog {
     /// player slot's inputs leave room in. A join or a leave of a player slot drops the inputs its
     /// player logged that were still to apply, and changes the controller from the next tick on. A
     /// refused input leaves the log unchanged.
-    pub fn record_server(
+    pub(crate) fn record_server(
         &mut self,
         input: ServerInput<'_>,
         signature: &Signature,
@@ -963,25 +963,6 @@ impl SessionLog {
         Ok(begun)
     }
 
-    /// Logs `record`, with the server key's `signature` over it, as the record of the oldest
-    /// checkpoint the log began and has none of yet, as many ticks after its boundary as it took:
-    /// it must start that segment, at its tick, and carry the log's own state there, which a
-    /// log file that starts at the checkpoint starts from. A refused record leaves the log
-    /// unchanged.
-    pub fn record_checkpoint(
-        &mut self,
-        record: Checkpoint,
-        signature: &Signature,
-        journal: Option<&mut Journal>,
-    ) -> Result<(), CheckpointError> {
-        let past = if journal.is_some() {
-            Past::InJournal
-        } else {
-            Past::InLog
-        };
-        self.record_checkpoint_in(record, signature, journal, past)
-    }
-
     /// Logs `record` as `record_checkpoint` does, the past before its boundary held where `past`
     /// says.
     pub(super) fn record_checkpoint_in(
@@ -1110,7 +1091,7 @@ impl SessionLog {
 
     /// Ends the session with `result`, with the server key's `signature` over it, which must
     /// stop before the next tick. A refused result leaves the log unchanged.
-    pub fn record_result(
+    pub(crate) fn record_result(
         &mut self,
         result: SessionResult,
         signature: &Signature,
@@ -1212,8 +1193,9 @@ impl SessionLog {
     /// the boundary dropped, and the segment goes on from its checkpoint, with its seed
     /// (08-sessions.md, What reads the past reads the carry). `journal` logs the load, so a log
     /// rebuilt from it is the log loaded, and forgets where each chain stood durably. An error
-    /// when the log holds no checkpoint that starts the segment, and when `journal` has no room
-    /// for the load's record.
+    /// when the log holds no checkpoint that starts the segment, as one before the base of a log
+    /// whose journal holds what came before, and when `journal` has no room for the load's
+    /// record.
     pub fn load(
         &mut self,
         segment: u32,
@@ -1399,6 +1381,7 @@ impl SessionLog {
         let earliest = pending.chain(self.schedule.earliest_index()).min();
         let inputs = earliest.map_or(boundary.inputs, |earliest| earliest.min(boundary.inputs));
         self.entries.forget_before(boundary, inputs);
+        self.segments.forget_before(segment);
         self.base = Some(segment);
     }
 

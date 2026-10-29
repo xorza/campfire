@@ -9,9 +9,9 @@
 //! gives the server the mode's bot of that name there, and each `--server-orders <slot>=<orders
 //! file>` a bot of that order script, and every other slot but the player's is open. With
 //! `--spectate` too, the client holds no slot, so a bot may hold slot 0, and watches every unit as
-//! the local server's one spectator; a match of bots alone starts as it joins. Space
-//! pauses a local match and plays it on, minus and equals, or the keypad's minus and plus, step
-//! its speed through 0.5, 1, 2 and 4 times, F5 saves it, and F9 loads its latest save.
+//! the local server's one spectator; a match of bots alone starts as it joins. A local match
+//! pauses and plays on, steps its speed through 0.5, 1, 2 and 4 times, saves, and loads its latest
+//! save by the keys of the mode's keys file, which names each act.
 //!
 //! Logs go to standard error, filtered by `RUST_LOG` (`info`, and the renderer's warnings, by
 //! default). With `CAMPFIRE_LOG` set to a path, they also go there as JSON lines, filtered by

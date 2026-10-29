@@ -109,7 +109,7 @@ impl<'w> Calls<'_, 'w> {
     pub(crate) fn weigh_damage(
         batch: &mut ScriptBatch<'_>,
         damage: Damage,
-    ) -> Option<Result<Num, CallError>> {
+    ) -> Result<Option<Num>, CallError> {
         let handle = DamageHandle::new(damage, batch.ctx().view().clone());
         Calls::amount::<CalcDamage>(batch, |ctx| (ctx, handle))
     }
@@ -120,7 +120,7 @@ impl<'w> Calls<'_, 'w> {
     pub(crate) fn weigh_heal(
         batch: &mut ScriptBatch<'_>,
         heal: Heal,
-    ) -> Option<Result<Num, CallError>> {
+    ) -> Result<Option<Num>, CallError> {
         let handle = HealHandle::new(heal, batch.ctx().view().clone());
         Calls::amount::<CalcHeal>(batch, |ctx| (ctx, handle))
     }
@@ -131,19 +131,22 @@ impl<'w> Calls<'_, 'w> {
     fn amount<H: HookDecl>(
         batch: &mut ScriptBatch<'_>,
         args: impl FnOnce(Ctx) -> H::Args,
-    ) -> Option<Result<Num, CallError>> {
+    ) -> Result<Option<Num>, CallError> {
         let ctx = batch.ctx().clone();
-        let (place, script) = ctx.match_mode_spec().schema.pure_script(Hook::of::<H>())?;
+        let Some((place, script)) = ctx.match_mode_spec().schema.pure_script(Hook::of::<H>())
+        else {
+            return Ok(None);
+        };
         let now = batch.world().resource::<SimTick>().start();
         let value = batch.run(CallStart::pure(place, now), |batch| {
             batch.call_pure::<H>(script, args(ctx))
         });
-        Some(value.and_then(|value| {
-            let amount = match value.as_int() {
-                Some(int) => Num::from_int(int),
-                None => value.try_cast::<Num>(),
-            };
-            amount.ok_or_else(|| CallError::Api(ModeRefusal::NotAnAmount.refused()))
-        }))
+        let value = value?;
+        let amount = match value.as_int() {
+            Some(int) => Num::from_int(int),
+            None => value.try_cast::<Num>(),
+        };
+        let amount = amount.ok_or_else(|| CallError::Api(ModeRefusal::NotAnAmount.refused()))?;
+        Ok(Some(amount))
     }
 }

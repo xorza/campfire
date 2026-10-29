@@ -11,6 +11,7 @@ use crate::checkpoint::error::CheckpointDecodeError;
 use crate::delegation::Delegation;
 use crate::player_slot_plan::PlayerSlotPlan;
 use crate::player_slot_start::PlayerSlotStart;
+use crate::seed_chain::SeedChain;
 use crate::server_input::ServerInput;
 use crate::server_input::error::ServerInputDecodeError;
 use crate::server_seed::ServerSeed;
@@ -119,6 +120,9 @@ impl SessionLog {
             .checked_sub(1)
             .and_then(|more| first.checked_add(more))
             .ok_or(LogError::NoSegment)?;
+        if last >= SeedChain::MAX_LEN.get() {
+            return Err(LogError::PastLastSegment { segment: last });
+        }
         for segment in first..=last {
             match segment {
                 0 => {}

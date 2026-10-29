@@ -55,7 +55,8 @@ fn offer(change: impl FnOnce(&mut SessionTerms)) -> SessionOffer {
             visibility: rules.visibility().settings(),
             picks: &HostPicks::defaults(packages.data(), 2),
         })
-        .unwrap();
+        .unwrap()
+        .terms;
     change(&mut terms);
     SessionOffer {
         terms: Arc::new(terms),

@@ -54,7 +54,11 @@ fn pinned() -> ServerTrust {
 }
 
 fn roomy() -> AdmissionSetup {
-    AdmissionSetup::new(NonZeroU32::new(8).unwrap(), Duration::from_secs(1))
+    AdmissionSetup::new(
+        NonZeroU32::new(8).unwrap(),
+        NonZeroU32::MAX,
+        Duration::from_secs(1),
+    )
 }
 
 fn at(millis: u64) -> Instant {
@@ -342,39 +346,44 @@ fn a_server_that_does_not_accept_refuses() {
 }
 
 /// An address that holds as many live packet sessions as its admission lets is refused another,
-/// after its Retry and before its handshake costs a signature; once the packet session left, it
-/// takes one again. The bucket refills in 1 ms, so only the live packet session refuses.
+/// and so is any address once the server holds as many as it lets in all: after its Retry and
+/// before its handshake costs a signature; once the packet session left, it takes one again. The
+/// bucket refills in 1 ms, so only the live packet session refuses.
 #[test]
-fn an_address_past_its_admission_is_refused() {
-    let one = AdmissionSetup::new(NonZeroU32::MIN, Duration::from_millis(1));
-    let mut exchange = Exchange::new(&pinned(), &identity(), one);
-    exchange.connect(at(0));
-    let [_, server] = exchange.run(at(0));
-    assert_eq!(server.len(), 1);
-    // A second client from the same IP, its own port.
-    let mut second = Exchange::with_client(
-        ClientSide::new(
-            pinned().tls_config(ALPN),
-            pinned().name(),
-            PATIENCE,
-            Random::seeded(5),
-        ),
-        &identity(),
-        one,
-    );
-    core::mem::swap(&mut second.server, &mut exchange.server);
-    second.client_address = address(2, 5001);
-    second.connect(at(10));
-    second.run(at(10));
-    assert_eq!(second.sent[1], [Kind::Retry, Kind::Refuse]);
-    assert_eq!(second.client_out.failed, Some(UnlinkReason::Refused));
-    // The first packet session left: the address takes one again.
-    second.server.ended(server[0].route);
-    second.client_out.failed = None;
-    second.sent = [Vec::new(), Vec::new()];
-    second.connect(at(20));
-    let [client, _] = second.run(at(20));
-    assert_eq!(client.len(), 1);
+fn a_connection_past_its_admission_is_refused() {
+    let refill = Duration::from_millis(1);
+    let one_each = AdmissionSetup::new(NonZeroU32::MIN, NonZeroU32::MAX, refill);
+    let one_in_all = AdmissionSetup::new(NonZeroU32::MAX, NonZeroU32::MIN, refill);
+    // A second client from the same IP, its own port; and one of another address.
+    for (setup, second_address) in [(one_each, address(2, 5001)), (one_in_all, address(3, 5000))] {
+        let mut exchange = Exchange::new(&pinned(), &identity(), setup);
+        exchange.connect(at(0));
+        let [_, server] = exchange.run(at(0));
+        assert_eq!(server.len(), 1);
+        let mut second = Exchange::with_client(
+            ClientSide::new(
+                pinned().tls_config(ALPN),
+                pinned().name(),
+                PATIENCE,
+                Random::seeded(5),
+            ),
+            &identity(),
+            setup,
+        );
+        core::mem::swap(&mut second.server, &mut exchange.server);
+        second.client_address = second_address;
+        second.connect(at(10));
+        second.run(at(10));
+        assert_eq!(second.sent[1], [Kind::Retry, Kind::Refuse]);
+        assert_eq!(second.client_out.failed, Some(UnlinkReason::Refused));
+        // The first packet session left: the second takes one again.
+        second.server.ended(server[0].route);
+        second.client_out.failed = None;
+        second.sent = [Vec::new(), Vec::new()];
+        second.connect(at(20));
+        let [client, _] = second.run(at(20));
+        assert_eq!(client.len(), 1);
+    }
 }
 
 /// A datagram whose connection ID no packet session holds gets a stateless reset of that ID's

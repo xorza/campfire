@@ -50,11 +50,13 @@ impl PortMap {
     }
 
     /// Whether a router forwards to a socket at `local`: one bound to IPv4, all of the host's
-    /// addresses or one not loopback. A socket bound to IPv6 takes IPv4 only where its OS makes it
-    /// dual-stack by default, as Linux does and Windows does not (11-net-stack/port-map.md, IPv4
-    /// alone).
+    /// addresses or one not loopback, or to the IPv6 wildcard, which takes IPv4 too as the stack
+    /// binds it dual-stack (11-net-stack/port-map.md, IPv4 alone).
     const fn is_forwardable(local: SocketAddr) -> bool {
-        matches!(local.ip(), IpAddr::V4(ip) if !ip.is_loopback())
+        match local.ip() {
+            IpAddr::V4(ip) => !ip.is_loopback(),
+            IpAddr::V6(ip) => ip.is_unspecified(),
+        }
     }
 
     fn of(mapper: PortMapper) -> io::Result<Self> {

@@ -74,7 +74,7 @@ impl Dependent {
                     Err(error) => return Err(fail(LoadProblem::Content(error))),
                 };
                 let readers = Release::sections();
-                let content_keys = PackageContent::keys(&readers);
+                let content_keys = PackageContent::keys(readers);
                 let own = [ScriptOrder::KEY, BotList::KEY]
                     .into_iter()
                     .chain(content_keys);

@@ -15,7 +15,7 @@ fn a_package_reads_its_unit_types_and_its_sections_and_no_other_key() {
     let readers = Release::sections();
     let read = |text: &str| {
         let raw = Toml::parse::<TomlTable>(text).unwrap();
-        raw.read_with(PackageContent::seed(&readers, &UnitDefaults::default()))
+        raw.read_with(PackageContent::seed(readers, &UnitDefaults::default()))
     };
     let content = read("[units.scout]\ntags = [\"fast\"]\n[actions]\n[modifiers]").unwrap();
     let units: Vec<&str> = content.units.keys().map(DeclaredName::as_str).collect();
@@ -25,7 +25,7 @@ fn a_package_reads_its_unit_types_and_its_sections_and_no_other_key() {
         Some(&ActionsData::default())
     );
     assert_eq!(
-        PackageContent::keys(&readers).collect::<Vec<_>>(),
+        PackageContent::keys(readers).collect::<Vec<_>>(),
         ["units", "actions", "modifiers", "items"]
     );
     assert_eq!(

@@ -57,5 +57,14 @@ pub(crate) mod internals {
                 ..self
             }
         }
+
+        /// The same application, held as an aura holds it.
+        #[must_use]
+        pub const fn held(self) -> Self {
+            Self {
+                hold: Some(Hold::Held),
+                ..self
+            }
+        }
     }
 }

@@ -197,8 +197,7 @@ End
 #[test]
 fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes() {
     let mut rules = ZeroHourRules {
-        objects: ObjectIni::of(&[CONTAINERS]),
-        ..ZeroHourRules::default()
+        ..ZeroHourRules::of_objects(ObjectIni::of(&[CONTAINERS]))
     };
     rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
     rules.creation_lists.read(LISTS.as_bytes()).unwrap();

@@ -321,7 +321,9 @@ impl<'a, R: FnMut(&ArchivePath) -> Result<Option<Vec<u8>>, ZeroHourError>> Sound
             return Ok(None);
         };
         let pcm = match WavFile::read(&bytes) {
-            Ok(file) if file.encoding == WavEncoding::Pcm16 => Some(bytes),
+            // A PCM file whose chunks hold their sizes is copied as the game holds it; one cut
+            // short is written again with its sizes exact, as every decoder reads them.
+            Ok(file) if file.encoding == WavEncoding::Pcm16 && file.whole => Some(bytes),
             Ok(file) => Some(file.pcm_file(&file.decode())),
             Err(_) => None,
         };

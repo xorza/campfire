@@ -38,7 +38,8 @@ use crate::unit_navigation_data::UnitNavigationData;
 use crate::unparted_pairs::UnpartedPairs;
 use crate::walker::Walker;
 use crate::zero_hour::zero_hour_drive::ZeroHourDrive;
-use crate::zero_hour::zero_hour_mover::{Stance, Steer, ZeroHourMover};
+use crate::zero_hour::zero_hour_driver::ZeroHourDriver;
+use crate::zero_hour::zero_hour_mover::Stance;
 
 /// The living units that cannot walk, those a client only holds among them: the static bodies.
 type StaticUnits = (
@@ -515,7 +516,7 @@ impl Walking {
                     let clearance = grid
                         .as_deref()
                         .map(|grid| grid.clearance(Walker::walking(body)));
-                    let mut driver = Driver {
+                    let mut driver = ZeroHourDriver {
                         mover: &mover,
                         speed: step.get(),
                         turn: turn.copied(),
@@ -529,7 +530,7 @@ impl Walking {
                     driver.follow(&mut route, &mut progress, |point| {
                         clearance.is_none_or(|clearance| !clearance.walled_at(point))
                     });
-                    let Driver { stance, state, .. } = driver;
+                    let ZeroHourDriver { stance, state, .. } = driver;
                     drive.set_if_neq(state);
                     facing.set_if_neq(stance.facing);
                     stance.at
@@ -813,75 +814,6 @@ impl Walking {
     ) {
         for mut position in &mut units {
             position.set_if_neq(Position::from(map.bounds.clamp(position.get())));
-        }
-    }
-}
-
-/// A Zero Hour walker as it drives a tick: its locomotor; its speed in meters a tick, its turn
-/// and its acceleration, as its stats give them; where it stands and faces; and its drive.
-#[derive(Debug)]
-struct Driver<'a> {
-    mover: &'a ZeroHourMover,
-    speed: Num,
-    turn: Option<TurnStep>,
-    accel: Option<AccelStep>,
-    stance: Stance,
-    state: ZeroHourDrive,
-}
-
-impl Driver<'_> {
-    /// Drives along `route` a tick, as Zero Hour's path follower feeds its locomotor
-    /// (04-capabilities/navigation.md, The route feeds the mover): toward the route's next
-    /// waypoint, with the length left along the route as its distance to its goal, then past each
-    /// waypoint but the last it comes within its step of. Within its close enough distance of the
-    /// route's end, it has arrived, and stands on the end, where Zero Hour's stops where it stands.
-    /// With no waypoint, as its route waits for the planner, it stands.
-    fn follow(
-        &mut self,
-        route: &mut RouteMutItem<'_, '_>,
-        progress: &mut Progress,
-        open: impl Fn(Vec3) -> bool,
-    ) {
-        let Self {
-            mover,
-            speed,
-            turn,
-            accel,
-            stance,
-            state,
-        } = self;
-        let ahead = route.read().ahead();
-        let (Some(&next), Some(&end)) = (ahead.first(), ahead.last()) else {
-            return;
-        };
-        let on_path = ahead
-            .windows(2)
-            .fold(stance.at.ground().distance(next.ground()), |length, leg| {
-                length + leg[0].ground().distance(leg[1].ground())
-            });
-        if on_path < mover.close_enough() {
-            while !route.read().ahead().is_empty() {
-                route.advance();
-            }
-            progress.restart();
-            stance.at = Vec3::new(end.x, stance.at.y, end.z);
-            return;
-        }
-        let steer = Steer {
-            speed: *speed,
-            // A walker of no turn step turns at once, and one of no acceleration step gains its
-            // speed in a tick.
-            turn: turn.map_or(Num::int(180), TurnStep::get),
-            accel: accel.map_or(*speed, AccelStep::get),
-            goal: next,
-            on_path,
-        };
-        mover.drive(steer, stance, state, open);
-        while let [waypoint, _, ..] = route.read().ahead()
-            && stance.at.within_ground(*waypoint, *speed)
-        {
-            route.advance();
-            progress.restart();
         }
     }
 }

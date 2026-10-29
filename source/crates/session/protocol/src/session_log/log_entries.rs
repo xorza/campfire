@@ -22,8 +22,11 @@ pub(super) struct LogEntries {
     server: PagedVec<LoggedServer>,
     /// The packets and the server inputs, in the order they were logged.
     entries: PagedVec<Entry>,
-    /// For each sealed tick, the end of the entries logged before it ran.
+    /// For each sealed tick from `first_tick` on, the end of the entries logged before it ran.
     tick_ends: PagedVec<u32>,
+    /// The tick `tick_ends` starts at: 0, or the one before the checkpoint a log file starts at,
+    /// so the count of ticks, which a `u32` holds, counts only those the file holds.
+    first_tick: u64,
     /// Every delegation a player held, the header's and the joins' and renewals', which a
     /// player's controller and a join or a renewal name by index.
     delegations: Vec<Delegation>,
@@ -101,7 +104,9 @@ pub(super) enum Entry {
 impl LogEntries {
     /// The tick that the entries logged now arrive before.
     pub(super) fn next_tick(&self) -> Tick {
-        Tick::new(u64::try_from(self.tick_ends.len()).expect("tick count fits u64"))
+        Tick::new(
+            self.first_tick + u64::try_from(self.tick_ends.len()).expect("tick count fits u64"),
+        )
     }
 
     /// How many entries the log holds.
@@ -116,7 +121,8 @@ impl LogEntries {
 
     /// Where the entries of `tick`, a sealed tick, end.
     pub(super) fn tick_end(&self, tick: Tick) -> u32 {
-        self.tick_ends[usize::try_from(tick.get()).expect("tick fits usize")]
+        let since = tick.get() - self.first_tick;
+        self.tick_ends[usize::try_from(since).expect("tick fits usize")]
     }
 
     /// How many entries were logged since the last tick was sealed.
@@ -129,9 +135,11 @@ impl LogEntries {
         self.since_sealed() == 0
     }
 
-    /// Where each sealed tick's entries end, by tick.
-    pub(super) fn tick_ends(&self) -> impl Iterator<Item = u32> + '_ {
-        self.tick_ends.iter().copied()
+    /// Each sealed tick and where its entries end, in order.
+    pub(super) fn tick_ends(&self) -> impl Iterator<Item = (Tick, u32)> + '_ {
+        (self.first_tick..)
+            .zip(self.tick_ends.iter().copied())
+            .map(|(tick, end)| (Tick::new(tick), end))
     }
 
     /// Seals the next tick, its entries ending at `end`.
@@ -148,11 +156,10 @@ impl LogEntries {
             self.entries.len() == 0 && self.tick_ends.len() == 0,
             "entries start at a boundary before any is logged"
         );
-        let before = tick
+        self.first_tick = tick
             .get()
             .checked_sub(1)
             .expect("a checkpoint's boundary after tick 0");
-        self.tick_ends = PagedVec::starting_at(usize::try_from(before).expect("tick fits usize"));
         self.tick_ends.push(0);
     }
 

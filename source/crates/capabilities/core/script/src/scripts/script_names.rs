@@ -48,7 +48,7 @@ mod tests {
 
     #[test]
     fn a_name_is_found_by_its_id_and_its_id_by_the_name() {
-        let names = ScriptNames::new(Arc::new(Names::from(["a", "b"])));
+        let names = ScriptNames::new(Arc::new(Names::unique(["a", "b"])));
         let [a, b] = [0, 1].map(Team::new);
         assert_eq!(
             (names.name(b), names.name(Team::new(2))),

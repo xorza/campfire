@@ -5,6 +5,7 @@ use crate::switch_direction::SwitchDirection;
 use crate::timeline_switch_setup::TimelineSwitchSetup;
 use bevy_ecs::prelude::*;
 use core::time::Duration;
+use serde::Deserialize;
 
 /// Request to move an entity between the prediction and interpolation timelines.
 ///
@@ -89,7 +90,7 @@ impl TimelineSwitch {
 }
 
 /// Why a [`TimelineSwitch`] request is dropped.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub(crate) enum SwitchRejection {
     /// The entity is on neither timeline, so it has nothing to switch from.
     OnNeither,

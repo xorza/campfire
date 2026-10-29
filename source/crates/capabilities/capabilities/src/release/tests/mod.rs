@@ -39,12 +39,12 @@ fn a_set_holds_each_capability_once_with_what_it_builds_on() {
     assert!(set.contains(Orders) && !set.contains(Abilities));
     assert_eq!(Release::capability_set(&[]).unwrap().iter().count(), 0);
     // Every capability a manifest may declare is a module's of the release.
-    let rows = Release::rows();
+    let catalog = ReleaseCatalog::get();
     let unbuilt = Capability::ALL
         .into_iter()
         .filter(|&capability| capability != Mode);
     let unbuilt: Vec<Capability> = unbuilt
-        .filter(|&capability| rows.needs(capability).is_none())
+        .filter(|&capability| catalog.needs(capability).is_none())
         .collect();
     assert_eq!(unbuilt, []);
     for (declared, error) in [
@@ -189,23 +189,20 @@ fn every_pair_of_capabilities_with_only_what_they_need_orders_every_pair_of_thei
 
 #[test]
 fn the_list_holds_each_capability_at_most_once_after_what_it_builds_on() {
-    let rows = Release::rows().0;
-    for (at, row) in rows.iter().enumerate() {
+    let rows: Vec<_> = ReleaseCatalog::get().rows().collect();
+    for (at, &(capability, needs)) in rows.iter().enumerate() {
         let before = &rows[..at];
         assert!(
-            before
-                .iter()
-                .all(|other| other.capability != row.capability),
-            "{:?} is listed once",
-            row.capability
+            before.iter().all(|&(other, _)| other != capability),
+            "{capability:?} is listed once"
         );
-        for &needed in row.needs {
-            let built = before.iter().any(|other| other.capability == needed);
-            assert!(built, "{:?} installs after {needed:?}", row.capability);
+        for &needed in needs {
+            let built = before.iter().any(|&(other, _)| other == needed);
+            assert!(built, "{capability:?} installs after {needed:?}");
         }
     }
     // The mode installs above the list.
-    assert!(rows.iter().all(|row| row.capability != Mode));
+    assert!(rows.iter().all(|&(capability, _)| capability != Mode));
 }
 
 /// The capability table (04-capabilities/00-overview.md, Capabilities), beside this crate.
@@ -253,10 +250,9 @@ fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_in
     let mut design: Vec<&str> = design.collect();
     design.sort_unstable();
     assert_eq!(planned, design);
-    let mut installed: Vec<&str> = Release::rows()
-        .0
-        .iter()
-        .map(|row| row.capability.name())
+    let mut installed: Vec<&str> = ReleaseCatalog::get()
+        .rows()
+        .map(|(capability, _)| capability.name())
         .collect();
     installed.sort_unstable();
     assert_eq!(built, installed);
@@ -481,22 +477,16 @@ fn each_capability_installs_after_the_lower_layers_it_builds_on() {
     // capability builds only on capabilities of lower layers, installed before it.
     let crates = CapabilityCrates::read();
     let mut installed = Vec::new();
-    for row in Release::rows().0 {
-        let own =
-            (crates.layer(row.capability.name())).expect("an installed capability is a crate");
-        for &need in row.needs {
-            assert!(
-                installed.contains(&need),
-                "{need:?} before {:?}",
-                row.capability
-            );
+    for (capability, needs) in ReleaseCatalog::get().rows() {
+        let own = (crates.layer(capability.name())).expect("an installed capability is a crate");
+        for &need in needs {
+            assert!(installed.contains(&need), "{need:?} before {capability:?}");
             assert!(
                 crates.layer(need.name()) < Some(own),
-                "{need:?} below {:?}",
-                row.capability
+                "{need:?} below {capability:?}"
             );
         }
-        installed.push(row.capability);
+        installed.push(capability);
     }
 }
 

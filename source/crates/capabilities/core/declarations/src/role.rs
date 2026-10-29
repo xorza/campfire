@@ -1,8 +1,7 @@
-use bevy_ecs::resource::Resource;
 use campfire_script::BudgetSetup;
 
 /// What a match is to its host, which the match keeps as it is built.
-#[derive(Resource, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub enum Role {
     /// A server's or a verifier's match, which computes the whole state and runs scripts from
     /// its budgets.

@@ -1,6 +1,6 @@
 use crate::interpolation_registry::InterpolationRegistry;
 use crate::member_mode::MemberMode;
-use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
+use bevy_replicon::shared::replication::diff::Diffable;
 use campfire_net_replication::HistoryComponent;
 use campfire_net_replication::{DiffReplicated, FullReplicated, NotReplicated};
 
@@ -24,7 +24,7 @@ impl<C: HistoryComponent> InterpolationMode<C> for FullReplicated {
     }
 }
 
-impl<C: HistoryComponent + RepliconDiffable> InterpolationMode<C> for DiffReplicated {
+impl<C: HistoryComponent + Diffable> InterpolationMode<C> for DiffReplicated {
     fn record(registry: &mut InterpolationRegistry) {
         registry.record_member::<C>(MemberMode::diff::<C>());
     }

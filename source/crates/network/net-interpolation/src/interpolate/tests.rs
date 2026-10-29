@@ -22,7 +22,7 @@ use bevy_ecs::archetype::Archetype;
 use bevy_ecs::component::Component;
 use bevy_ecs::query::ArchetypeFilter;
 use bevy_replicon::client::confirm_history::ConfirmHistory;
-use bevy_replicon::prelude::{Diffable as RepliconDiffable, RepliconTick};
+use bevy_replicon::prelude::{Diffable, RepliconTick};
 use bevy_replicon::shared::replication::diff::diff_index::DiffIndex;
 use bevy_time::TimePlugin;
 use campfire_net_core::TickInstant;
@@ -62,7 +62,7 @@ struct DisabledRule;
 static BUNDLE2_PRIORITY_CALLS: AtomicUsize = AtomicUsize::new(0);
 static BUNDLE3_PRIORITY_CALLS: AtomicUsize = AtomicUsize::new(0);
 
-impl RepliconDiffable for TestComp {
+impl Diffable for TestComp {
     type Diff = f32;
 
     fn apply_diff(&mut self, diff: &Self::Diff) -> Result<()> {

@@ -11,6 +11,7 @@ use campfire_stats::{
     StatRule, Stats, StatsData,
 };
 use campfire_units::{UnitTypeCore, Units};
+use campfire_values::Names;
 use campfire_values::{EngineStat, ModifierId, Stat, UnitType};
 
 /// The test fixtures of `Stats` that need a crate above its own.
@@ -91,7 +92,7 @@ impl StatsFixtures for Stats {
             })
             .collect();
         let pools = Self::pools();
-        let names = Arc::new(pools.keys().map(DeclaredName::as_str).collect());
+        let names = Arc::new(Names::unique(pools.keys().map(DeclaredName::as_str)));
         let pools = PoolBook::new(&pools, names, None, |_, stat| {
             book.named(stat).ok_or_else(|| stat.clone())
         })

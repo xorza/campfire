@@ -440,16 +440,51 @@ fn a_visual_correction_marks_its_visual_changed() {
 // A capture without its live value (archetype mid-assembly: the value has
 // not replicated yet) carries nothing correctable and must be skipped,
 // not crash rule resolution.
+//
+// A saved value equal to the live one made no jump: it records no correction and ends one
+// running, so the visual is not rewritten each frame of a window; one that differs records its
+// error, `previous - live`.
 #[test]
 fn a_correction_after_a_rollback_measures_nothing_with_no_live_value() {
     let mut app = linear_app();
     app.world_mut().spawn((PreviousVisual(Some(ShownA(12.0))),));
+    let running = VisualCorrection(Some(VisualOffset::new(ShownA(3.0), Duration::ZERO)));
+    let exact = app
+        .world_mut()
+        .spawn((PreviousVisual(Some(ShownA(5.0))), ShownA(5.0), running))
+        .id();
+    let moved = app
+        .world_mut()
+        .spawn((PreviousVisual(Some(ShownA(5.0))), ShownA(2.0)))
+        .id();
 
     app.world_mut()
         .run_system_once(CorrectionFn::<CorrectionA, ShownA, ShownA>::create_visual_correction)
         .unwrap();
+    app.world_mut().flush();
     let mut query = app.world_mut().query::<&VisualCorrection<ShownA>>();
-    assert!(query.iter(app.world()).next().is_none());
+    assert_eq!(query.iter(app.world()).count(), 2);
+    let world = app.world();
+    assert!(
+        world
+            .get::<VisualCorrection<ShownA>>(exact)
+            .unwrap()
+            .0
+            .is_none()
+    );
+    assert!(
+        world
+            .get::<PreviousVisual<ShownA>>(exact)
+            .unwrap()
+            .0
+            .is_none()
+    );
+    let error = world
+        .get::<VisualCorrection<ShownA>>(moved)
+        .unwrap()
+        .0
+        .as_ref();
+    assert_eq!(error.map(|offset| &offset.error), Some(&ShownA(3.0)));
 }
 
 /// A saved value with no live component to measure against is only kept

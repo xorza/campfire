@@ -7,13 +7,13 @@ use campfire_host::{JoinRole, OrderFile, PlayerSlotBotArg, ReportCamera, ReportD
 use campfire_mode::{OptionValue, PlayerSlotPick};
 use campfire_net_core::TlsKey;
 use campfire_package::ModePackages;
-use campfire_values::{Team, TeamSet};
+use campfire_values::TeamSet;
 use clap::{Parser, ValueEnum};
 use secp256k1::XOnlyPublicKey;
 
 use crate::command_line::error::{ArgsError, ServerAddressError, TeamNameError, UnknownTeam};
 
-mod error;
+pub(crate) mod error;
 
 /// What the command line names: the orders file a bot plays, the player's key file, whether the
 /// player plays or watches and the teams it watches, the mode to play and its map, and the server:
@@ -100,8 +100,8 @@ pub(crate) struct CommandLine {
     /// Plays the mode alone on a local server, a thread of the client's process
     #[arg(long, requires = "data")]
     local: bool,
-    /// Watches the session as a spectator, with no player slot; of a local server, which then admits it
-    /// as its one spectator, who sees every unit
+    /// Watches the session as a spectator, with no player slot; of a local server, which then
+    /// admits it as its one spectator, who sees every unit
     #[arg(long, conflicts_with = "bot")]
     spectate: bool,
     /// A team whose view the spectator watches, in a session whose spectators watch teams' views;
@@ -123,8 +123,8 @@ pub(crate) struct CommandLine {
         value_parser = PlayerSlotBotArg::mode
     )]
     server_bots: Vec<PlayerSlotBotArg>,
-    /// The order script of a bot of the local server, its orders at their ticks, in a player slot as
-    /// `--server-bot` takes one
+    /// The order script of a bot of the local server, its orders at their ticks, in a player slot
+    /// as `--server-bot` takes one
     #[arg(
         long = "server-orders",
         value_name = "PLAYER_SLOT=ORDERS FILE",
@@ -300,15 +300,11 @@ impl RoleArg {
             }
             Self::Watch { teams } => teams,
         };
-        let teams = &packages.manifest().teams;
+        let manifest = packages.manifest();
         let watched = names.iter().map(|name| {
-            let index = teams
-                .iter()
-                .position(|team| team.name == *name)
-                .ok_or_else(|| UnknownTeam(name.clone()))?;
-            Ok(Team::new(
-                u8::try_from(index).expect("a team's index fits u8"),
-            ))
+            manifest
+                .team_named(name.as_str())
+                .ok_or_else(|| UnknownTeam(name.clone()))
         });
         Ok(JoinRole::Watch {
             teams: watched.collect::<Result<_, _>>()?,

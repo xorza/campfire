@@ -66,8 +66,7 @@ End
 #[test]
 fn a_mover_takes_its_locomotors_numbers_and_its_hurt_shares_a_modifier_by_its_change() {
     let mut rules = ZeroHourRules {
-        objects: ObjectIni::of(&[OBJECTS]),
-        ..ZeroHourRules::default()
+        ..ZeroHourRules::of_objects(ObjectIni::of(&[OBJECTS]))
     };
     rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
     rules.game_data.really_damaged_threshold = 0.35;
@@ -194,8 +193,7 @@ Object Climber
 End
 ";
     let mut rules = ZeroHourRules {
-        objects: ObjectIni::of(&[objects]),
-        ..ZeroHourRules::default()
+        ..ZeroHourRules::of_objects(ObjectIni::of(&[objects]))
     };
     rules.locomotors.read(locomotors.as_bytes()).unwrap();
     let of = |name: &str| ImportedType::of(rules.objects.object(name.as_bytes()).unwrap(), &rules);

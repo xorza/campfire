@@ -2,24 +2,16 @@ use std::collections::BTreeMap;
 use std::convert::Infallible;
 
 use campfire_capabilities::{Match, Release};
-use campfire_common::DeclaredName;
 use campfire_math::Num;
 use campfire_script::ParamProblem;
 use campfire_script::ParamProblem::{Missing, Overflow, ScalingTime, Short, Time};
 use campfire_stats::*;
 use campfire_units::{ScriptBook, StatId, UnitTypes};
 use campfire_values::{
-    ActionId, ModifierId, NameId, Number, PackageIndex, Param, ParamRef, Rank, Ranked, Scalar,
-    Scaling, Stat,
+    ActionId, ModifierId, NameId, PackageIndex, Param, Rank, Ranked, Scalar, Scaling, Stat,
 };
 
-fn name(text: &str) -> DeclaredName {
-    DeclaredName::new(text).unwrap()
-}
-
-fn param(text: &str) -> Number {
-    Number::Param(ParamRef { param: name(text) })
-}
+use crate::stats::{name, param};
 
 #[test]
 fn a_way_applies_a_modifier_only_when_it_gives_each_param_the_modifier_reads() {
@@ -67,7 +59,7 @@ fn a_way_applies_a_modifier_only_when_it_gives_each_param_the_modifier_reads() {
     let mut book = ModifierBook::default();
     let types = UnitTypes::new(Release::engine_tags());
     let load = ModifierLoad {
-        scripts: &ScriptBook::new(Release::hooks()),
+        scripts: &ScriptBook::new(Release::hooks().iter().copied()),
         tags: types.tags(),
         stat: |_: &_| Ok(StatId::new(0)),
         tick_rate: rate,

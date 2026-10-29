@@ -1,6 +1,8 @@
 use std::sync::{Arc, Condvar};
 
-use campfire_threads::{ThreadName, Worker, WorkerLock};
+use crate::thread_name::ThreadName;
+use crate::worker::Worker;
+use crate::worker_lock::WorkerLock;
 
 /// A worker that writes the newest value it is given: a value not yet written is replaced by a
 /// newer one, so a slow disk skips values and never queues them, and no caller waits for it. A

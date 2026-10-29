@@ -1,4 +1,4 @@
-use crate::locally_predicted::LocallyPredicted;
+use crate::locally_predicted::LocalOnly;
 use crate::prediction_history::PredictionHistory;
 use crate::prediction_setup::PredictionSetup;
 use crate::rollback_plugin::RollbackPlugin;
@@ -22,7 +22,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::component::Mutable;
 use bevy_ecs::entity_disabling::DefaultQueryFilters;
 use bevy_ecs::prelude::*;
-use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
+use bevy_replicon::shared::replication::diff::Diffable;
 use campfire_net_replication::HistoryComponent;
 use campfire_net_replication::ReplicationSystems;
 use campfire_net_timeline::Rollback;
@@ -33,15 +33,6 @@ use campfire_net_timeline::Rollback;
 /// sync. A server stays authoritative and runs none of it.
 #[derive(Debug, Default)]
 pub(crate) struct PredictionPlugin;
-
-// Higher-priority markers win when more than one applies to an update.
-// Pre-spawn must preserve its specialized reconciliation semantics before the
-// general prediction markers are considered. Pre-spawn is
-// strongest because a locally predicted absence must not be materialized by a
-// lower-priority initial-write path.
-pub(crate) const PRE_SPAWNED_PRIORITY: usize = 120;
-pub(crate) const PREDICTED_SEND_PRIORITY: usize = 100;
-pub(crate) const PREDICTED_PRIORITY: usize = 90;
 
 /// The systems that roll back a component no network replicates, which a predicted component
 /// runs too.
@@ -100,7 +91,7 @@ pub(crate) fn add_prediction_systems<C: HistoryComponent>(app: &mut App) {
     );
 }
 
-pub(crate) fn add_prediction_diff_systems<C: HistoryComponent + RepliconDiffable>(app: &mut App) {
+pub(crate) fn add_prediction_diff_systems<C: HistoryComponent + Diffable>(app: &mut App) {
     app.add_observer(PredictionHistory::<C>::add_diff_receiver);
     app.add_systems(
         PreUpdate,
@@ -185,8 +176,8 @@ impl Plugin for PredictionPlugin {
 }
 
 impl PredictionPlugin {
-    /// Permanently remove locally predicted entities once their despawn tick is outside the
-    /// rollback window.
+    /// Permanently removes the entities this end alone holds once their despawn tick is outside
+    /// the rollback window; one the server holds, or a pre-spawn, waits for confirmed replication.
     pub(crate) fn finalize_local_despawns(
         mut commands: Commands<'_, '_>,
         timeline: Res<'_, LocalTimeline>,
@@ -196,7 +187,7 @@ impl PredictionPlugin {
             '_,
             '_,
             (Entity, &PredictionDespawned),
-            (With<LocallyPredicted>, Allow<PredictionDespawned>),
+            (LocalOnly, Allow<PredictionDespawned>),
         >,
     ) {
         let oldest = prediction_setup.oldest_rollback_tick(timeline.tick(), &input_setup);
@@ -234,8 +225,9 @@ mod tests {
     use campfire_net_connection::NetworkTopology;
 
     use crate::fixtures::prediction_stack::PredictionStack;
+    use crate::locally_predicted::LocallyPredicted;
     use campfire_net_core::NetTick;
-    use campfire_net_replication::ComponentRegistry;
+    use campfire_net_replication::{ComponentRegistry, PreSpawned, Predicted};
     use campfire_net_stepper::{Stepper, StepperSetup};
 
     use crate::prediction_plugins::PredictionPlugins;
@@ -331,13 +323,21 @@ mod tests {
         };
         let gone = disabled_at(NetTick(100 - window - 1));
         let kept = disabled_at(NetTick(100 - window));
+        // Past the window too, a locally predicted entity the server holds, or a pre-spawn, waits
+        // for confirmed replication.
+        let held = disabled_at(NetTick(100 - window - 1));
+        let pre_spawned = disabled_at(NetTick(100 - window - 1));
+        world.entity_mut(held).insert(Predicted);
+        world.entity_mut(pre_spawned).insert(PreSpawned::new(1));
 
         world
             .run_system_once(PredictionPlugin::finalize_local_despawns)
             .unwrap();
 
         assert!(world.get_entity(gone).is_err());
-        assert!(world.get_entity(kept).is_ok());
+        for stays in [kept, held, pre_spawned] {
+            assert!(world.get_entity(stays).is_ok());
+        }
 
         let mut receiver = PreSpawnedReceiver::default();
         receiver.register(NetTick(100 - window), gone);

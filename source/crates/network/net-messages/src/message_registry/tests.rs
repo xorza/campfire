@@ -10,9 +10,6 @@ use bevy_app::App;
 
 use bevy_reflect::Reflect;
 
-use crate::app_message_ext::register_message_with;
-use crate::serialize_fns::SerializeFns;
-
 use serde::Serialize;
 
 impl MessageRegistry {
@@ -33,26 +30,10 @@ use crate::app_event_ext::AppEventExt;
 use crate::remote_entity_map::RemoteEntityMap;
 use bevy_ecs::entity::EntityMapper;
 use bevy_ecs::event::Event;
-use campfire_net_bytes::WriteInteger;
 use serde::Deserialize;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Reflect)]
 pub(super) struct Message1(pub f32);
-
-/// Message where we provide our own serialization/deserialization functions
-#[derive(Debug, PartialEq, Clone, Reflect)]
-pub(super) struct Message2(pub f32);
-
-pub(crate) fn serialize_message2(data: &Message2, writer: &mut Writer) {
-    writer.write_u32(data.0.to_bits());
-}
-
-pub(crate) fn deserialize_message2(
-    reader: &mut Reader,
-) -> core::result::Result<Message2, MessageError> {
-    let data = f32::from_bits(reader.read_u32()?);
-    Ok(Message2(data))
-}
 
 /// Message where we provide our own serialization/deserialization functions
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Reflect)]
@@ -100,30 +81,6 @@ fn a_message_round_trips() {
     let registry = app.world().resource::<MessageRegistry>();
 
     let message = Message1(1.0);
-    let mut writer = Writer::default();
-    registry.serialize(&message, &mut writer, &SendMapView::AsIs);
-    let data = writer.into_bytes();
-
-    let mut reader = Reader::from(data);
-    let read = registry
-        .deserialize(&mut reader, &unmapped(&ReceiveEntityMap::default()))
-        .unwrap();
-    assert_eq!(message, read);
-}
-
-#[test]
-fn a_message_round_trips_through_custom_fns() {
-    let mut app = App::new();
-    register_message_with::<Message2>(
-        &mut app,
-        SerializeFns {
-            serialize: serialize_message2,
-            deserialize: deserialize_message2,
-        },
-    );
-    let registry = app.world().resource::<MessageRegistry>();
-
-    let message = Message2(1.0);
     let mut writer = Writer::default();
     registry.serialize(&message, &mut writer, &SendMapView::AsIs);
     let data = writer.into_bytes();

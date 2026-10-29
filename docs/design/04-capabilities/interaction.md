@@ -2,8 +2,8 @@
 
 ## Mechanism
 
-- **One mechanism for using a unit.** Doors, the bomb, loot, capture points, shrines, vehicles and garrisons are the `use` and `enter` action kinds aimed at a unit whose type has a `use` or an `enter` section; `use` is built, `enter` planned.
-- **No system of its own.** `orders` fills a use slot and the casts of `abilities` run it, so a `use` action needs both.
+- **One mechanism for using a unit.** Doors, the bomb, loot, capture points, shrines, vehicles and garrisons are the `use` and `enter` action kinds aimed at a unit whose type has a `use` or an `enter` section.
+- **The casts' pipeline runs a use and an entry.** `orders` fills a use slot and the casts of `abilities` run it, so a `use` or an `enter` action needs both; interaction's own systems keep the riders a container holds, which no cast does: they carry them, aim and arm their fire, hold the container's modifier on them, land a flier for them and empty a falling container. Planned: a unit's `inside` and `passengers` for scripts, which wait for the script view to hold a rider, a disabled entity its rows leave out, and a container's riders.
 
 ## Uses
 

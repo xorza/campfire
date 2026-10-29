@@ -7,8 +7,10 @@
     reason = "the one crate that starts threads, which clippy.toml denies the others"
 )]
 
+mod exchange;
 mod failure;
 mod job;
+mod latest_writer;
 mod parallel;
 #[cfg(feature = "internals")]
 mod race;
@@ -16,8 +18,10 @@ mod thread_name;
 mod worker;
 mod worker_lock;
 
+pub use crate::exchange::Exchange;
 pub use crate::failure::Failure;
 pub use crate::job::Job;
+pub use crate::latest_writer::LatestWriter;
 pub use crate::parallel::Parallel;
 pub use crate::thread_name::ThreadName;
 pub use crate::worker::Worker;

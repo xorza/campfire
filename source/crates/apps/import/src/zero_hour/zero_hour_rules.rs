@@ -25,6 +25,7 @@ use crate::zero_hour::format::ini::upgrade_ini::UpgradeIni;
 use crate::zero_hour::format::ini::weapon_ini::WeaponIni;
 use crate::zero_hour::install::Install;
 use crate::zero_hour::rules_names::RulesNames;
+use crate::zero_hour::variation_import::VariationImport;
 
 /// The install's game data as the game parses it, read once before any stage converts: each kind
 /// of its INI files and its string table, which the import's stages read and none writes.
@@ -35,6 +36,7 @@ pub(crate) struct ZeroHourRules {
     pub(crate) game_data: GameDataIni,
     pub(crate) mouse: MouseIni,
     pub(crate) objects: ObjectIni,
+    pub(crate) variations: VariationImport,
     pub(crate) locomotors: LocomotorIni,
     pub(crate) templates: PlayerTemplateIni,
     pub(crate) sets: CommandSetIni,
@@ -59,10 +61,12 @@ pub(crate) struct ZeroHourRules {
 impl ZeroHourRules {
     /// The rules of `install`; an error for a file that does not read as the game reads it.
     pub(crate) fn read(install: &Install) -> Result<Self, ZeroHourError> {
+        let objects = install
+            .read_inis("Object", ObjectFiles::default(), ObjectFiles::read)?
+            .finish();
         Ok(Self {
-            objects: install
-                .read_inis("Object", ObjectFiles::default(), ObjectFiles::read)?
-                .finish(),
+            variations: VariationImport::of(&objects),
+            objects,
             terrain: install.read_inis("Terrain", TerrainIni::default(), TerrainIni::read)?,
             roads: install.read_inis("Roads", RoadsIni::default(), RoadsIni::read)?,
             game_data: install.read_inis("GameData", GameDataIni::default(), GameDataIni::read)?,
@@ -146,9 +150,33 @@ impl ZeroHourRules {
     /// The install's string table, `Data\<language>\generals.csf`, as the game reads its
     /// language's.
     fn string_table(install: &Install) -> Result<StringTable, ZeroHourError> {
-        let language = install.language()?.ok_or(ZeroHourError::NoLanguage)?;
+        let language = install.language().ok_or(ZeroHourError::NoLanguage)?;
         let path = ArchivePath::of(&format!("data\\{language}\\generals.csf"));
         let bytes = install.read(&path)?;
         StringTable::read(&bytes).map_err(|error| ZeroHourError::StringTable { path, error })
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::zero_hour::format::ini::object_ini::ObjectIni;
+    use crate::zero_hour::variation_import::VariationImport;
+    use crate::zero_hour::zero_hour_rules::ZeroHourRules;
+
+    impl ZeroHourRules {
+        /// The rules of `objects` alone, their variations resolved, each other file empty.
+        pub(crate) fn of_objects(objects: ObjectIni) -> Self {
+            Self {
+                variations: VariationImport::of(&objects),
+                objects,
+                ..Self::default()
+            }
+        }
+
+        /// Holds `objects` in place of its own, their variations resolved.
+        pub(crate) fn set_objects(&mut self, objects: ObjectIni) {
+            self.variations = VariationImport::of(&objects);
+            self.objects = objects;
+        }
     }
 }

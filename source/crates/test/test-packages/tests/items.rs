@@ -72,7 +72,7 @@ fn the_3v3s_items_read_as_their_data_holds_them() {
     let raw = Toml::parse::<TomlTable>("inventory = { slots = 6, kind = \"item\" }").unwrap();
     let unit: UnitTypeData = raw
         .read_with(UnitTypeData::seed(
-            &Release::sections(),
+            Release::sections(),
             &UnitDefaults::default(),
         ))
         .unwrap();

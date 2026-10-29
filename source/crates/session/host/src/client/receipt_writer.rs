@@ -4,8 +4,9 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_protocol::SignedReceipt;
-use campfire_store::{DurableDir, DurableFile, LatestWriter};
+use campfire_store::{DurableDir, DurableFile};
 use campfire_threads::Job;
+use campfire_threads::LatestWriter;
 
 use crate::client::client_dir::ClientDir;
 use crate::faults::WorkerFaults;

@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use bevy_ecs::world::World;
 use campfire_protocol::{Checkpoint, CheckpointBegun, SnapshotFingerprint};
 use campfire_sim::{EntityIndex, StateDelta, StateRegistry};
-use campfire_store::Exchange;
+use campfire_threads::Exchange;
 use campfire_threads::Job;
 
 use crate::faults::error::SnapshotWriteError;

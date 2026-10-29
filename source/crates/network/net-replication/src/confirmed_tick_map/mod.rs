@@ -10,7 +10,7 @@ use bevy_replicon::prelude::RepliconTick;
 use campfire_net_core::NetTick;
 use core::sync::atomic::{AtomicU64, Ordering};
 use std::collections::VecDeque;
-use tracing::error;
+use tracing::debug;
 
 /// How many confirmed ticks the map keeps: the window of recent rollback and prediction.
 pub(crate) const MAX_CONFIRMED_TICKS: usize = 256;
@@ -28,8 +28,7 @@ pub(crate) const MAX_CONFIRMED_TICKS: usize = 256;
 ///
 /// Prediction and rollback code should use this resource whenever they need to interpret
 /// [`ConfirmHistory`](bevy_replicon::client::confirm_history::ConfirmHistory) or
-/// [`ServerMutateTicks`] in
-/// simulation time.
+/// [`ServerMutateTicks`] in simulation time.
 ///
 /// This mapping is intentionally bounded because it is only needed for recent rollback /
 /// prediction windows.
@@ -265,8 +264,10 @@ impl ConfirmedTickMap {
             Ok(authoritative_tick) => {
                 confirmed_ticks.record(received.message_tick, authoritative_tick);
             }
+            // Counted by `ConfirmedTickFaults`, as a peer's data may be anything: a line for
+            // each would let a peer fill the log.
             Err(error_kind) => {
-                error!(
+                debug!(
                     ?error_kind,
                     replicon_tick = ?received.message_tick,
                     userdata_len = received.bytes.len(),

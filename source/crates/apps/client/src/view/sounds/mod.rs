@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use bevy::app::{App, Plugin, PostStartup, Update};
 use bevy::asset::{AssetPath, AssetServer, Handle};
@@ -23,15 +22,14 @@ use campfire_client_files::{
 };
 use campfire_common::{DeclaredName, PlayerSlot};
 use campfire_host::JoinState;
-use campfire_math::SplitMix64;
 use campfire_mode::{ChoiceData, PlayerSlotPicks};
-use campfire_package::ModePackages;
 use campfire_production::MadeAt;
 use campfire_sim::{EntityIndex, Unpredicted};
 use campfire_units::{Leaving, Owner, TypeOriginBook};
 use campfire_values::{NameId, PackageIndex, PackagePath, Relation, Team, UnitType};
 use tracing::error;
 
+use crate::client_packages::ClientPackages;
 use crate::own_player::OwnPlayer;
 use crate::selection::{Selection, SelectionSystems, SelectionVoice};
 use crate::view::ViewSystems;
@@ -41,6 +39,7 @@ use crate::view::effects::effect_book::{EffectBook, SoundId};
 use crate::view::effects::particle_run::{HeardAt, SoundSource};
 use crate::view::ground_heights::GroundHeights;
 use crate::view::package_source::PackageAssets;
+use crate::view::view_dice::ViewDice;
 
 /// The match's sounds (02-engine-core.md, The client plays by Bevy's audio; 02-engine-core.md, A
 /// sound falls off as the release game's and fades to its range's end; 02-engine-core.md, The
@@ -52,9 +51,7 @@ use crate::view::package_source::PackageAssets;
 /// volume; and the music plays the playlist of the player's pick, one track after another, from its
 /// first again after its last.
 #[derive(Debug)]
-pub(crate) struct SoundsPlugin {
-    pub(crate) packages: Arc<ModePackages>,
-}
+pub(crate) struct SoundsPlugin;
 
 /// The match's sounds: each sound's files, by the sound's id, the turn of each sound of files in
 /// turn and the last file each drew, the mode's sound file, each type's voices, the playlist of the
@@ -69,7 +66,7 @@ struct MatchSounds {
     playlist: Option<Box<[Handle<AudioSource>]>>,
     track: usize,
     started: u64,
-    dice: SplitMix64,
+    dice: ViewDice,
 }
 
 /// The file a sound's play draws next: the last drawn, none before the first.
@@ -160,7 +157,6 @@ impl Plugin for SoundsPlugin {
             at: Vec3::ZERO,
             zoom: 1.0,
         });
-        app.insert_resource(PackagesHeld(Arc::clone(&self.packages)));
         app.add_systems(PostStartup, Self::load.before(ClientLoad::drop));
         app.add_systems(
             Update,
@@ -182,7 +178,7 @@ impl SoundsPlugin {
     /// none in a mode of no effects, which still plays its music; logs a choice or a value of the
     /// music the mode lacks, which plays no music.
     fn load(
-        (load, packages): (Res<'_, ClientLoad>, Res<'_, PackagesHeld>),
+        (load, packages): (Res<'_, ClientLoad>, Res<'_, ClientPackages>),
         effects: Option<Res<'_, MatchEffects>>,
         origins: Res<'_, TypeOriginBook>,
         assets: Res<'_, AssetServer>,
@@ -222,7 +218,7 @@ impl SoundsPlugin {
             .collect();
         if let Some(music) = &load.sound.music {
             let choice = music.choice.as_str();
-            match packages.0.data().choices.get(&music.choice) {
+            match packages.packages.data().choices.get(&music.choice) {
                 None => error!(choice, "the music names no choice of the mode"),
                 Some(data) => {
                     let unknown = music
@@ -245,7 +241,7 @@ impl SoundsPlugin {
             playlist: None,
             track: 0,
             started: 0,
-            dice: SplitMix64::new(0x5eed_50da),
+            dice: ViewDice::new(0x5eed_50da),
         });
     }
 
@@ -374,12 +370,11 @@ impl SoundsPlugin {
             let sounds = &mut *sounds;
             let files = &sounds.files[heard.sound.index()];
             let pick = &mut sounds.picks[heard.sound.index()];
-            let count = u64::try_from(files.len()).expect("a count fits u64");
-            let drawn = usize::try_from(sounds.dice.below(count)).expect("below a count of files");
+            let drawn = sounds.dice.below(files.len());
             let at = pick.next(event.pick, files.len(), drawn);
-            let loss = share(&mut sounds.dice);
+            let loss = sounds.dice.share();
             let volume = event.volume * (1.0 - event.loss * loss);
-            let rate = share(&mut sounds.dice);
+            let rate = sounds.dice.share();
             let [low, high] = event.pitch;
             let speed = low + (high - low) * rate;
             let positional = event.range.is_some();
@@ -446,7 +441,7 @@ impl SoundsPlugin {
         (own, join, packages): (
             OwnPlayer<'_, '_>,
             Option<Res<'_, JoinState>>,
-            Res<'_, PackagesHeld>,
+            Res<'_, ClientPackages>,
         ),
         mut sounds: ResMut<'_, MatchSounds>,
         playing: Query<'_, '_, (), With<MusicTrack>>,
@@ -463,7 +458,7 @@ impl SoundsPlugin {
             else {
                 return;
             };
-            let choices = &packages.0.data().choices;
+            let choices = &packages.packages.data().choices;
             let tracks = playlist(music, choices, picks, player_slot).unwrap_or_default();
             let load = |path| mode_audio(&assets, path);
             sounds.playlist = Some(tracks.iter().map(load).collect());
@@ -490,10 +485,6 @@ impl SoundsPlugin {
         ));
     }
 }
-
-/// The mode's packages, whose choices the music's pick names.
-#[derive(Resource, Debug)]
-struct PackagesHeld(Arc<ModePackages>);
 
 impl TypeVoices {
     /// Its sound of `voice`.
@@ -548,12 +539,6 @@ fn room(limit: Option<SoundLimit>, same: impl Iterator<Item = (usize, u64)> + Cl
     } else {
         Room::Full
     }
-}
-
-/// A share from 0 to 1 of 24 bits of a draw of `dice`.
-#[expect(clippy::cast_precision_loss, reason = "24 bits fit an f32 whole")]
-fn share(dice: &mut SplitMix64) -> f32 {
-    (dice.next_u64() >> 40) as f32 / (1_u32 << 24) as f32
 }
 
 /// Whether the player of `own` hears a sound `heard_by` its source `source`, by the player's

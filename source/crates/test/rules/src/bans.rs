@@ -37,13 +37,15 @@ pub(crate) struct Proxy {
     pub(crate) crates: Option<CrateBans>,
 }
 
-/// The crates whose own `clippy.toml` holds a proxy's bans, each the workspace's with the bans
-/// added under `comment`, each entry of `reason`.
+/// The crates whose own `clippy.toml` holds `methods` and `types`, a proxy's or a group no proxy
+/// makes, each the workspace's with the bans added under `comment`, each entry of `reason`.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct CrateBans {
     pub(crate) dirs: &'static [&'static str],
     pub(crate) comment: &'static str,
     pub(crate) reason: &'static str,
+    pub(crate) methods: &'static [&'static str],
+    pub(crate) types: &'static [&'static str],
 }
 
 impl Proxy {
@@ -102,7 +104,11 @@ const THREAD_METHODS: [&str; 5] = [
 
 /// The types only `app-threads` names (02-engine-core.md, An app's threads are one plan): the
 /// plugin and the options that size Bevy's task pools.
-const APP_THREAD_TYPES: [&str; 2] = ["bevy_app::TaskPoolPlugin", "bevy_app::TaskPoolOptions"];
+const APP_THREAD_TYPES: [&str; 3] = [
+    "bevy_app::TaskPoolPlugin",
+    "bevy_app::TaskPoolOptions",
+    "bevy_tasks::TaskPoolBuilder",
+];
 
 /// The calls that start Bevy's task pools, which only the plugin of `app-threads` makes.
 const APP_THREAD_METHODS: [&str; 4] = [
@@ -170,7 +176,7 @@ const CODEC_METHODS: [&str; 37] = [
 
 /// The types only `codec` holds, each banned whole so every method of it is: a value type among
 /// them, which is a deserializer of its own.
-const CODEC_TYPES: [&str; 11] = [
+const CODEC_TYPES: [&str; 14] = [
     "postcard::Serializer",
     "postcard::Deserializer",
     "toml::Serializer",
@@ -182,14 +188,19 @@ const CODEC_TYPES: [&str; 11] = [
     "toml::Table",
     "png::Encoder",
     "png::Decoder",
+    "base64::engine::GeneralPurpose",
+    "base64::write::EncoderWriter",
+    "base64::read::DecoderReader",
 ];
 
 /// The calls only `schedule` makes: those that set a schedule's build settings, which can switch
 /// off the ambiguity and hierarchy checks, and its executor, which can run its systems on other
 /// threads.
-const SCHEDULE_METHODS: [&str; 3] = [
+const SCHEDULE_METHODS: [&str; 5] = [
     "bevy_ecs::schedule::Schedule::set_build_settings",
     "bevy_ecs::schedule::Schedules::configure_schedules",
+    "bevy_app::App::configure_schedules",
+    "bevy_app::SubApp::configure_schedules",
     "bevy_ecs::schedule::Schedule::set_executor",
 ];
 
@@ -336,14 +347,81 @@ pub(crate) const PROXIES: [Proxy; 7] = [
             ],
             comment: "campfire-net-despawns alone despawns in the network stack's replication crates (11-net-stack/replication.md, The server alone ends a replicated entity's life on the receiver): Bevy's despawn takes each child the server still owns.",
             reason: "despawn through campfire_net_despawns::DespawnReplicated",
+            methods: &DESPAWN_METHODS,
+            types: &[],
         }),
     },
 ];
 
+/// The float functions a platform's libm computes, each within an ulp or so but not the same on
+/// every OS, which the importer takes from `libm` in software instead.
+const PLATFORM_FLOAT_METHODS: [&str; 50] = [
+    "f32::sin",
+    "f32::cos",
+    "f32::tan",
+    "f32::sin_cos",
+    "f32::asin",
+    "f32::acos",
+    "f32::atan",
+    "f32::atan2",
+    "f32::sinh",
+    "f32::cosh",
+    "f32::tanh",
+    "f32::asinh",
+    "f32::acosh",
+    "f32::atanh",
+    "f32::exp",
+    "f32::exp2",
+    "f32::exp_m1",
+    "f32::ln",
+    "f32::ln_1p",
+    "f32::log",
+    "f32::log2",
+    "f32::log10",
+    "f32::powf",
+    "f32::cbrt",
+    "f32::hypot",
+    "f64::sin",
+    "f64::cos",
+    "f64::tan",
+    "f64::sin_cos",
+    "f64::asin",
+    "f64::acos",
+    "f64::atan",
+    "f64::atan2",
+    "f64::sinh",
+    "f64::cosh",
+    "f64::tanh",
+    "f64::asinh",
+    "f64::acosh",
+    "f64::atanh",
+    "f64::exp",
+    "f64::exp2",
+    "f64::exp_m1",
+    "f64::ln",
+    "f64::ln_1p",
+    "f64::log",
+    "f64::log2",
+    "f64::log10",
+    "f64::powf",
+    "f64::cbrt",
+    "f64::hypot",
+];
+
+/// The bans of crates' own `clippy.toml` that no proxy makes: the importer computes no float by a
+/// platform's libm.
+const CRATE_BANS: [CrateBans; 1] = [CrateBans {
+    dirs: &["apps/import"],
+    comment: "The importer writes the same package on every OS (09-zero-hour.md, One reproducible package): a platform's libm differs by an ulp between OSes.",
+    reason: "compute it with the libm crate, in software",
+    methods: &PLATFORM_FLOAT_METHODS,
+    types: &[],
+}];
+
 /// The bans with no proxy, which nothing may exempt: each lets two conflicting sim systems run in
 /// either order, runs a system's work on the compute pool, seeds a map at random, draws the OS's
 /// random bytes past the one source, or names the OS's temporary directory.
-const UNOWNED_METHODS: [&str; 17] = [
+const UNOWNED_METHODS: [&str; 23] = [
     "std::env::temp_dir",
     "bevy_ecs::schedule::IntoScheduleConfigs::ambiguous_with",
     "bevy_ecs::schedule::IntoScheduleConfigs::ambiguous_with_all",
@@ -353,6 +431,12 @@ const UNOWNED_METHODS: [&str; 17] = [
     "bevy_ecs::schedule::Schedules::allow_ambiguous_resource",
     "bevy_ecs::world::World::allow_ambiguous_component",
     "bevy_ecs::world::World::allow_ambiguous_resource",
+    "bevy_app::App::ignore_ambiguity",
+    "bevy_app::App::allow_ambiguous_component",
+    "bevy_app::App::allow_ambiguous_resource",
+    "bevy_app::SubApp::ignore_ambiguity",
+    "bevy_app::SubApp::allow_ambiguous_component",
+    "bevy_app::SubApp::allow_ambiguous_resource",
     "bevy_ecs::system::Query::par_iter",
     "bevy_ecs::system::Query::par_iter_mut",
     "bevy_ecs::system::Query::par_iter_inner",
@@ -392,7 +476,7 @@ const UNOWNED_NAMES: [&str; 10] = [
 const THREAD_LOCAL: &str = "std::thread::LocalKey";
 
 /// What names a banned type in source, other than the thread-local one.
-const TYPE_NAMES: [&str; 13] = [
+const TYPE_NAMES: [&str; 14] = [
     "SystemRandom",
     "std::fs",
     "tempfile::",
@@ -401,6 +485,7 @@ const TYPE_NAMES: [&str; 13] = [
     "toml::",
     "serde_json::",
     "png::",
+    "base64::",
     "HashMap",
     "HashSet",
     "RandomState",
@@ -657,14 +742,13 @@ fn crate_clippy(dir: &str) -> Option<String> {
 /// The most bytes a `clippy.toml` holds: far past the workspace's.
 const CLIPPY_LEN: usize = 1 << 16;
 
-/// The `clippy.toml` of a crate that `bans`, of `proxy`, names: `workspace`'s, with the proxy's
-/// methods and types added at the end of their lists, under the bans' comment, each of their
-/// reason.
-fn with_proxy_bans(workspace: &str, proxy: &Proxy, bans: &CrateBans) -> String {
+/// The `clippy.toml` of a crate that `bans` names: `workspace`'s, with its methods and types
+/// added at the end of their lists, under its comment, each of its reason.
+fn with_crate_bans(workspace: &str, bans: &CrateBans) -> String {
     let mut merged = workspace.to_owned();
     for (list, paths) in [
-        ("disallowed-types", proxy.types),
-        ("disallowed-methods", proxy.methods),
+        ("disallowed-types", bans.types),
+        ("disallowed-methods", bans.methods),
     ] {
         if paths.is_empty() {
             continue;
@@ -690,15 +774,13 @@ fn with_proxy_bans(workspace: &str, proxy: &Proxy, bans: &CrateBans) -> String {
 }
 
 pub(crate) fn a_crates_clippy_toml_is_the_workspaces_with_its_own_entries(workspace: &Workspace) {
-    // Each crate's own `clippy.toml` is the workspace's with its proxy's bans, written again with
-    // `CAMPFIRE_BLESS=1`, and a proxy owns every crate that has one.
+    // Each crate's own `clippy.toml` is the workspace's with its bans, a proxy's or a group's,
+    // written again with `CAMPFIRE_BLESS=1`, and those bans name every crate that has one.
     let shared = read(source().join("clippy.toml").to_str().unwrap());
     let mut owned = Vec::new();
-    for proxy in &PROXIES {
-        let Some(bans) = &proxy.crates else {
-            continue;
-        };
-        let text = with_proxy_bans(&shared, proxy, bans);
+    let proxied = PROXIES.iter().filter_map(|proxy| proxy.crates.as_ref());
+    for bans in proxied.chain(&CRATE_BANS) {
+        let text = with_crate_bans(&shared, bans);
         for dir in bans.dirs {
             let path = source().join("crates").join(dir).join("clippy.toml");
             PinnedFile::new(&path).pin(text.as_bytes(), CLIPPY_LEN);
@@ -718,21 +800,15 @@ pub(crate) fn a_crates_clippy_toml_is_the_workspaces_with_its_own_entries(worksp
     // stays the workspace's.
     let workspace =
         "a = 1\ndisallowed-types = [\n]\ndisallowed-methods = [\n    { path = \"x\" },\n]\n";
-    let proxy = Proxy {
-        methods: &["y", "z"],
-        ..PROXIES[0]
-    };
     let bans = CrateBans {
         dirs: &[],
         comment: "c",
         reason: "r",
-    };
-    let proxy = Proxy {
+        methods: &["y", "z"],
         types: &[],
-        ..proxy
     };
     assert_eq!(
-        with_proxy_bans(workspace, &proxy, &bans),
+        with_crate_bans(workspace, &bans),
         "a = 1\ndisallowed-types = [\n]\ndisallowed-methods = [\n    { path = \"x\" },\n    # c\n    { path = \"y\", reason = \"r\" },\n    { path = \"z\", reason = \"r\" },\n]\n"
     );
 }

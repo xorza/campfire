@@ -47,7 +47,7 @@ fn each_patch_reads_back_through_its_sections_reader() {
         "combat = { on_death = \"stay\" }\nturret = { tolerance_deg = 2, slot = \"weapon\" }",
     )
     .unwrap();
-    let defaults = UnitDefaults::read(TomlValue::from(defaults), &readers).unwrap();
+    let defaults = UnitDefaults::read(TomlValue::from(defaults), readers).unwrap();
     let types = Release::read_units(units.clone(), &defaults).unwrap();
     let tank = &types[&name("tank")];
     let combat = CombatData {
@@ -81,7 +81,7 @@ fn each_patch_reads_back_through_its_sections_reader() {
         ..ModeCombatPatch::default()
     });
     let data = TomlValue::from(mode.into_table())
-        .read_with(ModeData::seed(&readers))
+        .read_with(ModeData::seed(readers))
         .unwrap();
     assert_eq!(
         (data.name.as_str(), data.timers.len(), data.params.len()),
@@ -103,7 +103,7 @@ fn each_patch_reads_back_through_its_sections_reader() {
         ..MapPatch::default()
     });
     let map = TomlValue::from(map.into_table())
-        .read_with(MapData::seed(&readers))
+        .read_with(MapData::seed(readers))
         .unwrap();
     assert_eq!(
         (map.units.len(), map.markers.as_slice()),

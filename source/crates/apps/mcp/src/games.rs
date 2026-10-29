@@ -61,7 +61,7 @@ impl Games {
             .expect("a target directory lies in the workspace")
             .to_owned();
         let own = own.and_then(|path| {
-            let modified = InputFile::stream(&path).ok()?.stamp().modified;
+            let modified = InputFile::stamp(&path).ok()?.modified;
             Some(OwnBinary { path, modified })
         });
         Self {
@@ -103,7 +103,7 @@ impl Games {
         let handle = self.next.fetch_add(1, Ordering::Relaxed);
         self.games.lock().await.insert(handle, Arc::new(game));
         let own_newer = self.own.as_ref().is_some_and(|own| {
-            let now = InputFile::stream(&own.path).map(|file| file.stamp().modified);
+            let now = InputFile::stamp(&own.path).map(|stamp| stamp.modified);
             now.is_ok_and(|now| now > own.modified)
         });
         Ok(Launched {
@@ -116,36 +116,36 @@ impl Games {
     /// The game of `handle`, or the only one with none.
     pub(crate) async fn get(&self, handle: Option<u32>) -> Result<Arc<GameProcess>, GameFailure> {
         let games = self.games.lock().await;
-        let handles = || games.keys().copied().collect::<Vec<u32>>();
-        match handle {
-            Some(handle) => games
-                .get(&handle)
-                .cloned()
-                .ok_or_else(|| GameFailure::UnknownHandle {
-                    handle,
-                    games: handles(),
-                }),
-            None => match games.len() {
-                0 => Err(GameFailure::NoGame),
-                1 => Ok(Arc::clone(games.values().next().expect("one game"))),
-                _ => Err(GameFailure::Several { games: handles() }),
-            },
-        }
+        let handle = Self::chosen(&games, handle)?;
+        Ok(Arc::clone(&games[&handle]))
     }
 
-    /// Stops the game of `handle`, or the only one, and gives its handle and exit status.
+    /// Stops the game of `handle`, or the only one, and gives its handle and exit status; the game
+    /// leaves the list under the lock that found it, so a second stop of it finds none.
     pub(crate) async fn stop(&self, handle: Option<u32>) -> Result<GameStopped, GameFailure> {
-        let game = self.get(handle).await?;
         let mut games = self.games.lock().await;
-        let handle = *games
-            .iter()
-            .find(|(_, held)| Arc::ptr_eq(held, &game))
-            .map(|(handle, _)| handle)
-            .expect("the game it found");
-        games.remove(&handle);
+        let handle = Self::chosen(&games, handle)?;
+        let game = games.remove(&handle).expect("the game it chose");
         drop(games);
         let status = game.stop(Self::PATIENCE).await;
         Ok(GameStopped { handle, status })
+    }
+
+    /// The handle of `games`' game of `handle`, or of the only one with none.
+    fn chosen<G>(games: &BTreeMap<u32, G>, handle: Option<u32>) -> Result<u32, GameFailure> {
+        let handles = || games.keys().copied().collect::<Vec<u32>>();
+        match handle {
+            Some(handle) if games.contains_key(&handle) => Ok(handle),
+            Some(handle) => Err(GameFailure::UnknownHandle {
+                handle,
+                games: handles(),
+            }),
+            None => match games.len() {
+                0 => Err(GameFailure::NoGame),
+                1 => Ok(*games.keys().next().expect("one game")),
+                _ => Err(GameFailure::Several { games: handles() }),
+            },
+        }
     }
 
     /// Stops every game, as this server stops (02-engine-core.md, A game stops as its console's
@@ -189,4 +189,31 @@ impl Games {
 pub(crate) struct GameStopped {
     pub(crate) handle: u32,
     pub(crate) status: ProcessExit,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_game_is_chosen_by_its_handle_or_as_the_only_one() {
+        let none = BTreeMap::<u32, u8>::new();
+        let one = BTreeMap::from([(4, 0_u8)]);
+        let two = BTreeMap::from([(4, 0_u8), (7, 0)]);
+        assert!(matches!(
+            Games::chosen(&none, None),
+            Err(GameFailure::NoGame)
+        ));
+        assert_eq!(Games::chosen(&one, None).unwrap(), 4);
+        assert_eq!(Games::chosen(&two, Some(7)).unwrap(), 7);
+        assert!(matches!(
+            Games::chosen(&two, None),
+            Err(GameFailure::Several { games }) if games == [4, 7]
+        ));
+        // A game a stop removed is unknown to the next.
+        assert!(matches!(
+            Games::chosen(&one, Some(7)),
+            Err(GameFailure::UnknownHandle { handle: 7, games }) if games == [4]
+        ));
+    }
 }

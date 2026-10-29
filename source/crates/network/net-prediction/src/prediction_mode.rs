@@ -1,6 +1,6 @@
 use crate::prediction_registration;
 use bevy_app::App;
-use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
+use bevy_replicon::shared::replication::diff::Diffable;
 use campfire_net_replication::HistoryComponent;
 use campfire_net_replication::{DiffReplicated, FullReplicated};
 
@@ -16,7 +16,7 @@ impl<C: HistoryComponent> PredictionMode<C> for FullReplicated {
     }
 }
 
-impl<C: HistoryComponent + RepliconDiffable> PredictionMode<C> for DiffReplicated {
+impl<C: HistoryComponent + Diffable> PredictionMode<C> for DiffReplicated {
     fn install(app: &mut App) {
         prediction_registration::install_prediction_diff::<C>(app);
     }

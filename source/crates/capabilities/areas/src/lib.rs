@@ -43,7 +43,7 @@ pub use crate::area_life::AreaLife;
 pub use crate::area_reach::AreaReach;
 pub use crate::area_spec::{AreaSpec, Inside};
 pub use crate::areas_api::AreasApi;
-pub use crate::error::{AreaDeliveryError, AreaError};
+pub use crate::error::{AreaDataError, AreaDeliveryError};
 pub use crate::land_effect_data::LandEffectData;
 
 /// The `areas` capability: area units, which actions deliver. It needs stats, whose modifiers an

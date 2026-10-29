@@ -9,10 +9,12 @@ use campfire_common::{PlayerSlot, Tick};
 use campfire_interaction::Using;
 use campfire_items::{Inventory, Shopping};
 use campfire_players::OnMatch;
-use campfire_production::{BuildPlaces, Builder, GatherView, Gatherer, PlaceSearch, StartChecks};
+use campfire_production::{
+    Activity, ActivityParts, BuildPlaces, Builder, GatherView, Gatherer, PlaceSearch, StartChecks,
+};
 use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
-use campfire_units::{Commanded, Dead, Destination, GroundPoint, MapBook, PlayerUnits};
+use campfire_units::{AtWork, Commanded, Dead, Destination, GroundPoint, MapBook, PlayerUnits};
 use campfire_values::{Block, ItemId, Relations, TagSet, Team, UnitTags, UnitType};
 use campfire_vision::{ByHolding, ByVision, SeenTargets, TeamSight};
 
@@ -72,6 +74,7 @@ pub type ServerBotView<'w, 's> = BotView<'w, 's, ByVision>;
 type UnitOrders = (
     Option<&'static ActionProgress>,
     Option<&'static Destination>,
+    Option<&'static AtWork>,
     Option<&'static Gatherer>,
     Option<&'static Builder>,
 );
@@ -159,21 +162,24 @@ impl<S: TeamSight> BotView<'_, '_, S> {
         );
     }
 
-    /// Whether the unit `id` stands idle: none of its parts holds an order under way.
+    /// Whether the unit `id` stands idle, as `Activity` classes a unit for the probe and the
+    /// console alike.
     fn idle(&self, id: StableId) -> bool {
         let Some(entity) = self.index.get(id) else {
             return false;
         };
-        let Ok((progress, destination, gatherer, builder)) = self.orders.get(entity) else {
+        let Ok((progress, destination, at_work, gatherer, builder)) = self.orders.get(entity)
+        else {
             return false;
         };
-        let acts = progress.is_some_and(|progress| {
-            progress.in_progress().is_some() || progress.attack_target().is_some()
-        });
-        let walks = destination.is_some_and(|destination| destination.get().is_some());
-        let gathers = gatherer.is_some_and(|gatherer| gatherer.order().is_some());
-        let builds = builder.is_some_and(|builder| builder.order().is_some());
-        !(acts || walks || gathers || builds)
+        let parts = ActivityParts {
+            progress,
+            destination,
+            at_work,
+            gatherer,
+            builder,
+        };
+        parts.activity() == Activity::Idle
     }
 
     /// The nearest place of `search` where its build passes, as its order tests it.

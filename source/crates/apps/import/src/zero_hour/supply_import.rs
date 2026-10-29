@@ -5,23 +5,23 @@ use campfire_actions::{
     ActionKeys, ActionKind, ActionRange, ChannelData, ChannelPaysData, RangeField, Targeting,
 };
 use campfire_codec::TomlTable;
-use campfire_common::{DeclaredName, EnumAll};
+use campfire_common::DeclaredName;
 use campfire_math::Num;
 use campfire_production::{
     DropOffData, EmptyNode, FramePoint, GatherData, NodeData, SpawnSpec, SpawnsData,
 };
 use campfire_values::{Distance, Number, Ranked, Scalar};
-use serde::{Deserialize, Serialize};
 
 use crate::zero_hour::dropped::Losses;
 use crate::zero_hour::format::game_float;
-use crate::zero_hour::format::ini::object_ini::IniObject;
+use crate::zero_hour::format::ini::object_ini::ini_object::IniObject;
 use crate::zero_hour::format::ini::object_ini::ini_supply::{
     InternetHack, SupplyDock, SupplyGatherer,
 };
 use crate::zero_hour::game_time;
 use crate::zero_hour::import_names::{NamedObject, ProductionNames};
 use crate::zero_hour::imported_type::ImportedType;
+use crate::zero_hour::supply_drop_cause::SupplyDropCause;
 use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
@@ -47,47 +47,6 @@ pub(crate) struct SupplyImport {
 pub(crate) struct ImportedGather {
     keys: ActionKeys,
     gather: GatherData,
-}
-
-/// Why the import drops a supply module.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, Serialize, Deserialize)]
-pub enum SupplyDropCause {
-    /// A dock that holds no box.
-    NoBoxes,
-    /// A number past what the engine holds.
-    BadNumber,
-    /// A gatherer, or a unit a building spawns, that does not move.
-    NoWalker,
-    /// A unit a building of no production spawns, which has no exit to leave.
-    NoExit,
-    /// A spawned unit that no file defines.
-    NoObject,
-    /// A kept spawn of no life, which never dies to come back.
-    Unliving,
-    /// A gatherer whose gather's name, of its kind and its type's, passes the bytes a declared
-    /// name holds.
-    LongName,
-    /// An `OCLUpdate`, which creates objects over time, as America's supply drop zone sends a
-    /// cargo plane of crates (09-zero-hour.md, A supply drop zone's crates are lost).
-    ObjectsOverTime,
-    /// A hack's cash at a veterancy past regular that is not its regular cash, as the import
-    /// gives no unit a veterancy.
-    HackVeterancy,
-    /// A hack's `XpPerCashUpdate`, as the import gives no unit a veterancy.
-    HackExperience,
-    /// A hack's `CashUpdateDelayFast`, its delay in a building, as the import puts no unit in
-    /// one.
-    HackInBuilding,
-    /// A hack's pack spread by its `PackUnpackVariationFactor`, as a channel's wind-down does not
-    /// spread (04-capabilities/actions.md, A channel with no end).
-    PackSpread,
-    /// A leader's spawns, which take its orders in place of their own `MobMemberSlavedUpdate`:
-    /// its catch-up, its crisis bail and its self-tasking go, and no spawn of a hurt leader goes
-    /// prone (09-zero-hour.md, The import converts a mob).
-    LedSpawns,
-    /// A spawn whose object gives no unit type, as one of a locomotor no file defines, which the
-    /// import refuses as it refuses the type.
-    NoType,
 }
 
 /// How a spawner sends its kept spawns: each out of its exit, or as their leader, which buds each

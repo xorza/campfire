@@ -6,6 +6,7 @@ use std::str::FromStr;
 use proc_macro2::{TokenStream, TokenTree};
 
 use super::{NamedCode, capability_sources};
+use crate::allowlist::Allowlist;
 use crate::workspace::Workspace;
 
 /// The words no identifier of a capability's production code holds, each as a whole word; test
@@ -62,6 +63,60 @@ fn genre_words(code: &str) -> Vec<String> {
         .flat_map(|identifier| words(identifier))
         .filter(|word| GENRE_WORDS.contains(&word.as_str()))
         .collect()
+}
+
+/// The games whose import keeps a module of the game's name, each as the words of that name; a
+/// capability's code that names one keeps it in a module of that name (AGENTS.md, Game-bound code
+/// lives in a module named after its game).
+const GAMES: [[&str; 2]; 1] = [["zero", "hour"]];
+
+/// The files of a capability outside its game's module that name a game, each for a reason: the
+/// movement model's variant of a game's locomotor, the navigation module's declaration of its
+/// parts and books, the locomotor data's section of it, and the walk that drives its walkers.
+const GAME_NAMED: [&str; 4] = [
+    "navigation/movement_model.rs",
+    "navigation/lib.rs",
+    "navigation/locomotor_data/mod.rs",
+    "navigation/walking.rs",
+];
+
+/// Whether the identifiers of `code` name a game of `GAMES`, its words in a row.
+fn names_a_game(code: &str) -> bool {
+    identifiers(code).iter().any(|identifier| {
+        let words = words(identifier);
+        GAMES
+            .iter()
+            .any(|game| words.windows(game.len()).any(|run| run == game))
+    })
+}
+
+/// Whether `path` lies in a module of a game's name, as `navigation/zero_hour/…`.
+fn in_game_module(path: &str) -> bool {
+    path.split('/').any(|segment| {
+        let segment = segment.strip_suffix(".rs").unwrap_or(segment);
+        GAMES.iter().any(|game| segment == game.join("_"))
+    })
+}
+
+pub(crate) fn no_capability_names_a_game_outside_its_module(workspace: &Workspace) {
+    let allowed = Allowlist::new(&GAME_NAMED);
+    let named: Vec<String> = capability_sources(workspace)
+        .into_iter()
+        .filter(|NamedCode { path, code }| {
+            names_a_game(code) && !in_game_module(path) && !allowed.allows(|&file| file == path)
+        })
+        .map(|NamedCode { path, .. }| path)
+        .collect();
+    assert_eq!(named, Vec::<String>::new());
+    assert_eq!(allowed.unused(), Vec::<&&str>::new());
+}
+
+#[test]
+fn a_game_is_named_by_its_words_in_a_row_and_its_module_holds_it() {
+    assert!(names_a_game("struct ZeroHourDrive;") && names_a_game("mod zero_hour;"));
+    assert!(!names_a_game("let zero = hour;") && !names_a_game("// ZeroHour"));
+    assert!(in_game_module("navigation/zero_hour/mod.rs") && in_game_module("a/zero_hour.rs"));
+    assert!(!in_game_module("navigation/walking.rs"));
 }
 
 pub(crate) fn no_capability_names_a_genres_words(workspace: &Workspace) {

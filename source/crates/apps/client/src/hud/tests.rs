@@ -253,20 +253,26 @@ fn a_selected_unit_is_ringed_at_its_reach_once_drawn_until_it_leaves_the_selecti
 #[test]
 fn a_unit_shows_its_bars_while_selected_when_the_hud_shows_the_selected_alone() {
     // Two units, each gauged on a stand, and none under the mouse, so the selection alone shows
-    // bars: the first's, then the second's; then the second's drawing, torn off its unit, takes
-    // its gauges down.
+    // bars: the first's, then the second's; then a leader's, its two living spawns'; then the
+    // second's drawing, torn off its unit, takes its gauges down.
     let mut app = test_app::view();
     app.init_resource::<HoverMap>();
     app.init_resource::<UnderMouse>();
+    app.init_resource::<MarkedUnits>();
     app.add_systems(
         Update,
-        (HudPlugin::take_down_torn, HudPlugin::show_selected_bars).chain(),
+        (
+            HudPlugin::mark_selected,
+            HudPlugin::take_down_torn,
+            HudPlugin::show_selected_bars,
+        )
+            .chain(),
     );
     let world = app.world_mut();
     world.spawn((Window::default(), PrimaryWindow));
     world.spawn(Camera3d::default());
     let mut ids = IdAllocator::default();
-    let [first, second] = [(); 2].map(|()| {
+    let [first, second, led_first, led_second] = [(); 4].map(|()| {
         let id = ids.allocate();
         let unit = world.spawn(id).id();
         let stand = world.spawn((GaugeStand, Visibility::Inherited)).id();
@@ -282,8 +288,13 @@ fn a_unit_shows_its_bars_while_selected_when_the_hud_shows_the_selected_alone() 
             .id();
         (id, stand, root)
     });
+    let mut living = LivingSpawns::with_capacity(2);
+    living.push(led_first.0);
+    living.push(led_second.0);
+    let leader = ids.allocate();
+    world.spawn((leader, Leader, living));
     let shown = |app: &App| {
-        [first, second].map(|(_, stand, _)| {
+        [first, second, led_first, led_second].map(|(_, stand, _)| {
             *app.world().get::<Visibility>(stand).unwrap() == Visibility::Inherited
         })
     };
@@ -291,12 +302,17 @@ fn a_unit_shows_its_bars_while_selected_when_the_hud_shows_the_selected_alone() 
         .resource_mut::<Selection>()
         .pick(&[first.0], |_| None);
     app.update();
-    assert_eq!(shown(&app), [true, false]);
+    assert_eq!(shown(&app), [true, false, false, false]);
+    app.world_mut()
+        .resource_mut::<Selection>()
+        .pick(&[leader], |_| None);
+    app.update();
+    assert_eq!(shown(&app), [false, false, true, true]);
     app.world_mut()
         .resource_mut::<Selection>()
         .pick(&[second.0], |_| None);
     app.update();
-    assert_eq!(shown(&app), [false, true]);
+    assert_eq!(shown(&app), [false, true, false, false]);
     let (_, stand, root) = second;
     app.world_mut().entity_mut(root).remove::<DrawingOf>();
     app.update();
@@ -312,7 +328,8 @@ fn a_stand_faces_the_camera_in_the_world_whatever_its_root_turns() {
     // stand's turn in the world, the root's then its own, is the camera's facing, each part
     // within the rounding of three products of quaternions, and its scale a pixel at 10 m of
     // the default view, 45° high, on a window 720 pixels high, 2 · 10 · tan 22.5° / 720 m. A
-    // frame that changes neither turns it none, and a turn of its root turns it again.
+    // frame that changes neither turns it none, nor one whose cursor moves, and a turn of its
+    // root turns it again.
     let mut app = App::new();
     app.add_systems(Update, HudPlugin::face_camera);
     let facing = Quat::from_rotation_y(0.5) * Quat::from_rotation_x(FRAC_PI_2);
@@ -344,6 +361,14 @@ fn a_stand_faces_the_camera_in_the_world_whatever_its_root_turns() {
         .get_mut::<Transform>(stand)
         .unwrap()
         .rotation = Quat::IDENTITY;
+    app.update();
+    assert_eq!(
+        app.world().get::<Transform>(stand).unwrap().rotation,
+        Quat::IDENTITY
+    );
+    let mut windows = app.world_mut().query::<&mut Window>();
+    let mut window = windows.single_mut(app.world_mut()).unwrap();
+    window.set_cursor_position(Some(Vec2::new(10.0, 20.0)));
     app.update();
     assert_eq!(
         app.world().get::<Transform>(stand).unwrap().rotation,

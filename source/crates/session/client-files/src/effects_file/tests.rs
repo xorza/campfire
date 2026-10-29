@@ -273,6 +273,21 @@ fn a_list_plays_its_sounds_and_a_sound_that_does_not_hold_or_is_not_held_is_refu
         }
     );
     assert_eq!(EffectsFile::decode(&file.encode()).unwrap(), file);
+    // A refused part leaves the file as it was: a wreck that falls up, a sound of no file.
+    let mut changed = file.clone();
+    let up = WreckGround {
+        gravity: 1.0,
+        ..WreckGround::NONE
+    };
+    assert!(matches!(changed.set_wrecks(up), Err(EffectsError::Wrecks)));
+    let mut silent = file.sounds()[&name("click")].clone();
+    silent.files.clear();
+    let sounds = BTreeMap::from([(name("silent"), silent)]);
+    assert!(matches!(
+        changed.add_sounds(sounds),
+        Err(EffectsError::Sound(_))
+    ));
+    assert_eq!(changed, file);
 
     // A list's sound the file lacks, a sound of no file, a volume past 1, a pitch out of order
     // or of no rate, and a range whose silence is not past its full volume are refused.

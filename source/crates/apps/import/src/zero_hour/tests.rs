@@ -31,6 +31,7 @@ use campfire_stats::{
     ModeStatsData, ModifiersData, StatOp, StatsData, TypePoolsData, UpgradeData, UpgradesData,
 };
 use campfire_store::internals::TestDir;
+use campfire_store::{DirEntries, PathError, ReadError};
 use campfire_units::TypeTagsData;
 use campfire_values::{
     FilterData, Number, Ranked, Relation, RelationSet, Scalar, Share, Stat, TextId,
@@ -38,7 +39,9 @@ use campfire_values::{
 
 use super::*;
 use crate::texture::samples::ktx2;
-use crate::zero_hour::animation_import::{AnimationDropCause, ConvertedAnimation};
+use crate::zero_hour::animation_drop_cause::AnimationDropCause;
+use crate::zero_hour::animation_import::ConvertedAnimation;
+use crate::zero_hour::button_drop_cause::ButtonDropCause;
 use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::error::{NameClash, NameError, VersionDifference};
 use crate::zero_hour::format::big::big_archive::samples::big;
@@ -60,13 +63,15 @@ use crate::zero_hour::format::map::map_file::samples::map;
 use crate::zero_hour::install::samples::{FixtureInstall, fixture, packed_map};
 use crate::zero_hour::look_flags::FlagCondition;
 use crate::zero_hour::model_bones::ModelBones;
+use crate::zero_hour::model_converter::SkipReason;
+use crate::zero_hour::model_converter::SkippedModel;
 use crate::zero_hour::model_import::{Converted, ModelImport};
-use crate::zero_hour::model_writer::{DroppedStates, SkipReason, SkippedModel, StateDropCause};
+use crate::zero_hour::model_writer::DroppedStates;
 use crate::zero_hour::object_flight::samples::shell_projectile;
 use crate::zero_hour::production_bones::ProductionBones;
-use crate::zero_hour::production_import::ButtonDropCause;
 use crate::zero_hour::rules_names::RulesNames;
-use crate::zero_hour::upgrade_import::UpgradeDropCause;
+use crate::zero_hour::state_drop_cause::StateDropCause;
+use crate::zero_hour::upgrade_drop_cause::UpgradeDropCause;
 use crate::zero_hour::weapon_drop_cause::WeaponDropCause;
 
 /// The fixture install's version, as its archives hold their bytes now.
@@ -928,8 +933,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         size: UVec2::new(2, 1),
     });
     let mut rules = ZeroHourRules {
-        objects: ObjectIni::of(&[DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS]),
-        ..ZeroHourRules::default()
+        ..ZeroHourRules::of_objects(ObjectIni::of(&[DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS]))
     };
     rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
     rules.templates.read(PLAYER_TEMPLATES.as_bytes()).unwrap();
@@ -1203,7 +1207,7 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
         ["rock01.glb", "tank.glb"]
     );
     let install = Install::open(&test_dir.path("zh")).unwrap();
-    let mut assets = ModelAssets::new(&install).unwrap();
+    let mut assets = ModelAssets::new(&install);
     let Ok(Converted::Model(tank)) = ModelImport::convert("tank", &mut assets) else {
         panic!("the tank converts");
     };
@@ -1211,21 +1215,30 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
         test_dir.read("one/game/client/models/tank.glb"),
         tank.glb.encode()
     );
-    // Each animation the tank's states name once, as its conversion gives it: its aim's, whose
-    // hierarchy is its model's; its walk's, of a hierarchy no file holds, is dropped.
+    // Only a unit type's look is written (09-zero-hour.md, A look is a unit type's): the 12 of
+    // the fixture's objects that no map places, no start makes, no command set builds and no
+    // weapon fires go, the tank's among them, and with it the one animation its states name, its
+    // aim's, which no other look names, so the package holds no animation; its walk's, of a
+    // hierarchy no file holds, is dropped as it converts.
+    let unnamed = imported
+        .losses
+        .iter()
+        .filter(|loss| matches!(loss, ImportLoss::UnnamedLooks { .. }));
     assert_eq!(
-        test_dir.names("one/game/client/animations"),
-        ["tank.tank_aim.glb"]
+        unnamed.collect::<Vec<_>>(),
+        [&ImportLoss::UnnamedLooks { looks: 12 }]
     );
-    let Ok(ConvertedAnimation::Glb { glb: aim, .. }) =
-        ConvertedAnimation::of("tank.tank_aim", &mut assets)
-    else {
-        panic!("the tank's aim converts");
-    };
-    assert_eq!(
-        test_dir.read("one/game/client/animations/tank.tank_aim.glb"),
-        aim.encode()
-    );
+    assert!(matches!(
+        ConvertedAnimation::of("tank.tank_aim", &mut assets),
+        Ok(ConvertedAnimation::Glb { .. })
+    ));
+    assert!(matches!(
+        DirEntries::read(&test_dir.path("one/game/client/animations")),
+        Err(PathError {
+            error: ReadError::Missing,
+            ..
+        })
+    ));
     let dropped: Vec<&Dropped<AnimationDropCause>> = imported
         .losses
         .iter()
@@ -1295,9 +1308,23 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     let unit = ClientUnit::still;
     // No fixture object gives a `RadarPriority`, a garrison or a capture, so the minimap shows
     // none of them.
+    // The looks of the unit types alone stay, each the look it is of its object.
+    let typed = [
+        "americabarracks",
+        "americacommandcenter",
+        "americainfantrypathfinder",
+        "americainfantryranger",
+        "americapowerplant",
+        "americatankcrusader",
+        "americavehicledozer",
+        "fortresswall",
+        "rocks1",
+        "tankshell",
+    ];
     let looks = |looks: Vec<(&str, ClientUnit)>| {
         looks
             .into_iter()
+            .filter(|(name, _)| typed.contains(name))
             .map(|(name, unit)| {
                 let unit = ClientUnit {
                     radar: RadarShown::Never,
@@ -1652,10 +1679,12 @@ fn a_types_bones_stand_as_its_first_variations_first_animation_places_them() {
     // frame leaves as it is: on glTF's axes `(x, z, −y)`, `(1, 3, −2)`. It names no `Barrel`
     // pivot, its pitch bone, and no launch bone, so no barrels. The pair of variations takes its
     // first's, the reskin's, which are the tank's; the red reskin's draw names no turret.
-    let FixtureInstall { test_dir, install } = FixtureInstall::new();
+    let FixtureInstall {
+        test_dir: _held,
+        install,
+    } = FixtureInstall::new();
     let rules = ZeroHourRules::read(&install).unwrap();
-    let mut writer = PackageWriter::create(&test_dir.path("bones")).unwrap();
-    let mut models = ModelWriter::new(ModelAssets::new(&install).unwrap(), &mut writer);
+    let mut models = ModelWriter::new(ModelAssets::new(&install));
     let flags = LookFlags::of(&rules.game_data, &rules.names, &rules.objects).unwrap();
     let looks = models
         .units(&rules, &mut ImportNames::default(), &flags)
@@ -1687,7 +1716,10 @@ fn a_portable_structures_model_is_drawn_at_its_carriers_bone_while_its_upgrades_
     // at its container's `Turret` bone: each of the carrier's states draws the turret's model at
     // that bone, hidden from its root down, the tank's `RootTransform`, but while the carrier
     // holds the upgrade's tag (riders-and-upgrades.md, A model may be drawn at another's bone).
-    let FixtureInstall { test_dir, install } = FixtureInstall::new();
+    let FixtureInstall {
+        test_dir: _held,
+        install,
+    } = FixtureInstall::new();
     let mut rules = ZeroHourRules::read(&install).unwrap();
     let carried = "Object Carrier
   Draw = W3DModelDraw ModuleTag_01
@@ -1710,12 +1742,11 @@ Object Turret
   End
 End
 ";
-    rules.objects = ObjectIni::of(&[carried]);
+    rules.set_objects(ObjectIni::of(&[carried]));
     let list = "ObjectCreationList OCL_Turret\n  CreateObject\n    ObjectNames = Turret\n    \
                 ContainInsideSourceObject = Yes\n  End\nEnd\n";
     rules.creation_lists.read(list.as_bytes()).unwrap();
-    let mut writer = PackageWriter::create(&test_dir.path("carried")).unwrap();
-    let mut models = ModelWriter::new(ModelAssets::new(&install).unwrap(), &mut writer);
+    let mut models = ModelWriter::new(ModelAssets::new(&install));
     let flags = LookFlags::of(&rules.game_data, &rules.names, &rules.objects).unwrap();
     let looks = models
         .units(&rules, &mut ImportNames::default(), &flags)

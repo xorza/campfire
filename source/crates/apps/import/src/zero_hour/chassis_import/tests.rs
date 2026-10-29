@@ -3,7 +3,8 @@ use campfire_math::Num;
 use super::*;
 use crate::zero_hour::format::ini::object_ini::ObjectFiles;
 
-/// A tank, a car and a soldier, each of its own normal locomotor, and a tank of no look.
+/// A tank, a car and a soldier, each of its own normal locomotor, a tank of no look, and a tank
+/// whose pitch stiffness no `Num` holds.
 const OBJECTS: &str = "Object Tank
   Locomotor = SET_NORMAL Treads
 End
@@ -15,6 +16,9 @@ Object Soldier
 End
 Object Unseen
   Locomotor = SET_NORMAL Treads
+End
+Object Broken
+  Locomotor = SET_NORMAL Stiff
 End
 ";
 
@@ -40,6 +44,11 @@ Locomotor Legs
   Surfaces = GROUND
   Appearance = TWO_LEGS
 End
+Locomotor Stiff
+  Surfaces = GROUND
+  Appearance = TREADS
+  PitchStiffness = 1e40
+End
 ";
 
 #[test]
@@ -50,10 +59,10 @@ fn a_tracked_or_wheeled_look_takes_its_locomotors_chassis() {
     let mut locomotors = LocomotorIni::default();
     locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
     let name = |text: &str| DeclaredName::new(text).unwrap();
-    let mut looks: BTreeMap<DeclaredName, ClientUnit> = ["tank", "car", "soldier"]
+    let mut looks: BTreeMap<DeclaredName, ClientUnit> = ["tank", "car", "soldier", "broken"]
         .map(|look| (name(look), ClientUnit::new(Vec::new())))
         .into();
-    ChassisImport::name(&objects, &locomotors, &mut looks).unwrap();
+    let losses = ChassisImport::name(&objects, &locomotors, &mut looks).unwrap();
     let num = |value: f32| game_float::to_num(value).unwrap();
     // The tank's springs, each its own, its limits of 3° and 6° in radians.
     assert_eq!(
@@ -89,4 +98,13 @@ fn a_tracked_or_wheeled_look_takes_its_locomotors_chassis() {
     // Legs carry no chassis, and an object of no look gains none.
     assert_eq!(looks[&name("soldier")].chassis, None);
     assert!(!looks.contains_key(&name("unseen")));
+    // A stiffness of 10⁴⁰ drops the broken tank's chassis alone, counted.
+    assert_eq!(looks[&name("broken")].chassis, None);
+    assert_eq!(
+        losses,
+        [Dropped {
+            name: "Broken".to_owned(),
+            cause: EffectDropCause::Number,
+        }]
+    );
 }

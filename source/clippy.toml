@@ -25,6 +25,7 @@ disallowed-types = [
     # campfire-app-threads alone sizes Bevy's task pools (02-engine-core.md, An app's threads are one plan).
     { path = "bevy_app::TaskPoolPlugin", reason = "size an app's pools through campfire_app_threads::OneThreadPlugins" },
     { path = "bevy_app::TaskPoolOptions", reason = "size an app's pools through campfire_app_threads::OneThreadPlugins" },
+    { path = "bevy_tasks::TaskPoolBuilder", reason = "start an app's pools through campfire_app_threads::OneThreadPlugins" },
     # campfire-codec alone calls the formats (02-engine-core.md, Serialization): one configuration, one canonical form and one error type for each, and every network message and replicated component encodes through it.
     { path = "postcard::Serializer", reason = "encode through campfire_codec::Binary" },
     { path = "postcard::Deserializer", reason = "decode through campfire_codec::Binary" },
@@ -37,6 +38,9 @@ disallowed-types = [
     { path = "serde_json::Value", reason = "read a value through campfire_codec::JsonValue" },
     { path = "png::Encoder", reason = "encode through campfire_codec::Png" },
     { path = "png::Decoder", reason = "decode through campfire_codec::Png" },
+    { path = "base64::engine::GeneralPurpose", reason = "encode and decode through campfire_codec::Base64" },
+    { path = "base64::write::EncoderWriter", reason = "encode through campfire_codec::Base64" },
+    { path = "base64::read::DecoderReader", reason = "decode through campfire_codec::Base64" },
     # Banned everywhere: randomly seeded, so iteration order differs between runs, which breaks determinism.
     { path = "std::collections::HashMap", reason = "randomly seeded; use a fixed-hasher map" },
     { path = "std::collections::HashSet", reason = "randomly seeded; use a fixed-hasher set" },
@@ -132,6 +136,8 @@ disallowed-methods = [
     # campfire-schedule alone sets a schedule's build settings, which can switch off the ambiguity and hierarchy checks, and its executor, which can run its systems on other threads.
     { path = "bevy_ecs::schedule::Schedule::set_build_settings", reason = "build a sim schedule through campfire_schedule::ScheduleExt" },
     { path = "bevy_ecs::schedule::Schedules::configure_schedules", reason = "build a sim schedule through campfire_schedule::ScheduleExt" },
+    { path = "bevy_app::App::configure_schedules", reason = "build a sim schedule through campfire_schedule::ScheduleExt" },
+    { path = "bevy_app::SubApp::configure_schedules", reason = "build a sim schedule through campfire_schedule::ScheduleExt" },
     { path = "bevy_ecs::schedule::Schedule::set_executor", reason = "run a schedule on one thread through campfire_schedule::ScheduleExt" },
     # Banned everywhere: a query run on the compute pool, as no pass gains threads inside itself (02-engine-core.md, The sim is one schedule on one thread; 02-engine-core.md, No query runs in parallel).
     { path = "bevy_ecs::system::Query::par_iter", reason = "iterate in order; a parallel pass is a decision with its measurement" },
@@ -151,6 +157,12 @@ disallowed-methods = [
     { path = "bevy_ecs::schedule::Schedules::allow_ambiguous_resource", reason = "order the systems instead" },
     { path = "bevy_ecs::world::World::allow_ambiguous_component", reason = "order the systems instead" },
     { path = "bevy_ecs::world::World::allow_ambiguous_resource", reason = "order the systems instead" },
+    { path = "bevy_app::App::ignore_ambiguity", reason = "order the systems instead" },
+    { path = "bevy_app::App::allow_ambiguous_component", reason = "order the systems instead" },
+    { path = "bevy_app::App::allow_ambiguous_resource", reason = "order the systems instead" },
+    { path = "bevy_app::SubApp::ignore_ambiguity", reason = "order the systems instead" },
+    { path = "bevy_app::SubApp::allow_ambiguous_component", reason = "order the systems instead" },
+    { path = "bevy_app::SubApp::allow_ambiguous_resource", reason = "order the systems instead" },
     # Banned everywhere: the OS's temporary directory, which can lie on another file system than the tests' (02-engine-core.md, A test's files are on the tests' file system).
     { path = "std::env::temp_dir", reason = "a test's files live in campfire_store::internals::TestDir" },
 ]

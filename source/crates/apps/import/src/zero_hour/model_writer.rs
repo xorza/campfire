@@ -1,5 +1,5 @@
+use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, BTreeSet};
 
 use bevy_math::Vec3;
 use campfire_client_files::{
@@ -8,30 +8,30 @@ use campfire_client_files::{
     NodeUpgrade, ObjectLook, SpeedRange, StartFrame, StateAnimation, StateClip, StatePlay,
 };
 use campfire_combat::{BarrelData, UnitOffset};
-use campfire_common::{DeclaredName, EnumAll};
-use campfire_package_disk::PackageWriter;
+use campfire_common::DeclaredName;
+use campfire_values::PackagePath;
 use serde::{Deserialize, Serialize};
 
-use crate::gltf::model_bounds::ModelBounds;
 use crate::pose::RigidPose;
 use crate::zero_hour::airfield_bones::{AirfieldBones, PlaceBones};
-use crate::zero_hour::animation_import::{AnimationDropCause, AnimationEnds, ConvertedAnimation};
-use crate::zero_hour::archive_path::ArchivePath;
+use crate::zero_hour::animation_drop_cause::AnimationDropCause;
+use crate::zero_hour::animation_import::AnimationEnds;
 use crate::zero_hour::barrel_recoil::BarrelRecoil;
 use crate::zero_hour::draw_sets::DrawSets;
 use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::error::{ModelError, NameClash, NameError, ZeroHourError};
 use crate::zero_hour::format::game_float;
+use crate::zero_hour::format::ini::object_ini::draw_module::{
+    DrawKind, DrawModule, DrawnState, HideShow, StateLook,
+};
 use crate::zero_hour::format::ini::object_ini::ini_animation::{
     AnimationFlag, IniAnimation, IniMode,
 };
 use crate::zero_hour::format::ini::object_ini::ini_build::IniParking;
 use crate::zero_hour::format::ini::object_ini::ini_contain::ContainClass;
+use crate::zero_hour::format::ini::object_ini::ini_object::{IniObject, PlacedAs};
 use crate::zero_hour::format::ini::object_ini::ini_recoil::IniRecoil;
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::UpgradeEffect;
-use crate::zero_hour::format::ini::object_ini::{
-    DrawKind, DrawModule, DrawnState, HideShow, IniObject, PlacedAs, StateLook,
-};
 use crate::zero_hour::format::look_conditions::LookConditions;
 use crate::zero_hour::game_path;
 use crate::zero_hour::import_name::ImportName;
@@ -39,20 +39,17 @@ use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::look_flags::{FlagCondition, LookFlags};
 use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_bones::ModelBones;
-use crate::zero_hour::model_import::{Converted, ModelImport};
-use crate::zero_hour::model_nodes::{ModelNodes, NodeChanges};
+use crate::zero_hour::model_converter::ConvertedModel;
+use crate::zero_hour::model_converter::Converter;
+use crate::zero_hour::model_converter::SkippedModel;
+use crate::zero_hour::model_converter::WrittenModel;
+use crate::zero_hour::model_nodes::NodeChanges;
 use crate::zero_hour::portable_structure;
 use crate::zero_hour::production_bones::ProductionBones;
+use crate::zero_hour::state_drop_cause::StateDropCause;
 use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::upgrade_import;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
-
-/// A model the objects name that the package lacks, and why.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SkippedModel {
-    pub name: String,
-    pub reason: SkipReason,
-}
 
 /// The condition states of an object's draw module, or of its whole look, the import does not
 /// convert, by the object's name, why, and their count.
@@ -63,64 +60,19 @@ pub struct DroppedStates {
     pub states: usize,
 }
 
-/// Why the import drops a look's condition states: its draw module draws no model in any of them,
-/// so the look holds no draw of it; or the package lacks the model a default state of its object
-/// names, so the object has no look, which the client shows as the engine's shape.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, Serialize, Deserialize)]
-pub enum StateDropCause {
-    Undrawn,
-    Missing,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SkipReason {
-    /// No file of the install holds it.
-    Missing,
-    /// It is a particle emitter, which the importer does not convert.
-    Emitter,
-    /// It is an aggregate of a model's HLOD, a render object the game adds on a pivot, which
-    /// the importer does not convert.
-    Aggregate,
-}
-
 /// The models and the animations of an import and the client's looks of the objects, of
 /// `client/units.toml`: each model converted once, at `client/models/<name>.glb`, and each
 /// animation a unit's look names once, at `client/animations/<name>.glb`, into the package's
 /// writer; the nodes each model's looks read; the animations converted or dropped; the models the
 /// objects name that the package lacks; and the textures the models name that no archive holds.
 #[derive(Debug)]
-pub(crate) struct ModelWriter<'i, 'w> {
-    converter: Converter<'i, 'w>,
+pub(crate) struct ModelWriter<'i> {
+    converter: Converter<'i>,
     written: BTreeMap<String, WrittenModel>,
     /// Each animation a written state names, its poses at its ends when it converted.
     animations: BTreeMap<String, Option<AnimationEnds>>,
     conditions: BTreeMap<DeclaredName, ConditionTest>,
     dropped_states: Vec<DroppedStates>,
-}
-
-/// What a model the objects name gives their looks: the nodes its looks read and the bounds its
-/// looks' tops are measured from; nothing, as it draws nothing, as a `NULL` or a collision box;
-/// or nothing, as the package lacks it, which the report names.
-#[derive(Debug)]
-pub(crate) enum WrittenModel {
-    Nodes {
-        nodes: ModelNodes,
-        bounds: ModelBounds,
-    },
-    Nothing,
-    Skipped,
-}
-
-/// What converts a model or an animation and writes its file: the assets it reads, the writer,
-/// and what the models and the animations lacked so far.
-#[derive(Debug)]
-struct Converter<'i, 'w> {
-    assets: ModelAssets<'i>,
-    writer: &'w mut PackageWriter,
-    skipped: Vec<SkippedModel>,
-    dropped_animations: Vec<Dropped<AnimationDropCause>>,
-    missing_textures: BTreeSet<String>,
-    textures: BTreeSet<ArchivePath>,
 }
 
 /// The looks of an import's `client/units.toml`, which later stages complete before the import
@@ -165,28 +117,27 @@ const MOST_FIRE_POINTS: usize = 40;
 /// track's width (`W3DTerrainTracks.cpp`, `DEFAULT_TRACK_WIDTH`).
 const TREAD_WIDTH: f32 = 4.0;
 
-/// What the models and the animations of an import lacked and drew with: the models the package
-/// lacks, the animations it drops, the textures no archive holds, and the files of those the
-/// models draw with.
+/// What the models and the animations of an import lacked and converted: the models the package
+/// lacks, the animations it drops, and each model and animation converted, by its file, which the
+/// import writes once a look draws it.
 #[derive(Debug)]
 pub(crate) struct ModelReport {
     pub(crate) skipped: Vec<SkippedModel>,
     pub(crate) dropped_states: Vec<DroppedStates>,
     pub(crate) dropped_animations: Vec<Dropped<AnimationDropCause>>,
-    pub(crate) missing_textures: Vec<String>,
-    pub(crate) textures: BTreeSet<ArchivePath>,
+    pub(crate) models: BTreeMap<PackagePath, ConvertedModel>,
+    pub(crate) animations: BTreeMap<PackagePath, Vec<u8>>,
 }
 
-impl<'i, 'w> ModelWriter<'i, 'w> {
-    pub(crate) const fn new(assets: ModelAssets<'i>, writer: &'w mut PackageWriter) -> Self {
+impl<'i> ModelWriter<'i> {
+    pub(crate) const fn new(assets: ModelAssets<'i>) -> Self {
         ModelWriter {
             converter: Converter {
                 assets,
-                writer,
                 skipped: Vec::new(),
                 dropped_animations: Vec::new(),
-                missing_textures: BTreeSet::new(),
-                textures: BTreeSet::new(),
+                models: BTreeMap::new(),
+                animations: BTreeMap::new(),
             },
             written: BTreeMap::new(),
             animations: BTreeMap::new(),
@@ -209,8 +160,8 @@ impl<'i, 'w> ModelWriter<'i, 'w> {
             skipped: self.converter.skipped,
             dropped_states: self.dropped_states,
             dropped_animations: self.converter.dropped_animations,
-            missing_textures: self.converter.missing_textures.into_iter().collect(),
-            textures: self.converter.textures,
+            models: self.converter.models,
+            animations: self.converter.animations,
         }
     }
 }
@@ -243,13 +194,12 @@ struct SubObjectsUpgrade {
     changes: Vec<HideShow>,
 }
 
-impl ModelWriter<'_, '_> {
+impl ModelWriter<'_> {
     /// The looks of `client/units.toml` of `ini`'s objects: each object's look, its models, each at
     /// its object's asset scale, with the nodes its default look hides and the node its turret
-    /// turns (02-engine-core.md, The client draws a projectile with its look), a look of
-    /// no models for an object whose draw modules name none, as it draws nothing, and no look for
-    /// one whose models the package lacks, which the client shows as the engine's shape; and the
-    /// look of each
+    /// turns (02-engine-core.md, The client draws a projectile with its look), a look of no models
+    /// for an object whose draw modules name none, as it draws nothing, and no look for one whose
+    /// models the package lacks, which the client shows as the engine's shape; and the look of each
     /// object that maps place as client objects, as the client's tree or prop buffer draws it
     /// (09-zero-hour.md, The multiplayer rule for client objects): a tree's models of its tree draw
     /// modules, a prop's of its first draw module, when the `W3DModelDraw` family's, each created
@@ -273,7 +223,22 @@ impl ModelWriter<'_, '_> {
         for object in ini.objects() {
             let scale = object.scale();
             let draws = object.draws();
-            let Some(mut own) = self.unit_draws(object, flags)? else {
+            let own = match self.unit_draws(object, flags) {
+                Ok(own) => own,
+                // A number of one object's states the engine cannot hold drops its look alone
+                // (09-zero-hour.md, A fault of one object drops its part).
+                Err(ZeroHourError::StateNumber) => {
+                    let states = object
+                        .draws()
+                        .iter()
+                        .map(|draw| draw.states().count())
+                        .sum();
+                    self.drop_states(object, StateDropCause::Number, states);
+                    None
+                }
+                Err(error) => return Err(error),
+            };
+            let Some(mut own) = own else {
                 continue;
             };
             if let Some(first) = own.first_mut() {
@@ -287,10 +252,7 @@ impl ModelWriter<'_, '_> {
             unit_look.turret = self.node(draws, |draw| draw.turret.as_deref())?;
             unit_look.turret_pitch = self.node(draws, |draw| draw.turret_pitch.as_deref())?;
             // A type of build variations is its first variation's, its bones too.
-            let boned = ini
-                .variations_of(object)
-                .and_then(|mut of_parent| of_parent.next())
-                .unwrap_or(object);
+            let boned = rules.variations.fielded(ini, object);
             let ModelRest {
                 bones: of_model,
                 track_width,
@@ -304,7 +266,7 @@ impl ModelWriter<'_, '_> {
                 .map(|_| self.fire_points(boned.draws(), boned.scale()))
                 .transpose()?
                 .filter(|points| !points.is_empty());
-            if let Some(of_parent) = ini.variations_of(object) {
+            if let Some(of_parent) = rules.variations.objects_of(ini, object) {
                 let mut looks = Vec::with_capacity(of_parent.len());
                 for variation in of_parent {
                     looks.push(self.variation_look(variation, &unit_look, flags)?);
@@ -637,7 +599,7 @@ impl ModelWriter<'_, '_> {
 
     /// Whether the animation `name` converts, which it converts and writes the first time a
     /// written state names it.
-    fn animation(&mut self, name: &str) -> Result<bool, ZeroHourError> {
+    pub(super) fn animation(&mut self, name: &str) -> Result<bool, ZeroHourError> {
         Ok(self.animation_ends(name)?.is_some())
     }
 
@@ -769,7 +731,7 @@ impl ModelWriter<'_, '_> {
                     let [at, way] = nodes.pivot_pose(&parked, &pristine)?;
                     places.push(PlaceBones {
                         at: ground(at),
-                        angle: (-way.z).atan2(way.x).to_degrees(),
+                        angle: libm::atan2f(-way.z, way.x).to_degrees(),
                         hangar,
                         prep: point(format!("Runway{col}Prep{row}"))?,
                         runway: col - 1,
@@ -986,7 +948,7 @@ impl ModelWriter<'_, '_> {
 impl SubObjectsUpgrade {
     /// The `SubObjectsUpgrade`s of `object` whose tag has a name, as the upgrades' import keeps
     /// them (09-zero-hour.md, An upgrade's look is a tag).
-    fn of(object: &IniObject) -> Vec<Self> {
+    pub(super) fn of(object: &IniObject) -> Vec<Self> {
         let mut upgrades = Vec::new();
         for module in object.upgrades() {
             let UpgradeEffect::SubObjects { show, hide } = &module.effect else {
@@ -1032,58 +994,6 @@ impl DrawKeys {
                 Ok(name)
             }
         }
-    }
-}
-
-impl Converter<'_, '_> {
-    /// Converts the animation `name` and writes its file; its poses at its ends when it
-    /// converted, and `dropped_animations` gaining one the package lacks.
-    fn animation(&mut self, name: &str) -> Result<Option<AnimationEnds>, ZeroHourError> {
-        match ConvertedAnimation::of(name, &mut self.assets)? {
-            ConvertedAnimation::Glb { glb, ends } => {
-                self.writer
-                    .write(game_path::animation(name)?, &glb.encode())?;
-                Ok(Some(ends))
-            }
-            ConvertedAnimation::Dropped(cause) => {
-                self.dropped_animations.push(Dropped {
-                    name: name.to_owned(),
-                    cause,
-                });
-                Ok(None)
-            }
-        }
-    }
-
-    /// Converts the model `name` and writes its files; what it gives its looks, `skipped` gaining
-    /// a model the package lacks.
-    fn convert(&mut self, name: &str) -> Result<WrittenModel, ZeroHourError> {
-        let reason = match ModelImport::convert(name, &mut self.assets)? {
-            Converted::Model(import) => {
-                let bounds = ModelBounds::of(&import.glb.document);
-                self.writer
-                    .write(game_path::model(name)?, &import.glb.encode())?;
-                self.missing_textures.extend(import.missing_textures);
-                self.textures.extend(import.textures);
-                self.skipped
-                    .extend(import.aggregates.into_iter().map(|name| SkippedModel {
-                        name,
-                        reason: SkipReason::Aggregate,
-                    }));
-                return Ok(WrittenModel::Nodes {
-                    nodes: import.nodes,
-                    bounds,
-                });
-            }
-            Converted::Nothing => return Ok(WrittenModel::Nothing),
-            Converted::Emitter => SkipReason::Emitter,
-            Converted::Missing => SkipReason::Missing,
-        };
-        self.skipped.push(SkippedModel {
-            name: name.to_owned(),
-            reason,
-        });
-        Ok(WrittenModel::Skipped)
     }
 }
 

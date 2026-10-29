@@ -37,7 +37,7 @@ use campfire_sim::Unpredicted;
 use campfire_units::{TypeOriginBook, Variations};
 use campfire_values::{PackageIndex, Team, UnitType};
 use serde::Deserialize;
-use tracing::error;
+use tracing::{error, warn};
 
 use crate::view::client_data::ClientLoad;
 use crate::view::drawing::{Drawing, DrawingOf};
@@ -60,14 +60,24 @@ use crate::view::unit_looks::{LookModel, LookNodes, LookTypes, ModelSource, Unit
 pub(crate) struct UnitModelsPlugin;
 
 /// A model drawn at a node of the first model of its draw's state, its host, which stands where
-/// that node does each frame: the host, the node's name, the node once its host's scene spawned,
+/// that node does each frame: the host, the node's name, the node as its host's dressing found it,
 /// and the model's own scale (riders-and-upgrades.md, A model may be drawn at another's bone).
 #[derive(Component, Debug)]
 pub(crate) struct AtBone {
     host: Entity,
     bone: Arc<str>,
-    node: Option<Entity>,
+    node: BoneNode,
     scale: f32,
+}
+
+/// The node a model at a bone stands at, as its host's dressing found it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BoneNode {
+    /// The host's scene has not spawned.
+    Waiting,
+    At(Entity),
+    /// The host's scene holds no node of the name, which the model then never follows.
+    Missing,
 }
 
 impl AtBone {
@@ -76,7 +86,7 @@ impl AtBone {
         Self {
             host,
             bone,
-            node: None,
+            node: BoneNode::Waiting,
             scale,
         }
     }
@@ -309,8 +319,7 @@ impl UnitModelsPlugin {
             commands
                 .entity(pivots.player)
                 .insert(AnimationPlayer::default());
-            for (node, path) in tree.targets(pivots.player) {
-                let target = AnimationTargetId::from_names(path.iter());
+            for (node, target) in tree.targets(pivots.player) {
                 commands
                     .entity(node)
                     .insert((target, AnimatedBy(pivots.player)));
@@ -341,23 +350,34 @@ impl UnitModelsPlugin {
     /// its turret's turn applied: the place and the turn of the node in its unit's drawing, through
     /// each of its parents up to its host, at the model's own scale alone, as a bone's transform in
     /// the original is rigid, its model's scale moving its pivots alone (riders-and-upgrades.md, A
-    /// model may be drawn at another's bone); one whose host's scene has not spawned,
-    /// or holds no such node, stays as it is, and one whose host went is left for its draw to
-    /// remove.
+    /// model may be drawn at another's bone). The node is looked up once, as its host is dressed:
+    /// one whose host's scene has not spawned, or holds no such node, which is logged once, stays
+    /// as it is, and one whose host went is left for its draw to remove.
     fn follow_bones(
         mut attached: Query<'_, '_, (&mut AtBone, &mut Transform)>,
         nodes: Query<'_, '_, (&Transform, Option<&ChildOf>), Without<AtBone>>,
-        (children, names): (Query<'_, '_, &Children>, Query<'_, '_, &Name>),
+        (children, names, dressed): (
+            Query<'_, '_, &Children>,
+            Query<'_, '_, &Name>,
+            Query<'_, '_, (), With<Dressed>>,
+        ),
     ) {
         for (mut at_bone, mut transform) in &mut attached {
             let host = at_bone.host;
-            if at_bone.node.is_none() {
+            if at_bone.node == BoneNode::Waiting && dressed.contains(host) {
                 let bone = &*at_bone.bone;
-                at_bone.node = children
+                let found = children
                     .iter_descendants(host)
                     .find(|&node| names.get(node).is_ok_and(|name| name.as_str() == bone));
+                at_bone.node = found.map_or_else(
+                    || {
+                        warn!(bone, "a model stands at a bone its host's scene lacks");
+                        BoneNode::Missing
+                    },
+                    BoneNode::At,
+                );
             }
-            let Some(mut node) = at_bone.node else {
+            let BoneNode::At(mut node) = at_bone.node else {
                 continue;
             };
             let mut placed = Transform::IDENTITY;
@@ -448,22 +468,25 @@ impl ModelTree<'_, '_, '_> {
         Some(ModelPivots { player, meshes })
     }
 
-    /// Each pivot of the hierarchy rooted at `root`, `root` itself first, with the names of the
-    /// nodes from `root` down to it, as Bevy's glTF loader names a clip's target by them.
-    fn targets(&self, root: Entity) -> Vec<(Entity, Vec<Name>)> {
+    /// Each pivot of the hierarchy rooted at `root`, `root` itself first, with its animation
+    /// target, which Bevy's glTF loader hashes of the names of the nodes from `root` down to it.
+    /// The walk goes depth first, so the path holds a node's ancestors as it comes to it.
+    fn targets(&self, root: Entity) -> Vec<(Entity, AnimationTargetId)> {
         let mut targets = Vec::new();
-        let mut below = vec![(root, Vec::new())];
-        while let Some((node, mut path)) = below.pop() {
+        let mut path: Vec<&str> = Vec::new();
+        let mut below = vec![(root, 0)];
+        while let Some((node, depth)) = below.pop() {
             let Ok(name) = self.names.get(node) else {
                 continue;
             };
-            path.push(name.clone());
+            path.truncate(depth);
+            path.push(name.as_str());
             for &child in self.children.get(node).into_iter().flatten() {
                 if !self.is_mesh(child) {
-                    below.push((child, path.clone()));
+                    below.push((child, depth + 1));
                 }
             }
-            targets.push((node, path));
+            targets.push((node, AnimationTargetId::from_iter(&path)));
         }
         targets
     }

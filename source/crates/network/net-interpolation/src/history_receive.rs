@@ -5,7 +5,7 @@ use bevy_ecs::prelude::*;
 use bevy_replicon::prelude::AppMarkerExt;
 use bevy_replicon::prelude::RuleFns;
 use bevy_replicon::shared::replication::deferred_entity::DeferredEntity;
-use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
+use bevy_replicon::shared::replication::diff::Diffable;
 use bevy_replicon::shared::replication::registry::ctx::WriteCtx;
 use bevy_replicon::shared::replication::registry::receive_fns::WriteFn;
 use bytes::Bytes;
@@ -19,7 +19,7 @@ pub(crate) fn register_marker_fns<C: HistoryComponent>(app: &mut App) {
     register_interpolated_marker_fns::<C>(app, write_history::<C>);
 }
 
-pub(crate) fn register_diff_marker_fns<C: HistoryComponent + RepliconDiffable>(app: &mut App) {
+pub(crate) fn register_diff_marker_fns<C: HistoryComponent + Diffable>(app: &mut App) {
     register_interpolated_marker_fns::<C>(app, write_history_diff::<C>);
 }
 
@@ -39,7 +39,7 @@ fn write_history<C: HistoryComponent>(
     ConfirmedHistory::receive_whole(ctx, rule_fns, entity, message, |_, _| {})
 }
 
-fn write_history_diff<C: HistoryComponent + RepliconDiffable>(
+fn write_history_diff<C: HistoryComponent + Diffable>(
     ctx: &mut WriteCtx<'_>,
     _rule_fns: &RuleFns<C>,
     entity: &mut DeferredEntity<'_>,

@@ -79,7 +79,7 @@ impl<'a> IntoIterator for &'a LivingSpawns {
 }
 
 impl SimComponent for LivingSpawns {
-    const NAME: &'static str = "production.living_spawns";
+    const NAME: &'static str = "units.living_spawns";
     type Host = UnitEntity;
 
     // A restore's untrusted list holds each spawn once, in increasing stable id, and only units

@@ -272,6 +272,9 @@ pub enum LogError {
     /// The file holds no segment.
     #[error("session log holds no segment")]
     NoSegment,
+    /// The file holds a segment past the most a seed chain has, `SeedChain::MAX_LEN`.
+    #[error("session log holds segment {segment}, past the most a session has")]
+    PastLastSegment { segment: u32 },
     /// The checkpoint record of segment `segment` does not decode, or a delegation it carries
     /// does not parse.
     #[error("session log checkpoint of segment {segment} does not read")]

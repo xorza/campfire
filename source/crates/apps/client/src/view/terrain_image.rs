@@ -223,7 +223,7 @@ mod tests {
     use campfire_store::internals::TestDir;
 
     use super::*;
-    use crate::view::package_source::samples::package;
+    use crate::view::package_source::internals::package;
 
     /// A KTX2 file of `side` × `side` texels at three levels, each texel its column, its row and
     /// its level, opaque.

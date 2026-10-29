@@ -65,7 +65,7 @@ fn tank() -> ModelImport {
         test_dir: _dir,
         install,
     } = FixtureInstall::new();
-    let mut assets = ModelAssets::new(&install).unwrap();
+    let mut assets = ModelAssets::new(&install);
     convert("Tank", &mut assets)
 }
 
@@ -358,7 +358,7 @@ fn a_name_is_an_hlod_a_mesh_alone_or_a_render_object_that_draws_nothing() {
         test_dir: _dir,
         install,
     } = FixtureInstall::new();
-    let mut assets = ModelAssets::new(&install).unwrap();
+    let mut assets = ModelAssets::new(&install);
     // `File.Mesh` is a mesh alone, at the scene's root, and its materials are named by it.
     let hull = convert("TANK.HULL", &mut assets);
     let document = &hull.glb.document;
@@ -473,7 +473,7 @@ fn a_shader_of_no_primary_gradient_draws_its_texture_alone_unlit() {
         test_dir: _dir,
         install,
     } = FixtureInstall::new();
-    let assets = ModelAssets::new(&install).unwrap();
+    let assets = ModelAssets::new(&install);
     // Two triangles of vertex colors, one of `Rock.tga`, which the archives hold, and one of
     // `Gone.tga`, which they do not; a diffuse of (255, 128, 0), half opaque, and `emissive`
     // light, which vertex colors allow only where no lit shader draws them.
@@ -590,7 +590,7 @@ fn a_triangle_of_no_texture_draws_what_its_shader_makes_of_the_null_vector() {
         test_dir: _dir,
         install,
     } = FixtureInstall::new();
-    let assets = ModelAssets::new(&install).unwrap();
+    let assets = ModelAssets::new(&install);
     // Seven triangles of no texture, a diffuse of (255, 128, 0) and red emissive light, each
     // under its shader: texturing off; texturing on, opaque, by an alpha test and by alpha,
     // each modulating; adding, opaque; and two whose detail stages, of no texture either,
@@ -694,7 +694,7 @@ fn each_pass_and_detail_stage_is_a_layer_over_the_one_before() {
         test_dir: _dir,
         install,
     } = FixtureInstall::new();
-    let assets = ModelAssets::new(&install).unwrap();
+    let assets = ModelAssets::new(&install);
     let mut builder = ModelBuilder::new("layers");
     let stage = |coordinates: Vec<[f32; 2]>| Stage {
         textures: Indexing::One(0),
@@ -880,7 +880,7 @@ fn an_hlod_of_a_pivot_its_hierarchy_lacks_or_of_two_nodes_of_one_name_is_refused
         test_dir: _dir,
         install,
     } = FixtureInstall::new();
-    let assets = ModelAssets::new(&install).unwrap();
+    let assets = ModelAssets::new(&install);
     let pivot = |name: &str, parent| Pivot {
         name: name.to_owned(),
         parent,

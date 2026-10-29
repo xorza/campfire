@@ -28,7 +28,7 @@ impl UdpServer {
 
     /// The parts of the server's endpoint over `io`, which admits each address within
     /// `admission` and draws its secrets and connection IDs from `random`.
-    pub fn serve<Io>(
+    pub fn endpoint<Io>(
         self,
         io: Io,
         admission: AdmissionSetup,
@@ -50,7 +50,7 @@ impl UdpServer {
     /// through its `io()`, its random numbers from `seed`, so a run of a seed repeats in all but
     /// the bytes of TLS's key shares, which TLS draws from the OS.
     pub fn emulated(self, admission: AdmissionSetup, seed: u64) -> EndpointPieces<EmulatedWires> {
-        self.serve(EmulatedWires::server(), admission, Random::seeded(seed))
+        self.endpoint(EmulatedWires::server(), admission, Random::seeded(seed))
     }
 }
 

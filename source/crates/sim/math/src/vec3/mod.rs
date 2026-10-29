@@ -241,9 +241,17 @@ impl Vec3 {
     pub const fn checked_rotated_y(self, turn: SinCos) -> Option<Self> {
         let (x, z) = (self.x.to_bits() as i128, self.z.to_bits() as i128);
         let (sin, cos) = (turn.sin.to_bits() as i128, turn.cos.to_bits() as i128);
+        // Each product fits an `i128`; their sum does not for every pair, as no `SinCos` but
+        // its own constructors' keeps it a unit pair.
+        let (Some(turned_x), Some(turned_z)) = (
+            (x * cos).checked_add(z * sin),
+            (z * cos).checked_sub(x * sin),
+        ) else {
+            return None;
+        };
         match (
-            Num::from_raw_products(x * cos + z * sin),
-            Num::from_raw_products(z * cos - x * sin),
+            Num::from_raw_products(turned_x),
+            Num::from_raw_products(turned_z),
         ) {
             (Some(x), Some(z)) => Some(Self::new(x, self.y, z)),
             _ => None,
@@ -263,9 +271,15 @@ impl Vec3 {
     pub const fn checked_rotated_z(self, turn: SinCos) -> Option<Self> {
         let (x, y) = (self.x.to_bits() as i128, self.y.to_bits() as i128);
         let (sin, cos) = (turn.sin.to_bits() as i128, turn.cos.to_bits() as i128);
+        let (Some(turned_x), Some(turned_y)) = (
+            (x * cos).checked_sub(y * sin),
+            (x * sin).checked_add(y * cos),
+        ) else {
+            return None;
+        };
         match (
-            Num::from_raw_products(x * cos - y * sin),
-            Num::from_raw_products(x * sin + y * cos),
+            Num::from_raw_products(turned_x),
+            Num::from_raw_products(turned_y),
         ) {
             (Some(x), Some(y)) => Some(Self::new(x, y, self.z)),
             _ => None,

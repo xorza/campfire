@@ -166,8 +166,7 @@ End
 #[test]
 fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height() {
     let mut rules = ZeroHourRules {
-        objects: ObjectIni::of(&[BODIES]),
-        ..ZeroHourRules::default()
+        ..ZeroHourRules::of_objects(ObjectIni::of(&[BODIES]))
     };
     rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
     let of = |name: &str| ImportedType::of(rules.objects.object(name.as_bytes()).unwrap(), &rules);
@@ -263,8 +262,7 @@ fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height
     // mean of its climb from rest by its lift net of gravity, 56, braking by gravity, 64.
     assert_eq!(of("Heli"), Err(TypeError::Flight));
     let mut shipped = ZeroHourRules {
-        objects: ObjectIni::of(&[BODIES]),
-        ..ZeroHourRules::default()
+        ..ZeroHourRules::of_objects(ObjectIni::of(&[BODIES]))
     };
     shipped.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
     shipped.game_data.gravity = -64.0;
@@ -808,8 +806,7 @@ End
 #[test]
 fn a_type_of_an_ai_module_that_drives_retaliates_by_its_vision_range() {
     let mut rules = ZeroHourRules {
-        objects: ObjectIni::of(&[ANSWERING]),
-        ..ZeroHourRules::default()
+        ..ZeroHourRules::of_objects(ObjectIni::of(&[ANSWERING]))
     };
     rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
     let of = |rules: &ZeroHourRules, name: &str| {

@@ -64,7 +64,8 @@ impl FixedSession {
                 visibility,
                 picks: &picks,
             })
-            .unwrap();
+            .unwrap()
+            .terms;
         Self {
             packages,
             terms,

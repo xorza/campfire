@@ -18,18 +18,18 @@ use campfire_console::{
     RunTo, SessionPhase, UnitActivity, UnitSelection, UnitsAsk,
 };
 use campfire_harness::MatchUnits;
+use campfire_host::ReceivedTick;
 use campfire_host::internals::TickHashes;
-use campfire_host::{ReceivedTick, ServerDir, SessionDir};
 use campfire_net::ClientConsole;
-use campfire_net::SimServerWorld;
 use campfire_net::internals::SimServerWorldInternals;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_net_prediction::RollbackMode;
-use campfire_protocol::{SeedChain, SessionLog};
-use campfire_runner::{Replay, Session, SessionWorld};
-use campfire_sim::{SimTick, SimWorld, StateRegistry};
-use campfire_store::InputFile;
+use campfire_protocol::SeedChain;
+use campfire_runner::Session;
+use campfire_sim::{SimTick, SimWorld};
 use campfire_store::internals::TestDir;
+
+use crate::{published_replay, snapshots};
 
 /// The most frames a reply takes.
 const PATIENCE: usize = 400;
@@ -230,36 +230,12 @@ fn a_console_runs_the_local_match_and_reads_it_between_two_ticks() {
         }
     }
     local.server_mut().world_mut().settle_checkpoint();
-    verifies(&mut local, &test_dir, &hash_300);
-}
-
-/// Ends the session, publishes its log and replays it, as a verifier does: each checkpoint's
-/// snapshot restores to its hash, and the replay reaches `hash_300` after tick 300.
-fn verifies(local: &mut InProcessMatch, test_dir: &TestDir, hash_300: &str) {
-    local.server_mut().world_mut().end_session().unwrap();
-    local.server_mut().world_mut().session_mut().close_journal();
-    let held = local.server().world().resource::<Session>().log();
-    assert_eq!(held.checkpoints().count(), 1);
-    let revealed = held.revealed_seeds().unwrap();
-    let last = revealed.seed(held.segment()).unwrap().clone();
-    let id = held.session_id();
-    let data = local.server().world().resource::<ServerDir>();
-    let file = SessionDir::publish(data, id, &last).unwrap();
-    let bytes = InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap();
-    let published = SessionLog::decode(&bytes).unwrap();
-    let snapshots = test_dir
-        .path("data/sessions")
-        .join(id.to_string())
-        .join("snapshots");
-    let mut replay = Replay::of(published, local.packages()).unwrap();
-    let records: Vec<_> = (replay.game().session().log().checkpoints())
-        .cloned()
-        .collect();
-    for record in &records {
-        let file = snapshots.join(record.snapshot.to_string());
-        let snapshot = InputFile::read(&file, StateRegistry::MAX_SNAPSHOT_LEN).unwrap();
-        assert_eq!(replay.check_snapshot(record, &snapshot), Ok(()));
-    }
+    let checkpoints = (local.server().world().resource::<Session>().log())
+        .checkpoints()
+        .count();
+    assert_eq!(checkpoints, 1);
+    let snapshots = snapshots(&test_dir, &local);
+    let mut replay = published_replay(&mut local, &snapshots);
     replay.run_to(Tick::new(301), |_| {}).unwrap();
     assert_eq!(replay.game().state_hash().to_string(), hash_300);
 }

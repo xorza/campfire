@@ -17,7 +17,7 @@ fn on_match_start(ctx) {
     let factions = ctx.offers("faction");
     for player in ctx.players {
         ctx.add_resource(player, "money", ctx.params.start_money);
-        if !player.held {
+        if !player.is_held {
             continue;
         }
         let picked = ctx.chosen(player, "faction");

@@ -4,7 +4,7 @@ use campfire_client_files::{ConditionTest, StateSet};
 use campfire_common::DeclaredName;
 
 use crate::zero_hour::error::ZeroHourError;
-use crate::zero_hour::format::ini::object_ini::DrawModule;
+use crate::zero_hour::format::ini::object_ini::draw_module::DrawModule;
 use crate::zero_hour::look_flags::{FlagCondition, LookFlags};
 
 /// The sets of a draw module's states, each state's in order, each of the names of its tested

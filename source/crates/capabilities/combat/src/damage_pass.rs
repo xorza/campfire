@@ -189,12 +189,12 @@ impl DamagePass {
                     };
                     let amount = match (weigh, run.batch()) {
                         (Some(weigh), Some(batch)) => match (weigh.heal)(batch, heal) {
-                            Some(Ok(amount)) => amount,
-                            Some(Err(error)) => {
+                            Ok(Some(amount)) => amount,
+                            Err(error) => {
                                 batch.record(Some(heal.target), Hook::of::<CalcHeal>(), &error);
                                 heal.amount
                             }
-                            None => heal.amount,
+                            Ok(None) => heal.amount,
                         },
                         _ => heal.amount,
                     };
@@ -211,12 +211,12 @@ impl DamagePass {
             };
             let amount = match (weigh, run.batch()) {
                 (Some(weigh), Some(batch)) => match (weigh.damage)(batch, damage) {
-                    Some(Ok(amount)) => amount,
-                    Some(Err(error)) => {
+                    Ok(Some(amount)) => amount,
+                    Err(error) => {
                         batch.record(Some(damage.target), Hook::of::<CalcDamage>(), &error);
                         damage.amount
                     }
-                    None => damage.amount,
+                    Ok(None) => damage.amount,
                 },
                 _ => damage.amount,
             };

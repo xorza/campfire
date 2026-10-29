@@ -7,7 +7,6 @@ use bevy::math::{Dir3, Quat, Vec3};
 use bevy::mesh::{Mesh, MeshBuilder, Meshable};
 use bevy::shape::{Cuboid, Ray3d, Sphere};
 use bevy::transform::components::{GlobalTransform, Transform};
-use campfire_math::SplitMix64;
 use campfire_measure::{Kind, Scale};
 use campfire_sim::IdAllocator;
 use campfire_values::Team;
@@ -20,6 +19,7 @@ use crate::view::file_material::FileMaterial;
 use crate::view::footing::Footing;
 use crate::view::look::UnitShape;
 use crate::view::pixel_scale::PixelScale;
+use crate::view::view_dice::ViewDice;
 
 /// The units of the scene, as many as a large Zero Hour battle holds.
 const COUNT: usize = 1000;
@@ -28,11 +28,8 @@ const COUNT: usize = 1000;
 /// `scale` shows it: of every eight, seven spheres of 320 triangles and radius 0.3 to 1.5 m, and
 /// one box of half sides 2 to 6 m, 6 m tall, at any yaw; and the two meshes.
 fn scene(seed: u64, scale: &PixelScale) -> (PickScene, Assets<Mesh>) {
-    let mut words = SplitMix64::new(seed);
-    let mut draw = |least: f32, most: f32| {
-        let unit = (words.next_u64() >> 40) as f32 / (1_u64 << 24) as f32;
-        least + unit * (most - least)
-    };
+    let mut dice = ViewDice::new(seed);
+    let mut draw = |least: f32, most: f32| dice.between(least, most);
     let mut meshes = Assets::<Mesh>::default();
     let ball = meshes.add(Sphere::new(1.0).mesh().ico(2).unwrap()).id();
     let cube = meshes.add(Cuboid::new(2.0, 2.0, 2.0).mesh().build()).id();

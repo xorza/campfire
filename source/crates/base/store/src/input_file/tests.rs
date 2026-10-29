@@ -21,12 +21,12 @@ fn a_read_gives_a_files_bytes_within_its_bound_and_says_why_it_refuses() {
     // A stream within the bound gives the bytes and the file's length as it opened; one byte
     // past is too large before it reads.
     let mut streamed = Vec::new();
-    let mut stream = InputFile::stream_within(&five, 5).unwrap();
+    let mut stream = InputFile::stream(&five, 5).unwrap();
     assert_eq!(stream.stamp().len, 5);
     stream.read_to_end(&mut streamed).unwrap();
     assert_eq!(streamed, b"12345");
     assert!(matches!(
-        InputFile::stream_within(&five, 4).unwrap_err().error,
+        InputFile::stream(&five, 4).unwrap_err().error,
         ReadError::TooLarge { max: 4 }
     ));
 
@@ -46,6 +46,14 @@ fn a_read_gives_a_files_bytes_within_its_bound_and_says_why_it_refuses() {
         refused(&test_dir.path("dir"), 64),
         ReadError::NotFile
     ));
+    // A pipe is no file, and opens without waiting for a writer, so one swapped in after its
+    // path's check is still refused at once.
+    if test_dir.pipe("pipe") {
+        let pipe = test_dir.path("pipe");
+        assert!(matches!(refused(&pipe, 64), ReadError::NotFile));
+        let opened = NoFollow::open(&pipe).unwrap().unwrap();
+        assert!(!opened.metadata().unwrap().is_file());
+    }
     // A link to the file is refused, by each read, and leads to the file by its target's path;
     // one to no file leads nowhere.
     test_dir.link("five", "link");
@@ -84,13 +92,15 @@ fn a_read_gives_a_files_bytes_within_its_bound_and_says_why_it_refuses() {
     assert_eq!(InputFile::read(&binary, 64).unwrap(), [0xff, 0xfe]);
 
     // A stream gives the length it opened with and the bytes; it refuses as a read does.
-    let mut stream = InputFile::stream(&five).unwrap();
+    let mut stream = InputFile::stream(&five, 64).unwrap();
     assert_eq!(stream.len(), 5);
     let mut streamed = Vec::new();
     stream.read_to_end(&mut streamed).unwrap();
     assert_eq!(streamed, b"12345");
     assert!(matches!(
-        InputFile::stream(&test_dir.path("dir")).unwrap_err().error,
+        InputFile::stream(&test_dir.path("dir"), 64)
+            .unwrap_err()
+            .error,
         ReadError::NotFile
     ));
 
@@ -133,12 +143,17 @@ fn a_read_gives_a_files_bytes_within_its_bound_and_says_why_it_refuses() {
         ReadError::Missing
     ));
 
-    // The time of change is its handle's, no later than now; a stream's stamp and the ranges'
-    // hold it and the length.
-    let stamp = InputFile::stream(&five).unwrap().stamp();
+    // The time of change is its handle's, no later than now; a stream's stamp, the ranges' and
+    // the file's own hold it and the length; a missing file has none.
+    let stamp = InputFile::stream(&five, 64).unwrap().stamp();
     assert!(stamp.modified <= SystemTime::now());
     assert_eq!(stamp.len, 5);
     assert_eq!(ranges.stamp(), stamp);
+    assert_eq!(InputFile::stamp(&five).unwrap(), stamp);
+    assert!(matches!(
+        InputFile::stamp(&none).unwrap_err().error,
+        ReadError::Missing
+    ));
 }
 
 #[test]

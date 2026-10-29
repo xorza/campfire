@@ -303,7 +303,9 @@ fn on_interrupt(ctx, caster, target) {
     let run = |game: &mut Match, x: i16, cut: &dyn Fn(&mut Match, StableId)| {
         let caster = Abilities::caster(game, drain, 1);
         *game.part_mut::<Position>(caster) = Position::from((x, 0, 0));
-        let target = Abilities::spawn_combatant(game, (x + 1, 0, 0), Team::new(1), ());
+        let target = Spawn::named(game, "combatant", (x + 1, 0, 0))
+            .team(Team::new(1))
+            .place(game);
         Abilities::cast(game, caster, ActionTarget::Unit(target));
         let mut seen = Vec::new();
         for tick in 1..=12 {
@@ -379,7 +381,9 @@ fn on_interrupt(ctx, caster, target) {
     // does not go back to its order and start what the slot holds then.
     let caster = Abilities::caster(&mut game, drain, 1);
     *game.part_mut::<Position>(caster) = Position::from((120, 0, 0));
-    let target = Abilities::spawn_combatant(&mut game, (121, 0, 0), Team::new(1), ());
+    let target = Spawn::named(&game, "combatant", (121, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     ProgressDues::change_unit(&mut game, caster, |progress, dues| {
         progress.order(0, ActionTarget::Unit(target), dues);
     });
@@ -441,13 +445,13 @@ fn on_resolve(ctx, caster, target) {
             (draw, SlotKind::new(0), Rank::new(1)),
             (other, SlotKind::new(0), Rank::new(1)),
         ]));
-        let caster = Abilities::spawn_caster(
-            game,
-            position,
-            Team::new(0),
-            (Owner::new(PlayerSlot::new(0)), slots),
-        );
-        let target = Abilities::spawn_combatant(game, (x + 3, 0, 0), Team::new(1), ());
+        let caster = Spawn::named(game, "caster", position)
+            .team(Team::new(0))
+            .parts((Owner::new(PlayerSlot::new(0)), slots))
+            .place(game);
+        let target = Spawn::named(game, "combatant", (x + 3, 0, 0))
+            .team(Team::new(1))
+            .place(game);
         (caster, target)
     };
     let order = |game: &mut Match, id: StableId, slot: u8, target: ActionTarget| {
@@ -497,13 +501,13 @@ fn on_resolve(ctx, caster, target) {
     // The same script in an action that does not charge fails its call.
     let position = Vec3::from((100, 0, 0));
     let slots = TimedSlots::new(ActionSlots::new([(plain, SlotKind::new(0), Rank::new(1))]));
-    let caster = Abilities::spawn_caster(
-        &mut game,
-        position,
-        Team::new(0),
-        (Owner::new(PlayerSlot::new(0)), slots),
-    );
-    let target = Abilities::spawn_combatant(&mut game, (103, 0, 0), Team::new(1), ());
+    let caster = Spawn::named(&game, "caster", position)
+        .team(Team::new(0))
+        .parts((Owner::new(PlayerSlot::new(0)), slots))
+        .place(&mut game);
+    let target = Spawn::named(&game, "combatant", (103, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
     let failed = Abilities::failed_calls(&mut game);
     assert_eq!(failed.len(), 1);
@@ -563,7 +567,9 @@ fn on_resolve(ctx, caster, target) {
     let far = Abilities::load(&mut game, "far", &global, script);
     for (action, damage) in [(near, 50), (far, 1)] {
         let caster = Abilities::caster(&mut game, action, 1);
-        let target = Abilities::spawn_combatant(&mut game, (3, 0, 0), Team::new(1), ());
+        let target = Spawn::named(&game, "combatant", (3, 0, 0))
+            .team(Team::new(1))
+            .place(&mut game);
         Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
         assert_eq!(Stats::health(&game, target), 500 - damage);
     }
@@ -585,17 +591,18 @@ fn on_resolve(ctx, caster, target) {
     Abilities::load_stats(&mut game);
     let action = Abilities::load(&mut game, "lash_out", &lash_out(), script);
     let first = Abilities::caster(&mut game, action, 1);
-    let second = Abilities::spawn_caster(
-        &mut game,
-        (20, 0, 0),
-        Team::new(0),
-        (
+    let second = Spawn::named(&game, "caster", (20, 0, 0))
+        .team(Team::new(0))
+        .parts((
             Owner::new(PlayerSlot::new(0)),
             TimedSlots::new(ActionSlots::new([(action, SlotKind::new(0), Rank::new(1))])),
-        ),
-    );
-    let targets = [Num::int(1), Num::int(21)]
-        .map(|x| Abilities::spawn_combatant(&mut game, Vec3::from((x, 0, 0)), Team::new(1), ()));
+        ))
+        .place(&mut game);
+    let targets = [Num::int(1), Num::int(21)].map(|x| {
+        Spawn::named(&game, "combatant", Vec3::from((x, 0, 0)))
+            .team(Team::new(1))
+            .place(&mut game)
+    });
     Abilities::casts(
         &mut game,
         &[(first, ActionTarget::None), (second, ActionTarget::None)],
@@ -647,16 +654,16 @@ fn a_cast_draws_from_its_casters_player_budget() {
         );
         let strike = Abilities::load(&mut game, "strike", &Abilities::strike(), STRIKE);
         let spinner = Abilities::caster(&mut game, spin, 1);
-        let striker = Abilities::spawn_caster(
-            &mut game,
-            (0, 0, 1),
-            Team::new(0),
-            (
+        let striker = Spawn::named(&game, "caster", (0, 0, 1))
+            .team(Team::new(0))
+            .parts((
                 Owner::new(PlayerSlot::new(1)),
                 TimedSlots::new(ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))])),
-            ),
-        );
-        let enemy = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
+            ))
+            .place(&mut game);
+        let enemy = Spawn::named(&game, "combatant", (1, 0, 0))
+            .team(Team::new(1))
+            .place(&mut game);
         let casts = [
             (spinner, ActionTarget::None),
             (striker, ActionTarget::Unit(enemy)),
@@ -744,7 +751,9 @@ fn a_channel_with_no_end_pays_by_its_level_until_an_order_waits_out_its_wind_dow
     };
     // Cast at tick 0, its windup 30 × (1/2 + f) ticks, to whole ticks down, f the caster's draw
     // of `abilities.windup` in that tick: 30 × (1/2 + 9 234 716 / 2²⁴) = 31.51, so 31.
-    let first = Abilities::walking_caster(&mut game, hack);
+    let first = Spawn::named(&game, "walking caster", Vec3::ZERO)
+        .parts(Abilities::caster_parts(hack, 1))
+        .place(&mut game);
     Abilities::cast(&mut game, first, ActionTarget::None);
     let opener = game.resource::<SimRng>().opener();
     let fraction = opener
@@ -788,7 +797,9 @@ fn a_channel_with_no_end_pays_by_its_level_until_an_order_waits_out_its_wind_dow
     // at once and drops the walk it holds, so the unit stands; a death in its channel ends it at
     // once too, with no wind-down: neither pays again.
     let channel = |game: &mut Match, x: i16| {
-        let id = Abilities::walking_caster(game, hack);
+        let id = Spawn::named(game, "walking caster", Vec3::ZERO)
+            .parts(Abilities::caster_parts(hack, 1))
+            .place(game);
         *game.part_mut::<Position>(id) = Position::from((x, 0, 0));
         let mut experience = Experience::new(TrackSet::from([TrackId::new(1)]));
         experience.add(

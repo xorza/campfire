@@ -1,7 +1,7 @@
 use campfire_client_files::{EmissionVelocity, ParticleSystem, SpeedScale, Spread};
 
 use super::*;
-use crate::view::effects::particle_run::samples::{book, name, system};
+use crate::view::effects::particle_run::internals::{book, name, system};
 
 fn level(_: f32, _: f32) -> f32 {
     0.0

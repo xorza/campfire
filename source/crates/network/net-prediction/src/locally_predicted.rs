@@ -3,8 +3,18 @@ use crate::rollback_check_state::RollbackCheckState;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::world::DeferredWorld;
+use campfire_net_replication::{PreSpawned, Predicted};
 use campfire_net_timeline::LocalTimeline;
 use core::fmt::Debug;
+
+/// A locally predicted entity that this end alone holds: no server replicates it and no pre-spawn
+/// waits for its match, so its own end decides when it goes (11-net-stack/replication.md, The
+/// server alone ends a replicated entity's life on the receiver).
+pub(crate) type LocalOnly = (
+    With<LocallyPredicted>,
+    Without<Predicted>,
+    Without<PreSpawned>,
+);
 
 #[derive(Component, PartialEq, Eq, Debug, Clone, Copy)]
 #[component(on_add = LocallyPredicted::on_add)]
@@ -39,6 +49,13 @@ impl Default for LocallyPredicted {
 }
 
 impl LocallyPredicted {
+    /// Whether `entity` is one `LocalOnly` matches.
+    pub(crate) fn is_local_only(entity: EntityRef<'_>) -> bool {
+        entity.contains::<Self>()
+            && !entity.contains::<Predicted>()
+            && !entity.contains::<PreSpawned>()
+    }
+
     fn on_add(mut world: DeferredWorld<'_>, context: HookContext) {
         let locally_predicted = *world.get::<Self>(context.entity).unwrap();
         let timeline = world.resource::<LocalTimeline>();

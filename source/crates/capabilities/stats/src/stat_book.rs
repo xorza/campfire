@@ -51,7 +51,7 @@ impl StatBook {
     /// The book of the stats `rules` declares, with no unit type's values yet, under the cap
     /// `max_move_speed`.
     pub fn new(rules: &BTreeMap<Stat, StatRule>, max_move_speed: Num) -> Self {
-        let names: Names<StatId> = rules.keys().map(Stat::name).collect();
+        let names: Names<StatId> = Names::unique(rules.keys().map(Stat::name));
         let count = names.len();
         let stats_len = u16::try_from(count).expect("stats fit u16");
         let mut engine = [None; EngineStat::ALL.len()];

@@ -7,6 +7,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::system::{Commands, IntoObserverSystem, IntoSystem, Query};
 use bevy_ecs::world::World;
+use campfire_declarations::NamesFn;
 use campfire_declarations::{
     Book, BuildFn, Cache, Callbacks, ColumnFill, Declarations, EntityKind, ExtendFn, Fact,
     KindSpawn, KindVisitor, Listed, ModuleSystems, OneShot, Report, Role, RuleFn, Scratch, Section,
@@ -21,10 +22,9 @@ use campfire_sim::{
 };
 use campfire_states::{Replication, StateTypes};
 use campfire_values::EngineTag;
+use campfire_values::{MatchScope, NameId, Named, Names};
 
 use crate::release::client_holds::ClientHolds;
-use campfire_declarations::NamesFn;
-use campfire_values::{MatchScope, NameId, Named, Names};
 
 /// The walk of a match's lists that gives a predicting test client what replication brings the
 /// units it predicts of the server's own parts, as their owner's client receives them, which a

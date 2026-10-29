@@ -7,7 +7,7 @@ use bevy_ecs::component::{ComponentId, Mutable};
 use bevy_ecs::prelude::*;
 use bevy_ecs::world::FilteredEntityRef;
 use bevy_replicon::prelude::AppMarkerExt;
-use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
+use bevy_replicon::shared::replication::diff::Diffable;
 use bevy_utils::prelude::DebugName;
 use campfire_net_core::NetTick;
 use campfire_net_frame_interpolation::FrameRegistry;
@@ -83,7 +83,7 @@ pub(crate) fn install_prediction<C: HistoryComponent>(app: &mut App) {
 }
 
 /// Installs the receive fns and systems of a component predicted from diffs.
-pub(crate) fn install_prediction_diff<C: HistoryComponent + RepliconDiffable>(app: &mut App) {
+pub(crate) fn install_prediction_diff<C: HistoryComponent + Diffable>(app: &mut App) {
     app.set_marker_fns::<Predicted, C>(
         history_receive::write_history_diff::<C>,
         ConfirmedHistory::<C>::receive_removal,

@@ -1,7 +1,7 @@
 use campfire_common::{DeclaredName, MapName};
 
 use crate::zero_hour::error::NameError;
-use crate::zero_hour::format::ini::object_ini::IniObject;
+use crate::zero_hour::format::ini::object_ini::ini_object::IniObject;
 
 /// A name of the original, a map's directory or an object's template, as a package names it: its
 /// ASCII letters lowercase, its digits and `_` kept, each other byte `_`, and `x` before a name

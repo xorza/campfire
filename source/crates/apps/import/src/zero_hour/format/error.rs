@@ -38,4 +38,8 @@ pub(crate) enum WavError {
     /// It has no channel, or an ADPCM block too short for its headers or of a part of a run.
     #[error("its channels or its blocks do not hold")]
     Layout,
+    /// Its samples a second, as 16-bit PCM of its channels, make more bytes a second than a
+    /// `u32` counts.
+    #[error("its rate makes more bytes a second than a WAV counts")]
+    Rate,
 }

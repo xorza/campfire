@@ -135,7 +135,7 @@ fn run(tap: &LogTap) -> Result<ExitCode, LaunchError> {
     let mut app = ServerAppSetup {
         opening: opening.session,
         data,
-        endpoint: Endpoint::from(socket.serve(admission)),
+        endpoint: Endpoint::from(socket.endpoint(admission)),
         run: ServerRun::Dedicated {
             stop,
             listening,

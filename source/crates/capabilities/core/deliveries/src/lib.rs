@@ -1,3 +1,6 @@
+//! Deliveries: what a cast or a weapon sends to its target, as a projectile or an area carries
+//! it, and what it does as it arrives.
+
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
 // in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]

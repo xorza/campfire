@@ -52,6 +52,28 @@ fn functions(host: &ScriptHost) -> Vec<(String, Option<TypeId>)> {
 }
 
 #[test]
+fn each_predicate_of_the_registry_takes_a_predicates_prefix() {
+    // A member that says whether is a predicate, `is_`, `has_` or `can_` (06-script-api.md, One
+    // vocabulary).
+    let api = Release::script_api();
+    let unprefixed: Vec<&str> = api
+        .members()
+        .iter()
+        .filter(|member| {
+            member.decl.kind != MemberKind::Operator
+                && member.decl.description.starts_with("whether")
+        })
+        .map(|member| member.decl.name)
+        .filter(|name| {
+            !["is_", "has_", "can_"]
+                .iter()
+                .any(|prefix| name.starts_with(prefix))
+        })
+        .collect();
+    assert_eq!(unprefixed, Vec::<&str>::new());
+}
+
+#[test]
 fn the_registry_holds_exactly_what_the_engine_binds() {
     let mut host = ScriptHost::new(NonZeroU64::MIN);
     let before = functions(&host);

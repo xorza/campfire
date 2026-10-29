@@ -174,6 +174,16 @@ impl Segments {
         begun.segment
     }
 
+    /// Forgets the checkpoint record and the boundary of each segment before `segment`, keeping
+    /// its tick, as a log whose journal holds them loads none of them again (08-sessions.md, The
+    /// live log is its latest checkpoint's state and the entries since).
+    pub(super) fn forget_before(&mut self, segment: u32) {
+        for start in self.starts.iter_mut().take(at(segment - self.first)) {
+            start.checkpoint = None;
+            start.boundary = None;
+        }
+    }
+
     /// Keeps the segments up to `segment`, and none of the checkpoints begun after them, as a
     /// load of `segment` does.
     pub(super) fn truncate_after(&mut self, segment: u32) {

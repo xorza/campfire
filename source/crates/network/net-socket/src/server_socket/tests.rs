@@ -31,7 +31,7 @@ impl Loopback {
         )
         .unwrap();
         let address = socket.local_address();
-        let mut server = PlainHost::os(socket.serve(TestLink::roomy()), origin);
+        let mut server = PlainHost::os(socket.endpoint(TestLink::roomy()), origin);
         server.start(server.now());
         let client_socket = ClientSocket::bind(address, TestLink::client(setup.clone())).unwrap();
         let mut client = PlainHost::os(client_socket.endpoint(), origin);

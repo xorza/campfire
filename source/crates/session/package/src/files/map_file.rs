@@ -29,7 +29,7 @@ impl MapFile {
 impl<'de> Deserialize<'de> for MapFile {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let readers = Release::sections();
-        Ok(Self(MapData::seed(&readers).deserialize(deserializer)?))
+        Ok(Self(MapData::seed(readers).deserialize(deserializer)?))
     }
 }
 

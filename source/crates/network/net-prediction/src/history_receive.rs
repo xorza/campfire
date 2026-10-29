@@ -8,7 +8,7 @@ use crate::prediction_history::PredictionHistory;
 use bevy_ecs::prelude::*;
 use bevy_replicon::prelude::RuleFns;
 use bevy_replicon::shared::replication::deferred_entity::DeferredEntity;
-use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
+use bevy_replicon::shared::replication::diff::Diffable;
 use bevy_replicon::shared::replication::registry::ctx::WriteCtx;
 use bevy_utils::prelude::DebugName;
 use bytes::Bytes;
@@ -73,7 +73,7 @@ fn write_whole<C: HistoryComponent>(
     )
 }
 
-pub(crate) fn write_history_diff<C: HistoryComponent + RepliconDiffable>(
+pub(crate) fn write_history_diff<C: HistoryComponent + Diffable>(
     ctx: &mut WriteCtx<'_>,
     _rule_fns: &RuleFns<C>,
     entity: &mut DeferredEntity<'_>,
@@ -82,7 +82,7 @@ pub(crate) fn write_history_diff<C: HistoryComponent + RepliconDiffable>(
     write_diff::<C>(ctx, entity, message, InitialValue::HistoryOnly)
 }
 
-pub(crate) fn write_initial_live_and_history_diff<C: HistoryComponent + RepliconDiffable>(
+pub(crate) fn write_initial_live_and_history_diff<C: HistoryComponent + Diffable>(
     ctx: &mut WriteCtx<'_>,
     _rule_fns: &RuleFns<C>,
     entity: &mut DeferredEntity<'_>,
@@ -95,7 +95,7 @@ pub(crate) fn write_initial_live_and_history_diff<C: HistoryComponent + Replicon
 /// snapshot's, then each queued diff it makes ready. The entity's own components go on only
 /// when the message's changes are flushed, so one materialized or seeded value is the message's
 /// last.
-fn write_diff<C: HistoryComponent + RepliconDiffable>(
+fn write_diff<C: HistoryComponent + Diffable>(
     ctx: &mut WriteCtx<'_>,
     entity: &mut DeferredEntity<'_>,
     message: &mut Bytes,

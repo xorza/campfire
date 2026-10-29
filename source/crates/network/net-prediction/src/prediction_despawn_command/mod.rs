@@ -49,9 +49,7 @@ impl Command for PredictionDespawnCommand {
         // despawned outside it: a locally predicted one, which this end alone holds, goes at
         // once, as no rollback must bring it back; one the server holds, or a pre-spawn that
         // waits for its match or its expiry, waits as inside it.
-        let local_only = entity.contains::<LocallyPredicted>()
-            && !entity.contains::<Predicted>()
-            && !entity.contains::<PreSpawned>();
+        let local_only = LocallyPredicted::is_local_only(entity.as_readonly());
         let Some(disabled_at) = simulated.or_else(|| (!local_only).then_some(tick)) else {
             DespawnReplicated.apply(entity);
             return;

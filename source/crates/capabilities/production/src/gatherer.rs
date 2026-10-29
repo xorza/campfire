@@ -212,7 +212,7 @@ mod tests {
         // A match of gold alone: wood, the second of two resources, is not its own.
         let mut world = World::new();
         let mut names = MatchNames::default();
-        names.set_table(Arc::new(Names::<ResourceId>::from(["gold"])));
+        names.set_table(Arc::new(Names::<ResourceId>::unique(["gold"])));
         world.insert_resource(names);
         let entity = world.spawn_empty().id();
         let [gold, wood] = [0, 1].map(ResourceId::new);

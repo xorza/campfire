@@ -13,6 +13,7 @@ internals = [
     "campfire-net-packets/internals",
     "campfire-net-payload/internals",
     "campfire-net-udp/internals",
+    "campfire-platform/internals",
 ]
 
 [dependencies]
@@ -22,6 +23,7 @@ campfire-net-core.workspace = true
 campfire-net-packets.workspace = true
 campfire-net-payload.workspace = true
 campfire-net-udp.workspace = true
+campfire-platform.workspace = true
 
 polling.workspace = true
 quinn-udp = { workspace = true, features = ["tracing"] }

@@ -13,4 +13,4 @@ pub use crate::events::verified::Verified;
 pub use crate::report_replay::error::ReportReplayError;
 pub use crate::report_replay::{ReportProbe, replay_report};
 pub use crate::verification::error::VerifyError;
-pub use crate::verification::{SnapshotSource, verify_file, verify_log};
+pub use crate::verification::{verify_file, verify_log};

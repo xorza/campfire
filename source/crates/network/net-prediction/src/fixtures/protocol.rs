@@ -33,11 +33,7 @@ macro_rules! linear_correction {
             }
         }
 
-        impl ::campfire_net_replication::Diffable for $name {
-            fn base_value() -> Self {
-                Self::default()
-            }
-
+        impl crate::visual_diff::VisualDiff for $name {
             fn diff(&self, other: &Self) -> Self {
                 Self(other.0 - self.0)
             }

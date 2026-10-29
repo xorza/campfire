@@ -4,28 +4,27 @@ use std::num::NonZeroU8;
 use campfire_actions::{ActionKeys, ActionKind, ActionRange, RangeField, Targeting};
 use campfire_airfields::{AirfieldData, AirfieldPlace, ApproachData, RunwayData};
 use campfire_codec::TomlTable;
-use campfire_common::{DeclaredName, EnumAll};
+use campfire_common::DeclaredName;
 use campfire_math::{Num, Rounding};
 use campfire_production::{
     BuildData, BuildStart, ConstructData, DoorsData, FramePoint, PlaceData, ProductionData,
     RequiredUnit, RequiresData, ResearchData, ResearchHolder, SellData, TrainData,
 };
 use campfire_values::{FilterData, Number, Ranked, Share, Stat, TextId};
-use serde::{Deserialize, Serialize};
 
 use crate::zero_hour::airfield_bones::{AirfieldBones, PlaceBones};
 use crate::zero_hour::area_write::AreaWrite;
 use crate::zero_hour::axes;
+use crate::zero_hour::button_drop_cause::ButtonDropCause;
 use crate::zero_hour::combat_import::CombatImport;
-use crate::zero_hour::contain_import::ContainImport;
 use crate::zero_hour::dropped::Losses;
 use crate::zero_hour::error::NameError;
 use crate::zero_hour::format::csf::string_table::StringTable;
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::command_button_ini::{ButtonCommand, CommandButton};
 use crate::zero_hour::format::ini::creation_list_ini::CreationNugget;
-use crate::zero_hour::format::ini::object_ini::IniObject;
 use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, IniParking, Prerequisite};
+use crate::zero_hour::format::ini::object_ini::ini_object::IniObject;
 use crate::zero_hour::format::ini::object_ini::ini_power::IniAutoHeal;
 use crate::zero_hour::format::ini::upgrade_ini::UpgradeKind;
 use crate::zero_hour::game_time;
@@ -36,7 +35,6 @@ use crate::zero_hour::panel_import::PanelButtons;
 use crate::zero_hour::power_drop_cause::PowerDropCause;
 use crate::zero_hour::production_bones::ProductionBones;
 use crate::zero_hour::production_import::power_cast::{PowerCast, PowerModifier, PowerNames};
-use crate::zero_hour::skirmish_start::FactionStart;
 use crate::zero_hour::supply_import::{DOCK_RANGE, Spawning, SupplyImport};
 use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
@@ -92,96 +90,6 @@ struct ExitPoints {
     airfield: Option<AirfieldBones>,
 }
 
-/// A faction's base, which a player slot that starts with one gets beside its start
-/// (09-zero-hour.md, A base start): each type its start builders build but its faction building,
-/// once each, in their command sets' order, and each type those buildings and its faction building
-/// train, once each, in that order; its army, those units that neither build nor gather and that a
-/// weapon arms or that assault with their riders (04-capabilities/interaction.md, A transport may
-/// assault), which a bot trains and sends
-/// (09-zero-hour.md, A builder and an attacker); its gatherers, those units that gather; and its
-/// drop-offs, its faction building and base buildings that take a load, which a bot counts its
-/// gatherers by (04-capabilities/control.md, A bot gathers).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FactionBase {
-    pub(crate) buildings: Vec<DeclaredName>,
-    pub(crate) units: Vec<DeclaredName>,
-    pub(crate) army: Vec<DeclaredName>,
-    pub(crate) gatherers: Vec<DeclaredName>,
-    pub(crate) drop_offs: Vec<DeclaredName>,
-}
-
-/// What a faction's base is made of: the command sets production converted, the weapons combat
-/// converted, and the containers' entries.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct BaseSources<'a> {
-    pub(crate) production: &'a ProductionImport,
-    pub(crate) combat: &'a CombatImport,
-    pub(crate) contains: &'a ContainImport,
-}
-
-impl FactionBase {
-    /// The base of `faction`, from the command sets `sources` converted, but a train or a build
-    /// that needs a modifier other than those of `held`, the perks it starts with, its army armed
-    /// by a weapon combat converted or an entry of an assault.
-    pub(crate) fn of(
-        sources: BaseSources<'_>,
-        faction: &FactionStart,
-        held: &[DeclaredName],
-    ) -> Self {
-        let BaseSources {
-            production,
-            combat,
-            contains,
-        } = sources;
-        let assaults = |unit: &DeclaredName| {
-            (contains.enters.iter())
-                .any(|(name, enter)| name.declared() == unit && enter.assault.is_some())
-        };
-        let building = &faction.building;
-        let mut buildings: Vec<DeclaredName> = Vec::new();
-        for builder in &faction.units {
-            for made in production.made(builder, ActionKind::Build, held) {
-                if made != building && !buildings.contains(made) {
-                    buildings.push(made.clone());
-                }
-            }
-        }
-        let mut units: Vec<DeclaredName> = Vec::new();
-        for producer in [building].into_iter().chain(&buildings) {
-            for made in production.made(producer, ActionKind::Train, held) {
-                if !units.contains(made) {
-                    units.push(made.clone());
-                }
-            }
-        }
-        let army = units
-            .iter()
-            .filter(|unit| {
-                production.fights(unit) && (production.armed(unit, combat) || assaults(unit))
-            })
-            .cloned()
-            .collect();
-        let gatherers = units
-            .iter()
-            .filter(|unit| production.gathers(unit))
-            .cloned()
-            .collect();
-        let drop_offs = [building]
-            .into_iter()
-            .chain(&buildings)
-            .filter(|building| production.supply.drop_offs.contains_key(*building))
-            .cloned()
-            .collect();
-        Self {
-            buildings,
-            units,
-            army,
-            gatherers,
-            drop_offs,
-        }
-    }
-}
-
 /// A train, a build or a research as the mode's data writes it, `[actions.<id>]`: the
 /// pipeline's keys it gives, and its kind's section.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -225,29 +133,6 @@ impl ImportedAction {
 struct Required<'a> {
     units: Vec<Vec<&'a IniObject>>,
     sciences: Vec<&'a str>,
-}
-
-/// Why the import drops a button.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, Serialize, Deserialize)]
-pub enum ButtonDropCause {
-    /// No file defines the button, or its object or its upgrade, or an object its prerequisites
-    /// name.
-    NoObject,
-    /// It trains an object that does not walk, or variations one of which does not.
-    NoWalker,
-    /// It builds an object of no body, as a small structure (09-zero-hour.md, A cylinder structure
-    /// builds as a circle).
-    NoBody,
-    /// It trains or researches at an object of no `ProductionUpdate`, or of a queue past 1 to
-    /// 255.
-    NoQueue,
-    /// Its object, or an object its prerequisites name, gives no unit type.
-    NoType,
-    /// Its object's or its upgrade's build time is below 0, or not finite.
-    BadTime,
-    /// Its action's name, of its kind and its type's or its upgrade's, or its upgrade's own,
-    /// passes the bytes a declared name holds.
-    LongName,
 }
 
 /// A button's kind, of those the import converts.
@@ -1013,6 +898,7 @@ impl ProductionImport {
     }
 }
 
+pub(crate) mod faction_base;
 pub(crate) mod power_cast;
 
 #[cfg(test)]

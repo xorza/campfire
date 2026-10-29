@@ -2,8 +2,8 @@ use campfire_common::DeclaredName;
 
 use crate::zero_hour::error::NameError;
 use crate::zero_hour::format::ini::creation_list_ini::CreationNugget;
-use crate::zero_hour::format::ini::object_ini::IniObject;
 use crate::zero_hour::format::ini::object_ini::ini_contain::ContainClass;
+use crate::zero_hour::format::ini::object_ini::ini_object::IniObject;
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::{
     IniUpgradeModule, UpgradeEffect,
 };

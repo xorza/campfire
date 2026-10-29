@@ -1,22 +1,21 @@
 use std::num::NonZeroI64;
+use std::num::NonZeroU16;
 
+use campfire_actions::ActionRange;
 use campfire_airfields::{
     AirfieldData, AirfieldPlace, ApproachData, RunwayData, Runways, Sortie, SortieSpec,
     StrandedLoss,
 };
-use campfire_navigation::{FlightData, Navigation, WingsData};
-use campfire_sim::MatchRate;
-use campfire_sim::Position;
-use std::num::NonZeroU16;
-
-use campfire_actions::ActionRange;
 use campfire_combat::internals::{Armed, TestWeapon};
 use campfire_combat::{
     ClipRefill, ClipRule, ClipShots, Combat, DamageCause, OnDeath, Rate, WeaponDamage,
 };
+use campfire_navigation::{FlightData, Navigation, WingsData};
 use campfire_script::MatchNames;
+use campfire_sim::MatchRate;
+use campfire_sim::Position;
 use campfire_stats::Stats;
-use campfire_units::FlightGoal;
+use campfire_units::{FlightGoal, Unfinished};
 use campfire_values::{DamageKind, FilterData};
 
 use super::*;
@@ -725,29 +724,31 @@ fn an_empty_jet_flies_home_and_reloads_its_clip_at_its_place() {
 #[test]
 fn a_jet_whose_airfield_is_gone_goes_home_to_another_of_its_team() {
     // A jet of the airfield at x = 10 takes off as an idle one does; its airfield dies in tick 30,
-    // so it takes the free place 0 of its team's other airfield, at x = −30, and, as it goes home
-    // after its idle time, lands and parks there (04-capabilities/airfields.md, A jet goes home).
+    // so it takes the free place 0 of its team's other built airfield, at x = −30, and, as it goes
+    // home after its idle time, lands and parks there (04-capabilities/airfields.md, A jet goes
+    // home). Its team's airfields at x = 20 and 25, nearer, stand unfinished and sold, which no jet
+    // takes as its home, as Zero Hour's `findSuitableAirfield` refuses them.
     let (mut game, shop) = idle_airfield_match(Some(Ticks::new(10)));
     let train = Production::add_train_at_place(&mut game, shop.grunt, Ticks::ZERO);
-    let [first, second] = [(); 2].map(|()| Production::allocate_id(&mut game));
-    shop.producer(
-        &mut game,
-        first,
-        10,
-        Team::new(0),
-        None,
-        train,
-        queue(train, &[0]),
-    );
-    shop.producer(
-        &mut game,
-        second,
-        -30,
-        Team::new(0),
-        None,
-        train,
-        queue(train, &[]),
-    );
+    let [first, second, site, sold] = [(); 4].map(|()| Production::allocate_id(&mut game));
+    for (id, x, places) in [
+        (first, 10, &[0][..]),
+        (second, -30, &[]),
+        (site, 20, &[]),
+        (sold, 25, &[]),
+    ] {
+        shop.producer(
+            &mut game,
+            id,
+            x,
+            Team::new(0),
+            None,
+            train,
+            queue(train, places),
+        );
+    }
+    game.insert_parts(site, Unfinished);
+    game.insert_parts(sold, Sold::new(Tick::new(0), Ticks::new(1000)));
     game.step();
     let jet = Shop::spawned(&mut game, shop.grunt)[0].id;
     *game.part_mut::<Destination>(jet) = Destination::to(Some(Vec3::from((40, 0, 0))));

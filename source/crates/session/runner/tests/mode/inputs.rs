@@ -479,7 +479,7 @@ fn a_script_reads_each_players_player_slot_units_play_and_resources_and_kills_an
 fn on_match_start(ctx) {
     let player_slots = "";
     for player in ctx.players {
-        player_slots += if player.held { "h" } else { "o" };
+        player_slots += if player.is_held { "h" } else { "o" };
     }
     ctx.state.kind = player_slots;
 }

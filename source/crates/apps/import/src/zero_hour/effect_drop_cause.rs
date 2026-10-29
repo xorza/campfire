@@ -48,4 +48,7 @@ pub enum EffectDropCause {
     /// An aircraft's slow death names an FX list, an object creation list or a weapon of a phase,
     /// which its fall leaves.
     FallPhase,
+    /// A number of an object's wrecks, its chassis or its track is not finite or past what a
+    /// number holds, so that part of its look goes.
+    Number,
 }

@@ -16,8 +16,9 @@ use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
 use campfire_values::TeamSet;
 
+use crate::in_process_match::InProcessMatch;
+use crate::in_process_match::in_process_setup::InProcessSetup;
 use crate::in_process_match::link_layout::{LinkLayout, LinkRows};
-use crate::in_process_match::{InProcessMatch, InProcessSetup};
 
 /// The apps of an `InProcessMatch`, as its stepper adds them: a server of the session's mode, at
 /// its default rate, and each remote client the client of its joiner.

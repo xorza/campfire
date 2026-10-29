@@ -31,7 +31,7 @@ bevy_ecs = { workspace = true, features = ["std"] }
 bevy_platform.workspace = true
 campfire-measure = { workspace = true, optional = true }
 criterion = { workspace = true, features = ["cargo_bench_support"], optional = true }
-serde = { workspace = true, features = ["derive", "rc", "std"] }
+serde = { workspace = true, features = ["derive", "std"] }
 thiserror = { workspace = true, features = ["std"] }
 
 [dev-dependencies]

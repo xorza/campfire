@@ -1,14 +1,16 @@
 use std::collections::BTreeMap;
 
 use campfire_common::DeclaredName;
-use campfire_declarations::{PatchError, Patched, Section, SectionTable};
+use campfire_declarations::{
+    BookCx, BookError, NameSets, PatchError, Patched, Section, SectionTable,
+};
 use campfire_script::{ApiVersion, Status};
 use campfire_script::{DataSection, DataTable, UnknownName};
 use campfire_units::PoolId;
 use campfire_values::{Named, Names, Stat};
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::armor::ArmorShare;
+use crate::armor::{Armor, ArmorShare};
 
 /// The mode's `[combat]` section: its damage kinds, its assist window, the pool that is life,
 /// the stats its damage rules read, and its armors.
@@ -98,6 +100,20 @@ impl ModeCombatData {
         ]
         .into_iter()
         .flatten()
+    }
+
+    /// Adds the armors it names to `sets`, as a unit type names one.
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "a book's builder and an extension take the build's signature"
+    )]
+    pub(crate) fn armor_names(cx: &BookCx<'_>, sets: &mut NameSets) -> Result<(), BookError> {
+        let combat = cx.mode_section::<Self>();
+        sets.extend(
+            Armor::NAMES,
+            combat.into_iter().flat_map(|combat| combat.armors.keys()),
+        );
+        Ok(())
     }
 }
 

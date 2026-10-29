@@ -1,7 +1,7 @@
 //! Seeding a confirmed history from the live component it replaces.
 use bevy_ecs::prelude::*;
 use bevy_replicon::client::confirm_history::ConfirmHistory;
-use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
+use bevy_replicon::shared::replication::diff::Diffable;
 use bevy_replicon::shared::replication::storage::ReplicationStorage;
 use bevy_utils::prelude::DebugName;
 use campfire_net_core::NetTick;
@@ -70,7 +70,7 @@ pub(crate) fn insert_confirmed_history<C: HistoryComponent>(
 
 /// Diff-aware variant of [`insert_confirmed_history`]: the seeded value is also the base of the
 /// diffs after Replicon's last applied one.
-pub(crate) fn insert_confirmed_history_diff<C: HistoryComponent + RepliconDiffable>(
+pub(crate) fn insert_confirmed_history_diff<C: HistoryComponent + Diffable>(
     entity: Entity,
     commands: &mut Commands<'_, '_>,
 ) {

@@ -31,10 +31,19 @@ pub struct HostChoices<'a> {
 }
 
 /// What a check of terms gives: their visibility and their picks, each of what the mode admits.
+/// Only a check makes one, so a holder holds terms a check admitted.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct CheckedTerms {
     pub visibility: Visibility,
     pub picks: HostPicks,
+}
+
+/// Terms a host offers, and what their check gives.
+#[derive(Debug, Clone)]
+pub struct OfferedTerms {
+    pub terms: SessionTerms,
+    pub checked: CheckedTerms,
 }
 
 /// What a mode's packages fix of every session that plays them on this engine release: the mode
@@ -68,10 +77,10 @@ impl<'p> SessionRules<'p> {
         &self.packages.data().visibility
     }
 
-    /// The terms of a session by these rules and the host's `choices`; an error when the mode
-    /// does not run at their tick rate, when they plan no player slot or more than the mode's teams
-    /// have, and for a visibility the mode does not admit.
-    pub fn terms(&self, choices: HostChoices<'_>) -> Result<SessionTerms, TermsError> {
+    /// The terms of a session by these rules and the host's `choices`, with what their check
+    /// gives; an error when the mode does not run at their tick rate, when they plan no player
+    /// slot or more than the mode's teams have, and for a visibility the mode does not admit.
+    pub fn terms(&self, choices: HostChoices<'_>) -> Result<OfferedTerms, TermsError> {
         let HostChoices {
             server_key,
             seed_commitment,
@@ -95,8 +104,8 @@ impl<'p> SessionRules<'p> {
             options: picks.options.places().to_vec(),
             player_slot_picks: picks.player_slots.places().to_vec(),
         };
-        self.check(&terms)?;
-        Ok(terms)
+        let checked = self.check(&terms)?;
+        Ok(OfferedTerms { terms, checked })
     }
 
     /// Whether `terms` name a session by these rules: of this release, of the mode, its map and the

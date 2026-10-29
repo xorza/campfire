@@ -35,7 +35,7 @@ impl<'de> DeserializeSeed<'de> for AvatarSeed<'_> {
         let Fields { name, mut rest } = Fields::deserialize(deserializer)?;
         let content = ContentTable::take(&mut rest, self.0)?;
         let readers = Release::sections();
-        let unit = rest.read_with(UnitTypeData::seed(&readers, self.0));
+        let unit = rest.read_with(UnitTypeData::seed(readers, self.0));
         let unit = unit.map_err(D::Error::custom)?;
         Ok(AvatarFile {
             name,

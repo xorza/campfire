@@ -15,6 +15,7 @@
     )
 )]
 
+mod dual_stack;
 mod durable_name;
 #[cfg(feature = "internals")]
 mod file_link;
@@ -29,6 +30,7 @@ mod user_only;
 #[cfg_attr(windows, path = "windows.rs")]
 mod os;
 
+pub use crate::dual_stack::DualStack;
 pub use crate::durable_name::DurableName;
 pub use crate::no_follow::NoFollow;
 pub use crate::positional_read::PositionalRead;

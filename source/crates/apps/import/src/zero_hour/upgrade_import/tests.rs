@@ -5,10 +5,9 @@ use crate::zero_hour::format::ini::object_ini::ObjectIni;
 fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_first_it_fails() {
     // A list that makes a bunker of a transport inside its object, and one that makes it beside.
     let mut rules = ZeroHourRules {
-        objects: ObjectIni::of(&[
+        ..ZeroHourRules::of_objects(ObjectIni::of(&[
             "Object Bunker\n KindOf = PORTABLE_STRUCTURE\n Behavior = TransportContain M\n  Slots = 5\n End\nEnd\n",
-        ]),
-        ..ZeroHourRules::default()
+        ]))
     };
     rules
         .upgrades

@@ -1,4 +1,3 @@
-use campfire_mode::{ModeQueue, ModeQueues};
 use std::any::type_name;
 use std::fmt::{self, Debug};
 
@@ -9,11 +8,13 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemCondition};
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
+use campfire_declarations::NamesFn;
 use campfire_declarations::{
     Book, BuildFn, BuiltBooks, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations,
     EntityKind, EntityParts, ExtendFn, Fact, InstallFacts, KindSpawn, KindVisitor, Listed,
     ModuleSystems, OneShot, Report, Role, RuleFn, Scratch, Section, SpawnParts,
 };
+use campfire_mode::{ModeQueue, ModeQueues};
 use campfire_script::{
     ApiBuilder, CallExtension, CallParams, Ctx, EventPhase, HookDecl, ModeEvents,
     PlannedCapability, RowReads, Status, ViewColumn,
@@ -25,10 +26,9 @@ use campfire_sim::{
 use campfire_states::{Replication, StateTypes};
 use campfire_units::{EntityKinds, ViewReader};
 use campfire_values::EngineTag;
+use campfire_values::{MatchScope, NameId, Named, Names};
 
 use crate::release::stage_span_systems::StageSpanSystems;
-use campfire_declarations::NamesFn;
-use campfire_values::{MatchScope, NameId, Named, Names};
 
 /// The consumer that puts a module's declarations into a match: its state types and restore
 /// checks into the state registry, its system sets into the schedule, its books from the built

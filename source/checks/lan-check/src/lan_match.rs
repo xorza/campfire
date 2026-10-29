@@ -96,10 +96,10 @@ impl Played {
 }
 
 impl RunnerSpeed {
-    /// The speed that `profile`, the value of `NEXTEST_PROFILE`, names: CI's for nextest's `ci`
-    /// profile, which CI's gate runs the tests with, as the check is a step of that gate.
-    pub(crate) fn of(profile: Option<&OsStr>) -> Self {
-        if profile == Some(OsStr::new("ci")) {
+    /// The speed that `ci`, the value of `CI`, names: a CI runner's for `true`, which GitHub
+    /// Actions, as most CI services, sets in every job.
+    pub(crate) fn of(ci: Option<&OsStr>) -> Self {
+        if ci == Some(OsStr::new("true")) {
             Self::Ci
         } else {
             Self::Local
@@ -423,14 +423,14 @@ mod tests {
     }
 
     #[test]
-    fn cis_profile_scales_the_deadline() {
-        // 30 s on a machine of its own, 6 × 30 s = 180 s on CI's runners.
-        for (profile, speed, deadline) in [
+    fn a_ci_runner_scales_the_deadline() {
+        // 30 s on a machine of its own, 6 × 30 s = 180 s on CI's runners, which set `CI=true`.
+        for (ci, speed, deadline) in [
             (None, RunnerSpeed::Local, 30),
-            (Some("default"), RunnerSpeed::Local, 30),
-            (Some("ci"), RunnerSpeed::Ci, 180),
+            (Some("false"), RunnerSpeed::Local, 30),
+            (Some("true"), RunnerSpeed::Ci, 180),
         ] {
-            let read = RunnerSpeed::of(profile.map(OsStr::new));
+            let read = RunnerSpeed::of(ci.map(OsStr::new));
             assert_eq!(read, speed);
             assert_eq!(read.deadline(), Duration::from_secs(deadline));
         }

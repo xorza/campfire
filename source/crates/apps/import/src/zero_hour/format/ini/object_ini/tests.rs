@@ -1,16 +1,27 @@
 use campfire_math::Num;
 
 use super::*;
+use crate::zero_hour::format::ini::object_ini::draw_module::{
+    DrawKind, DrawModule, HideShow, StateLook, WeaponBones,
+};
 use crate::zero_hour::format::ini::object_ini::fight_data::{
     IniJet, IniShell, IniTurret, IniTurretPitch, WeaponSet,
 };
+use crate::zero_hour::format::ini::object_ini::ini_animation::IniAnimation;
 use crate::zero_hour::format::ini::object_ini::ini_animation::{AnimationFlag, IniClip, IniMode};
 use crate::zero_hour::format::ini::object_ini::ini_build::{
     IniDoors, IniParking, Prerequisite, ProductionExit,
 };
+use crate::zero_hour::format::ini::object_ini::ini_experience::IniStart;
+use crate::zero_hour::format::ini::object_ini::ini_object::PlacedAs;
+use crate::zero_hour::format::ini::object_ini::ini_recoil::IniRecoil;
 use crate::zero_hour::format::ini::object_ini::ini_supply::{IniSpawn, SupplyDock, SupplyGatherer};
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::HealthChange;
+use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::{
+    IniUpgradeModule, UpgradeEffect,
+};
 use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, OBJECTS};
+use crate::zero_hour::format::look_conditions::LookConditions;
 
 /// Objects of each kind a placed object can be, their reskins, and lists of each form.
 const PLACED: &str = "Object Oak
@@ -1113,6 +1124,12 @@ End
             RadarPriority::Shown,
             RadarPriority::Unset
         ]
+    );
+    // A name `RadarPriorityNames` does not list is refused, as the game refuses it.
+    let text = "Object A\n  RadarPriority = BOGUS\nEnd\n";
+    assert_eq!(
+        ObjectFiles::default().read(text.as_bytes()),
+        Err(IniError::NotListed { line: 2 })
     );
 }
 

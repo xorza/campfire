@@ -48,11 +48,11 @@ impl<'de> Deserialize<'de> for ModeFile {
         };
         let readers = Release::sections();
         let defaults = match table.take_value(Self::DEFAULTS) {
-            Some(value) => UnitDefaults::read(value, &readers).map_err(D::Error::custom)?,
+            Some(value) => UnitDefaults::read(value, readers).map_err(D::Error::custom)?,
             None => UnitDefaults::default(),
         };
         let content = ContentTable::take(&mut table, &defaults)?;
-        let data = table.read_with(ModeData::seed(&readers));
+        let data = table.read_with(ModeData::seed(readers));
         let data = data.map_err(D::Error::custom)?;
         Ok(Self {
             scripts,

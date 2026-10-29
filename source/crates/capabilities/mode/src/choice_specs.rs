@@ -34,7 +34,7 @@ pub(crate) struct ChoiceSpec {
 impl ChoiceSpecs {
     pub(crate) fn new(choices: &BTreeMap<DeclaredName, ChoiceData>) -> Self {
         let mut width = 0;
-        let names = Arc::new(choices.keys().map(DeclaredName::as_str).collect());
+        let names = Arc::new(Names::unique(choices.keys().map(DeclaredName::as_str)));
         let choices = choices
             .values()
             .map(|data| {
@@ -42,7 +42,7 @@ impl ChoiceSpecs {
                 width += NonZeroUsize::from(data.count).get();
                 ChoiceSpec {
                     offers: data.offers,
-                    values: data.values.iter().map(DeclaredName::as_str).collect(),
+                    values: Names::unique(data.values.iter().map(DeclaredName::as_str)),
                     unique: data.unique,
                     run: start..width,
                 }

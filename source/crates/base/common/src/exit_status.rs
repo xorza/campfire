@@ -12,8 +12,9 @@ pub enum ExitStatus {
     /// A write or a sync of a server's storage failed, so it keeps no record past it: sysexits'
     /// `EX_IOERR`. The host's supervisor starts the server again, which restores the session.
     Storage,
-    /// A stop's signal ended it, as `store::StopSignals` catches one, whose second signal ends
-    /// the process with this code too: 130, `128 + SIGINT`, as a shell gives an interrupted job.
+    /// A stop's signal ended it, as `campfire_platform::StopSignals` catches one, whose second
+    /// signal ends the process with this code too: 130, `128 + SIGINT`, as a shell gives an
+    /// interrupted job.
     Interrupted,
 }
 

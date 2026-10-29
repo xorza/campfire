@@ -24,6 +24,8 @@ mod every_rule;
 #[cfg(test)]
 mod gated_items;
 #[cfg(test)]
+mod layers;
+#[cfg(test)]
 mod manifest;
 #[cfg(test)]
 mod manifests;
@@ -47,7 +49,6 @@ mod test_modules;
 mod test_support;
 #[cfg(test)]
 mod type_names;
-#[cfg(test)]
 #[cfg(test)]
 mod workspace;
 #[cfg(test)]

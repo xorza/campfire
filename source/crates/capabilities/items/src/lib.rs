@@ -10,7 +10,7 @@ use campfire_actions::{
 };
 use campfire_common::EnumAll;
 use campfire_declarations::{
-    ById, Declarations, InstallCx, Module, ModuleSystems, NamedTexts, SetPlace,
+    ById, Declarations, InstallCx, Module, ModuleSystems, NameSets, NamedTexts, SetPlace,
 };
 use campfire_sim::{Capability, SimSystems, StableId};
 use campfire_units::BodyUnit;
@@ -89,6 +89,7 @@ impl Module for Items {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.section::<ItemsData>();
+        d.extend::<NameSets>(ItemsData::names);
         d.section::<InventoryData>();
         d.section::<ShopData>();
         d.callback::<CastSpends>(Capability::Items, Self::spend_use);

@@ -2,9 +2,11 @@ use crate::misprediction::CheckTarget;
 use crate::misprediction::needs_rollback;
 use crate::prediction_history::PredictionHistory;
 use crate::prediction_registry::PredictionRegistry;
+use crate::rollback_refused::RollbackRefused;
 use bevy_ecs::prelude::*;
-use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
+use bevy_replicon::shared::replication::diff::Diffable;
 use bevy_replicon::shared::replication::storage::ReplicationStorage;
+use campfire_log::LogEvent;
 use campfire_net_core::NetTick;
 use campfire_net_replication::ComponentRegistry;
 use campfire_net_replication::ComponentTypeId;
@@ -12,7 +14,6 @@ use campfire_net_replication::ConfirmedHistory;
 use campfire_net_replication::HistoryComponent;
 use campfire_net_replication::HistoryDiffReceiver;
 use tracing::trace;
-use tracing::warn;
 
 use crate::rollback_check_state::RollbackKind;
 
@@ -69,11 +70,12 @@ impl RollbackScan {
             .expect("a rollback is asked for once the timeline is synced");
         let delta = tick - rollback_tick;
         if delta < 0 || delta > i32::from(max_rollback_ticks) {
-            warn!(
-                ?rollback_tick,
-                ?tick,
-                "Trying to do a rollback of {delta:?} ticks. The max is {max_rollback_ticks:?}! Aborting"
-            );
+            RollbackRefused {
+                rollback_tick: rollback_tick.0,
+                tick: tick.0,
+                max_rollback_ticks,
+            }
+            .log();
             trace!(
                 target: "campfire_net_debug::prediction",
                 kind = "rollback_rejected",
@@ -116,7 +118,7 @@ impl RollbackScan {
 
     /// Reports the earliest diff of `C` at or before this frame's candidate confirmed tick that is
     /// not resolved yet: the authoritative state is unknown from there on.
-    pub(crate) fn survey_pending_diffs<C: HistoryComponent + RepliconDiffable>(
+    pub(crate) fn survey_pending_diffs<C: HistoryComponent + Diffable>(
         storage: Option<Res<'_, ReplicationStorage>>,
         targets: Query<'_, '_, Entity, (With<PredictionHistory<C>>, CheckTarget)>,
         mut scan: ResMut<'_, Self>,
@@ -182,5 +184,40 @@ impl RollbackScan {
                 return;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_log::internals::LogCheck;
+
+    use super::*;
+
+    /// At local tick 20 with a window of 16, a rollback to tick 4, 16 back, or to 20 itself runs;
+    /// one to 3, 17 back, or to 21, ahead, runs none and logs why.
+    #[test]
+    fn a_rollback_runs_only_within_its_window() {
+        let scan = |rollback_tick| {
+            let mut scan = RollbackScan {
+                tick: Some(NetTick(20)),
+                ..RollbackScan::default()
+            };
+            scan.request(NetTick(rollback_tick), 16, RollbackKind::default());
+            scan.requested
+        };
+        for within in [4, 20] {
+            assert_eq!(scan(within), Some(NetTick(within)));
+        }
+        let scoped = LogCheck::scoped(|| [scan(3), scan(21)]);
+        assert_eq!(scoped.value, [None, None]);
+        let refused = |rollback_tick| RollbackRefused {
+            rollback_tick,
+            tick: 20,
+            max_rollback_ticks: 16,
+        };
+        assert_eq!(
+            scoped.check.take::<RollbackRefused>(),
+            [refused(3), refused(21)]
+        );
     }
 }

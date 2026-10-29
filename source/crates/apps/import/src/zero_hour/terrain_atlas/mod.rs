@@ -5,7 +5,7 @@ use campfire_client_files::{BorderWrap, TerrainTexture, TextureCopy};
 
 use campfire_values::PackagePath;
 
-use crate::zero_hour::dropped_roads::RoadDropCause;
+use crate::zero_hour::road_drop_cause::RoadDropCause;
 
 use crate::zero_hour::format::map::terrain::{Terrain, TerrainFields};
 

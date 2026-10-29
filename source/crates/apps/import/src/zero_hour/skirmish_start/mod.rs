@@ -3,7 +3,7 @@ use campfire_math::Num;
 
 use crate::zero_hour::error::{TypeError, ZeroHourError};
 use crate::zero_hour::format::game_float;
-use crate::zero_hour::format::ini::object_ini::IniObject;
+use crate::zero_hour::format::ini::object_ini::ini_object::IniObject;
 use crate::zero_hour::format::ini::player_template_ini::PlayerTemplate;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::ImportNames;

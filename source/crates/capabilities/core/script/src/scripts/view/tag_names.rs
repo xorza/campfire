@@ -19,7 +19,7 @@ impl TagNames {
             .map(|tag| tag.tag())
             .collect();
         Self {
-            names: Arc::new(engine.iter().map(|tag| tag.name()).collect()),
+            names: Arc::new(Names::unique(engine.iter().map(|tag| tag.name()))),
             named_only,
         }
     }

@@ -5,7 +5,7 @@ use crate::bans::{PROXIES, foreign_names};
 use crate::cfg_condition::CfgCondition;
 use crate::manifest::{CargoManifest, CrateKind, WorkspaceManifest};
 use crate::named_path::NamedPath;
-use crate::source_file::{self, SourceFile};
+use crate::source_file::{SourceFile, names_crate};
 use crate::workspace::{
     Crate, DevEdges, Workspace, holder, read, required_closure, sim_closure, source, test_build,
 };
@@ -53,7 +53,6 @@ pub(crate) fn only_common_names_the_crate_of_its_derives(workspace: &Workspace) 
         .map(|krate| krate.name.as_str())
         .collect();
     assert_eq!(dependents, ["campfire-common"]);
-    let path = COMMON_DERIVE.replace('-', "_");
     let naming: Vec<String> = workspace
         .sources()
         .iter()
@@ -61,7 +60,7 @@ pub(crate) fn only_common_names_the_crate_of_its_derives(workspace: &Workspace) 
         .filter(|file| {
             let allowed = ["crates/base/common/", "crates/test/rules/"];
             let allowed = allowed.iter().any(|dir| file.path.starts_with(dir));
-            !allowed && file.text.contains(&path)
+            !allowed && names_crate(file.code(), COMMON_DERIVE)
         })
         .map(|file| file.path.clone())
         .collect();
@@ -169,6 +168,10 @@ pub(crate) fn each_crate_keeps_the_rule_of_its_kind(workspace: &Workspace) {
     let mut listed: Vec<&str> = PROXIES.iter().map(|proxy| proxy.dir).collect();
     listed.sort_unstable();
     assert_eq!(proxies, listed);
+}
+
+#[test]
+fn the_kind_rule_fails_on_what_breaks_it() {
     // Bevy's engine crates are refused, and its platform layer and math are not.
     assert!(is_engine("bevy_ecs") && is_engine("bevy_replicon") && is_engine("bevy"));
     assert!(!is_engine("bevy_platform") && !is_engine("bevy_math") && !is_engine("bytes"));
@@ -594,7 +597,7 @@ fn the_internals_rule_names_each_crate_that_breaks_it() {
 fn unnamed_dependencies<'a>(manifest: &'a CargoManifest, production: &str) -> Vec<&'a str> {
     manifest
         .required()
-        .filter(|name| !source_file::names_crate(production, name))
+        .filter(|name| !names_crate(production, name))
         .collect()
 }
 
@@ -605,7 +608,7 @@ fn tests_only_optional<'a>(manifest: &'a CargoManifest, library: &str) -> Vec<&'
         .dependencies()
         .filter(|(_, dependency)| dependency.optional)
         .map(|(name, _)| name)
-        .filter(|name| !source_file::names_crate(library, name))
+        .filter(|name| !names_crate(library, name))
         .collect()
 }
 
@@ -615,7 +618,7 @@ fn unnamed_dev_dependencies<'a>(manifest: &'a CargoManifest, code: &str) -> Vec<
     manifest
         .dev_dependencies()
         .map(|(name, _)| name)
-        .filter(|name| *name != manifest.name() && !source_file::names_crate(code, name))
+        .filter(|name| *name != manifest.name() && !names_crate(code, name))
         .collect()
 }
 

@@ -139,7 +139,7 @@ fn each_request_round_trips_through_json() {
         }
         .wall()
     };
-    assert_eq!(wall(None), Duration::from_secs(120));
+    assert_eq!(wall(None), Duration::from_secs(110));
     assert_eq!(wall(Some(5)), Duration::from_secs(5));
 
     // A table's first row is the first unless the request names another.

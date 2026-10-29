@@ -3,7 +3,7 @@ use campfire_client_files::{BarrelFlash, FireBarrel};
 
 use crate::pose::RigidPose;
 use crate::zero_hour::barrel_recoil::BarrelRecoil;
-use crate::zero_hour::format::ini::object_ini::{HideShow, StateLook, WeaponBones};
+use crate::zero_hour::format::ini::object_ini::draw_module::{HideShow, StateLook, WeaponBones};
 use crate::zero_hour::{axes, game_time};
 
 /// What a model's default look reads of it: its sub-objects, in the HLOD's order, each with its

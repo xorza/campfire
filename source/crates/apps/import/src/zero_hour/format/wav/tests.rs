@@ -74,4 +74,19 @@ fn a_pcm_file_writes_and_reads_back_and_another_encoding_is_refused() {
     let mut no_data = wav([1, 1, 2, 16], 22_050, None, &[]);
     no_data.truncate(no_data.len() - 8);
     assert_eq!(WavFile::read(&no_data).unwrap_err(), WavError::NoData);
+    // A rate of u32::MAX makes 4 × as many bytes a second of stereo 16-bit PCM, past a u32.
+    let fast = wav([1, 2, 4, 16], u32::MAX, None, &[]);
+    assert_eq!(WavFile::read(&fast).unwrap_err(), WavError::Rate);
+
+    // A mono PCM file whose data chunk says 8 bytes and holds 5 is read, not whole, as the 2
+    // samples of its whole frames, and written again with a data chunk of exactly their 4 bytes.
+    let mut cut = wav([1, 1, 2, 16], 22_050, None, &[1, 0, 2, 0, 3, 0, 4, 0]);
+    cut.truncate(cut.len() - 3);
+    let file = WavFile::read(&cut).unwrap();
+    assert!(!file.whole);
+    assert!(WavFile::read(&pcm).unwrap().whole);
+    assert_eq!(file.decode(), [1, 2]);
+    let rewritten = file.pcm_file(&file.decode());
+    assert_eq!(rewritten.len(), 44 + 4);
+    assert!(WavFile::read(&rewritten).unwrap().whole);
 }

@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use crate::zero_hour::format::game_frames;
 use crate::zero_hour::format::ini::error::IniError;
 use crate::zero_hour::format::ini::ini_text::{BlockKinds, FlagSet, IniLine, IniText};
 
@@ -106,9 +107,6 @@ const AIR: usize = 3;
 /// The template's number of a braking or a turning speed it leaves out, `BIGNUM`, a frame.
 const BIGNUM: f32 = 99_999.0;
 
-/// The game's logic frames a second, which a template's own number counts in.
-const FRAMES_PER_SECOND: f32 = 30.0;
-
 impl LocomotorIni {
     /// Reads one INI file, adding its locomotors to those read before: one read again keeps its
     /// fields and takes the new ones, as a template found again is read into.
@@ -178,13 +176,14 @@ impl Locomotor {
     /// it names none, as the template holds it in its own frames.
     pub(crate) fn braking(&self) -> f32 {
         self.braking
-            .unwrap_or(BIGNUM * FRAMES_PER_SECOND * FRAMES_PER_SECOND)
+            .unwrap_or(BIGNUM * game_frames::PER_SECOND * game_frames::PER_SECOND)
     }
 
     /// The least speed it turns at in units a second, the template's `BIGNUM` a frame when it
     /// names none.
     pub(crate) fn min_turn_speed(&self) -> f32 {
-        self.min_turn_speed.unwrap_or(BIGNUM * FRAMES_PER_SECOND)
+        self.min_turn_speed
+            .unwrap_or(BIGNUM * game_frames::PER_SECOND)
     }
 
     /// The units from its goal within which it has arrived, 1 when it names none.

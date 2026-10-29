@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use std::sync::{Arc, Mutex};
 
 use crate::session_log::journal::Journal;
@@ -76,13 +78,17 @@ pub(crate) fn journal_of_records() -> Vec<u8> {
 /// records.
 fn read(bytes: &[u8]) -> Option<(Vec<&[u8]>, usize)> {
     let Ok(mut frames) = JournalFrames::new(bytes) else {
-        let streamed = JournalFrames::stream(bytes, &mut |_| {});
+        let streamed = JournalFrames::stream(bytes, &mut |_| ControlFlow::Continue(()));
         assert!(matches!(streamed, Err(JournalStreamError::NotJournal(_))));
         return None;
     };
     let records: Vec<&[u8]> = frames.by_ref().collect();
     let mut streamed = Vec::new();
-    let whole = JournalFrames::stream(bytes, &mut |record| streamed.push(record.to_vec())).unwrap();
+    let whole = JournalFrames::stream(bytes, &mut |record| {
+        streamed.push(record.to_vec());
+        ControlFlow::Continue(())
+    })
+    .unwrap();
     assert_eq!(streamed, records);
     assert_eq!(whole, u64::try_from(frames.whole()).unwrap());
     Some((records, frames.whole()))
@@ -97,6 +103,19 @@ fn frames_round_trip_and_a_cut_reads_to_its_last_whole_frame() {
         Some(*at)
     });
     let ends: Vec<usize> = ends.collect();
+    // A stream that breaks on the second record reads nothing past it, and gives back the end of
+    // that record's frame.
+    let mut visited = 0;
+    let stopped = JournalFrames::stream(bytes.as_slice(), &mut |_| {
+        visited += 1;
+        if visited == 2 {
+            ControlFlow::Break(())
+        } else {
+            ControlFlow::Continue(())
+        }
+    })
+    .unwrap();
+    assert_eq!((visited, stopped), (2, u64::try_from(ends[1]).unwrap()));
     assert_eq!(ends.last(), Some(&bytes.len()));
     assert_eq!(read(&bytes), Some((RECORDS.to_vec(), bytes.len())));
     assert_eq!(

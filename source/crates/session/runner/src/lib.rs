@@ -28,7 +28,7 @@ pub use crate::session::session_source::{ResumeAt, SessionSource, UncheckedSourc
 pub use crate::session::session_world::SessionWorld;
 pub use crate::session::{PlayerSlotFor, Session};
 pub use crate::session_rules::error::TermsError;
-pub use crate::session_rules::{CheckedTerms, HostChoices, SessionRules};
+pub use crate::session_rules::{CheckedTerms, HostChoices, OfferedTerms, SessionRules};
 
 /// What the test harness builds an arena of.
 #[cfg(feature = "internals")]

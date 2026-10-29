@@ -1,5 +1,3 @@
-use tempfile::TempDir;
-
 use super::*;
 use crate::dir_entries::DirEntries;
 use crate::durable_file::DurableFile;
@@ -7,8 +5,8 @@ use crate::test_dir::TestDir;
 
 #[test]
 fn a_durable_directory_is_made_once_and_its_users_only() {
-    let dir = TempDir::new().unwrap();
-    let path = dir.path().join("sessions");
+    let dir = TestDir::new();
+    let path = dir.root().join("sessions");
     DurableDir::create(&path).unwrap();
     DurableFile::write(&path.join("kept"), b"kept").unwrap();
     // Made again, it stays as it is.
@@ -52,10 +50,10 @@ fn a_durable_directory_is_made_once_and_its_users_only() {
     );
     // Each missing directory above one is made, its user's only; one already there stays. A new
     // directory is made once, and a file holds its name as one does.
-    let deep = dir.path().join("a").join("b");
+    let deep = dir.root().join("a").join("b");
     DurableDir::create_all(&deep).unwrap();
     DurableDir::create_all(&deep).unwrap();
-    assert_eq!(UserOnly::exposure_at(&dir.path().join("a")).unwrap(), None);
+    assert_eq!(UserOnly::exposure_at(&dir.root().join("a")).unwrap(), None);
     DurableDir::create_new(&deep.join("run")).unwrap();
     for taken in [deep.join("run"), path.join("kept")] {
         assert!(matches!(
@@ -67,7 +65,7 @@ fn a_durable_directory_is_made_once_and_its_users_only() {
         ));
     }
     // Renamed, it takes the new name with all it holds; one that is not there is not renamed.
-    let renamed = dir.path().join("renamed");
+    let renamed = dir.root().join("renamed");
     DurableDir::rename(&path, &renamed).unwrap();
     assert!(!path.exists());
     assert_eq!(fs::read(renamed.join("kept")).unwrap(), b"kept");
@@ -82,17 +80,17 @@ fn a_durable_directory_is_made_once_and_its_users_only() {
     // Removed, it goes with all it holds; a directory that is not there is not removed. A
     // tombstone a crash left as it removed another directory is in no listing, and goes with
     // the next removal in its parent.
-    let left = dir.path().join(".campfire-removed.left");
+    let left = dir.root().join(".campfire-removed.left");
     DurableDir::create(&left).unwrap();
     DurableFile::write(&left.join("held"), b"held").unwrap();
     let listed = || -> Vec<OsString> {
-        let entries = DirEntries::read(dir.path()).unwrap();
+        let entries = DirEntries::read(dir.root()).unwrap();
         entries.into_iter().map(|entry| entry.name).collect()
     };
     assert_eq!(listed(), ["a", "sessions"]);
     DurableDir::remove(&path).unwrap();
     assert!(!path.exists());
-    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    assert_eq!(fs::read_dir(dir.root()).unwrap().count(), 1);
     assert_eq!(listed(), ["a"]);
     assert!(matches!(
         DurableDir::remove(&path),

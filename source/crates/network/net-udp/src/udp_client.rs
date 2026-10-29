@@ -23,7 +23,7 @@ impl UdpClient {
 
     /// The parts of the client's endpoint over `io`, toward `server`, which connects at its
     /// `LinkStart` and draws its connection IDs from `random`.
-    pub fn endpoint<Io>(&self, io: Io, server: SocketAddr, random: Random) -> EndpointPieces<Io> {
+    pub fn endpoint<Io>(self, io: Io, server: SocketAddr, random: Random) -> EndpointPieces<Io> {
         let establishment = ClientSide::new(
             self.trust.tls_config(&self.setup.alpn),
             self.trust.name(),
@@ -35,7 +35,7 @@ impl UdpClient {
 
     /// The parts of the client's endpoint over the emulated network's `wire`, its random numbers
     /// from `seed`.
-    pub fn emulated(&self, wire: EmulatedIo, seed: u64) -> EndpointPieces<EmulatedWires> {
+    pub fn emulated(self, wire: EmulatedIo, seed: u64) -> EndpointPieces<EmulatedWires> {
         let server = wire.remote_address();
         self.endpoint(EmulatedWires::client(wire), server, Random::seeded(seed))
     }

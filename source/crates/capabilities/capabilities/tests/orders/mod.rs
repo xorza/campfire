@@ -1,4 +1,3 @@
-use crate::{arm, combatant};
 use std::num::NonZeroU64;
 
 use bevy_ecs::change_detection::DetectChanges;
@@ -42,6 +41,8 @@ use campfire_units::{
 use campfire_values::{PackagePath, PathId, Rank, Scalar, ScriptSource, Team, TeamSet, UnitType};
 use campfire_visibility::{OutView, SettingValue};
 use campfire_vision::Vision;
+
+use crate::{arm, combatant};
 
 mod acquire;
 mod retaliation;
@@ -95,7 +96,7 @@ fn keep_target(unit) {
 }
 
 fn in_reach(unit, other) {
-    unit.position.within(other.position, unit.params.aggro_range)
+    unit.position.is_within(other.position, unit.params.aggro_range)
 }
 "#;
 const TOWER_AI: &str = r#"
@@ -104,7 +105,7 @@ fn on_think(ctx, tower) {
     let target = defend_hero(ctx, tower, range);
     if target == () {
         let current = tower.attack_target;
-        if current != () && current.is_alive && tower.position.within(current.position, range) {
+        if current != () && current.is_alive && tower.position.is_within(current.position, range) {
             target = current;
         }
     }
@@ -122,7 +123,7 @@ fn on_think(ctx, tower) {
 fn defend_hero(ctx, tower, range) {
     for ally in ctx.find(tower, tower.position, range, "allies:avatar") {
         for attacker in ally.recent_attackers(tower.params.help_window_ms) {
-            if attacker.is_avatar && attacker.is_enemy_of(tower) && tower.position.within(attacker.position, range) {
+            if attacker.is_avatar && attacker.is_enemy_of(tower) && tower.position.is_within(attacker.position, range) {
                 return attacker;
             }
         }
@@ -325,14 +326,16 @@ fn a_slot_order_of_an_action_whose_when_its_unit_fails_is_refused() {
         .unwrap();
     let unmet = Filter::of_match(&game, "all:avatar");
     ActionBook::amend(&mut game, |_, book| book.set_when(train, Some(unmet)));
-    let order = Order::payload(&[Order::one(
-        hero,
-        OrdersDirective::Slot {
-            slot: 1,
-            target: ActionTarget::None,
-        },
-    )]);
-    game.step_with(&[(PlayerSlot::new(0), &order)]);
+    game.step_orders(
+        PlayerSlot::new(0),
+        &[Order::one(
+            hero,
+            OrdersDirective::Slot {
+                slot: 1,
+                target: ActionTarget::None,
+            },
+        )],
+    );
     let progress = game.part::<ActionProgress>(hero);
     assert_eq!(progress.in_progress(), None);
     assert_eq!(dropped(&game), [(Some(hero), OrderDropCause::Unusable)]);
@@ -1106,7 +1109,7 @@ fn an_ai_needs_think_and_orders_its_unit_but_changes_nothing() {
     // other at allies alone.
     let [at_enemies, at_allies] = ["enemies", "allies"].map(|aim| {
         let weapon = TestWeapon::new(
-            Filter::parse(aim, &TagNames::new(&Release::engine_tags())).unwrap(),
+            Filter::parse(aim, &TagNames::new(Release::engine_tags())).unwrap(),
             ActionRange::meters(Num::int(20)),
             Ticks::new(2),
         );
@@ -1418,7 +1421,7 @@ fn a_walker_ordered_to_move_leaves_its_path_until_it_follows_it_again() {
     let mover = r#"
 fn on_think(ctx, unit) {
     let post = ctx.find(unit, unit.position, 50, "allies:post")[0];
-    if unit.position.within(post.position, 0) {
+    if unit.position.is_within(post.position, 0) {
         ctx.order_follow_path();
     } else {
         ctx.order_move(post.position);

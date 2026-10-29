@@ -2,5 +2,6 @@
 //! moves by its movement model).
 
 pub(crate) mod zero_hour_drive;
+pub(crate) mod zero_hour_driver;
 pub(crate) mod zero_hour_locomotor;
 pub(crate) mod zero_hour_mover;

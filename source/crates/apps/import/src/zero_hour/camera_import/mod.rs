@@ -4,8 +4,8 @@
 use bevy_math::Vec2;
 use campfire_client_files::{CameraFile, CameraHeight};
 
+use crate::zero_hour::format::game_frames;
 use crate::zero_hour::format::ini::game_data_ini::GameDataIni;
-use crate::zero_hour::game_time;
 
 /// The view's horizontal field of view, in degrees, which `View` fixes.
 const FIELD_OF_VIEW: f32 = 50.0;
@@ -29,9 +29,9 @@ const DRAG_TURN: f32 = 0.01;
 const EDGE: f32 = 3.0;
 
 /// The player's camera of `data`, as the game's tactical view moves it at its start, its zoom at
-/// its most: a key or the screen's edge scrolls it `SCROLL_PIXELS` a frame times the axis's factor and the default
-/// scroll factor, each pixel `SCROLL_RESOLUTION` pixels of the view plane, whose width at depth 1
-/// is `2 · tan(fov / 2)` across `DISPLAY_WIDTH` pixels.
+/// its most: a key or the screen's edge scrolls it `SCROLL_PIXELS` a frame times the axis's factor
+/// and the default scroll factor, each pixel `SCROLL_RESOLUTION` pixels of the view plane, whose
+/// width at depth 1 is `2 · tan(fov / 2)` across `DISPLAY_WIDTH` pixels.
 ///
 /// The pitch is clamped to 0.1°–89.9° and the most height raised to the least, as the view takes
 /// them; none for a camera the client takes no other way.
@@ -43,7 +43,7 @@ pub(crate) fn camera_file(data: &GameDataIni) -> Option<CameraFile> {
             * data.default_scroll
             * SCROLL_RESOLUTION
             * plane
-            * game_time::FRAMES_PER_SECOND
+            * game_frames::PER_SECOND
     };
     CameraFile {
         pitch: data.camera_pitch.clamp(0.1, 89.9),
@@ -54,10 +54,10 @@ pub(crate) fn camera_file(data: &GameDataIni) -> Option<CameraFile> {
             most: data.max_camera_height.max(data.min_camera_height),
         },
         scroll: Vec2::new(speed(data.horizontal_scroll), speed(data.vertical_scroll)),
-        turn: data.rotate_speed * game_time::FRAMES_PER_SECOND,
+        turn: data.rotate_speed * game_frames::PER_SECOND,
         drag_turn: DRAG_TURN,
         zoom_notch: ZOOM_HEIGHT,
-        zoom_key: ZOOM_HEIGHT * game_time::FRAMES_PER_SECOND,
+        zoom_key: ZOOM_HEIGHT * game_frames::PER_SECOND,
         edge: EDGE,
     }
     .checked()

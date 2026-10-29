@@ -3,7 +3,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::{Entity, MapEntities};
 use bevy_ecs::error::Result;
 use bevy_reflect::Reflect;
-use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
+use bevy_replicon::shared::replication::diff::Diffable;
 use serde::{Deserialize, Serialize};
 
 use crate::app_component_ext::AppComponentExt;
@@ -26,7 +26,7 @@ pub struct CompSimple(pub f32);
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Reflect)]
 pub struct CompRepliconDiff(pub u32);
 
-impl RepliconDiffable for CompRepliconDiff {
+impl Diffable for CompRepliconDiff {
     type Diff = u32;
 
     fn apply_diff(&mut self, diff: &Self::Diff) -> Result<()> {

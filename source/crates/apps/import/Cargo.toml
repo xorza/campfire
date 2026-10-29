@@ -82,6 +82,7 @@ clap = { workspace = true, features = [
     "usage",
 ] }
 derive_more = { workspace = true, features = ["display"] }
+libm.workspace = true
 gltf-json = { workspace = true, features = [
     "KHR_materials_specular",
     "KHR_materials_unlit",

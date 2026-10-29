@@ -12,7 +12,7 @@ use bevy_ecs::resource::IsResource;
 use bevy_ecs::world::DeferredWorld;
 use bevy_reflect::Reflect;
 use bevy_replicon::client::confirm_history::ConfirmHistory;
-use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
+use bevy_replicon::shared::replication::diff::Diffable;
 use bevy_replicon::shared::replication::storage::ReplicationStorage;
 use bevy_utils::prelude::DebugName;
 use campfire_net_core::Iter as EntryIter;
@@ -441,7 +441,7 @@ impl<C: HistoryComponent> PredictionHistory<C> {
     }
 }
 
-impl<C: HistoryComponent + RepliconDiffable> PredictionHistory<C> {
+impl<C: HistoryComponent + Diffable> PredictionHistory<C> {
     pub(crate) fn add_diff_receiver(
         trigger: On<'_, '_, Add<(C, Predicted, PreSpawned, LocallyPredicted)>>,
         mut world: DeferredWorld<'_>,

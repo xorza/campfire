@@ -153,7 +153,7 @@ impl RollbackCheckState {
     /// `RollbackMode::Always`. Do not advance it directly from `ServerMutateTicks`, while the
     /// completed tick is still in the client's future, or while a diff at or before this confirmed
     /// tick is unresolved.
-    pub const fn set_last_processed_confirmed_tick(&mut self, tick: NetTick) {
+    pub(crate) const fn set_last_processed_confirmed_tick(&mut self, tick: NetTick) {
         self.last_processed_confirmed_tick = Some(tick);
     }
 
@@ -161,7 +161,7 @@ impl RollbackCheckState {
     ///
     /// If this returns false, `RollbackPlugin::check_rollback` can skip the full state scan because
     /// the current completed confirmed tick was already handled on an earlier frame.
-    pub fn has_confirmed_tick_advanced(&self, current_tick: NetTick) -> bool {
+    pub(crate) fn has_confirmed_tick_advanced(&self, current_tick: NetTick) -> bool {
         match self.last_processed_confirmed_tick {
             None => true, // First time, always process
             Some(last) => current_tick > last,

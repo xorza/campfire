@@ -37,8 +37,8 @@ impl ServerSocket {
     }
 
     /// The parts of the server's endpoint, which admits each address within `admission`.
-    pub fn serve(self, admission: AdmissionSetup) -> EndpointPieces<UdpIo> {
-        self.server.serve(self.io, admission, Random::os())
+    pub fn endpoint(self, admission: AdmissionSetup) -> EndpointPieces<UdpIo> {
+        self.server.endpoint(self.io, admission, Random::os())
     }
 }
 

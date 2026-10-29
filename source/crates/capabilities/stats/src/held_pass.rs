@@ -215,6 +215,20 @@ impl HeldPass {
                 if held.is_some_and(|instance| instance.lifetime.held_by(Hold::Held)) {
                     continue;
                 }
+                // A modifier of one source a client holds from a source it cannot see is the
+                // server's choice of its lowest source, so a seen source adds none beside it.
+                let one = book.get(entry.modifier).spec.held_sources == HeldSources::One;
+                let unseen_held = || {
+                    carried.modifiers().iter().any(|carried| {
+                        let instance = carried.instance;
+                        instance.id == entry.modifier
+                            && instance.lifetime.held_by(Hold::Held)
+                            && unseen.holds::<F>(instance.source)
+                    })
+                };
+                if one && unseen_held() {
+                    continue;
+                }
                 let applier = Applier {
                     source: entry.source,
                     action: entry.action,

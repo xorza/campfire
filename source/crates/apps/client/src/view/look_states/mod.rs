@@ -36,6 +36,7 @@ use crate::view::slot_shots::{AttackParts, ClipLack, SlotShots};
 use crate::view::unit_looks::{LookDraws, UnitFacts, UnitLooks};
 use crate::view::unit_models::DressSystems;
 use crate::view::unit_models::{Dressed, Replaces};
+use crate::view::view_dice::ViewDice;
 use crate::view::{DrawSystems, ViewSystems};
 
 pub(crate) mod draw_show;
@@ -62,14 +63,11 @@ pub(crate) struct LookStates {
     lacks: Vec<u16>,
     moved: Duration,
     shots: SlotShots,
-    dice: LookDice,
+    /// What the drawing draws its clips, their starts and their speeds of, as Zero Hour's client
+    /// draws them of `GameClientRandomValue`, of a seed of its unit, which no sim reads.
+    dice: ViewDice,
     draws: Vec<DrawShow>,
 }
-
-/// The dice a drawing draws its clips, their starts and their speeds of, as Zero Hour's client
-/// draws them of `GameClientRandomValue`: SplitMix64, of a seed of its unit, which no sim reads.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LookDice(u64);
 
 /// The units whose conditions' parts changed: their life, their tags or their destination.
 type Retested<'w, 's> = Query<
@@ -234,33 +232,9 @@ impl LookStates {
             lacks: Vec::new(),
             moved: Duration::ZERO,
             shots: SlotShots::default(),
-            dice: LookDice(seed),
+            dice: ViewDice::new(seed),
             draws: vec![DrawShow::default(); draws.draws().len()],
         }
-    }
-}
-
-impl LookDice {
-    /// The next of its numbers, SplitMix64's.
-    const fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = self.0;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^ (z >> 31)
-    }
-
-    /// A number below `count`, which is above 0.
-    pub(crate) fn below(&mut self, count: usize) -> usize {
-        debug_assert!(count > 0, "a number below none");
-        let count = u64::try_from(count).expect("a usize fits u64");
-        usize::try_from(self.next() % count).expect("below a usize")
-    }
-
-    /// A number from `least` to `most`.
-    pub(crate) fn between(&mut self, least: f32, most: f32) -> f32 {
-        let unit = (self.next() >> 40) as f32 / (1_u64 << 24) as f32;
-        least + (most - least) * unit
     }
 }
 

@@ -107,6 +107,16 @@ impl<I: NameId> Names<I> {
         names
     }
 
+    /// The table of `keys`, each the next id, which a caller gives each once and below `LIMIT`,
+    /// as a logic error otherwise; `all_of` for keys of data.
+    pub fn unique<K: NameKey<I::Scope>>(keys: impl IntoIterator<Item = K>) -> Self {
+        let mut names = Self::default();
+        for key in keys {
+            names.add(key);
+        }
+        names
+    }
+
     /// The table of `keys`, each the next id; an error at the first key its scope names already,
     /// or past `LIMIT`.
     pub fn all_of<K: NameKey<I::Scope>>(
@@ -187,22 +197,6 @@ impl<I: NameId> Default for Names<I> {
     }
 }
 
-impl<I: NameId, K: NameKey<I::Scope>> FromIterator<K> for Names<I> {
-    fn from_iter<T: IntoIterator<Item = K>>(keys: T) -> Self {
-        let mut names = Self::default();
-        for key in keys {
-            names.add(key);
-        }
-        names
-    }
-}
-
-impl<I: NameId, K: NameKey<I::Scope>, const N: usize> From<[K; N]> for Names<I> {
-    fn from(keys: [K; N]) -> Self {
-        keys.into_iter().collect()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,7 +238,7 @@ mod tests {
     #[test]
     fn a_name_finds_its_id_in_its_scope_and_an_id_its_name() {
         // Ids by the order they are added, which a lookup finds whatever their names' order.
-        let names = Names::<Small>::from(["b", "", "a"]);
+        let names = Names::<Small>::unique(["b", "", "a"]);
         assert_eq!(names.len(), 3);
         assert_eq!(names.texts().collect::<Vec<_>>(), ["b", "", "a"]);
         assert_eq!(
@@ -270,7 +264,7 @@ mod tests {
 
     #[test]
     fn a_table_refuses_a_repeat_in_a_scope_and_an_id_past_its_limit() {
-        let mut names = Names::<Small>::from(["a", "b"]);
+        let mut names = Names::<Small>::unique(["a", "b"]);
         assert_eq!(names.try_add("a"), Err(NamesError::Repeated));
         assert_eq!(names.try_add("c"), Ok(Small(2)));
         assert_eq!(names.try_add("d"), Err(NamesError::Full));
@@ -296,6 +290,6 @@ mod tests {
     #[test]
     #[should_panic(expected = "a scope names an id once: a")]
     fn an_add_of_a_repeat_fails() {
-        drop(Names::<Small>::from(["a", "a"]));
+        drop(Names::<Small>::unique(["a", "a"]));
     }
 }

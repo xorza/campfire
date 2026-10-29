@@ -332,9 +332,7 @@ impl ClientModule {
                 app.add_plugins(EffectsPlugin);
             }
             Self::Sounds => {
-                app.add_plugins(SoundsPlugin {
-                    packages: Arc::clone(packages),
-                });
+                app.add_plugins(SoundsPlugin);
             }
             Self::Hud => {
                 app.add_plugins(HudPlugin);

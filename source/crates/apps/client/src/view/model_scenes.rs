@@ -37,7 +37,7 @@ impl ModelScenes {
 }
 
 #[cfg(test)]
-pub(crate) mod reach_in {
+pub(crate) mod internals {
     use super::*;
 
     impl ModelScenes {

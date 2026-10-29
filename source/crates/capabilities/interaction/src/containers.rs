@@ -405,38 +405,51 @@ impl Containers {
             if !riders.wants_ground() && !riders.lands() {
                 continue;
             }
-            riders.boarders_mut().retain_mut(|boarder| {
-                let Some((entity, (mut progress, slots))) = index
-                    .get(boarder.id)
-                    .and_then(|entity| Some((entity, boarders.get_mut(entity).ok()?)))
-                else {
-                    return false;
-                };
-                let entry = slots
-                    .indexed()
-                    .find(|(_, slot)| slot.action == Some(spec.action))
-                    .map(|(at, _)| at);
-                let coming = progress.in_progress().is_some_and(|underway| {
-                    matches!(underway, InProgress::Order { aim, .. }
+            // The part is marked changed only as a boarder comes, goes or stops waiting, so a
+            // container whose boarders walk to it is not sent and hashed again each tick.
+            let mut changed = false;
+            riders
+                .bypass_change_detection()
+                .boarders_mut()
+                .retain_mut(|boarder| {
+                    let Some((entity, (mut progress, slots))) = index
+                        .get(boarder.id)
+                        .and_then(|entity| Some((entity, boarders.get_mut(entity).ok()?)))
+                    else {
+                        changed = true;
+                        return false;
+                    };
+                    let entry = slots
+                        .indexed()
+                        .find(|(_, slot)| slot.action == Some(spec.action))
+                        .map(|(at, _)| at);
+                    let coming = progress.in_progress().is_some_and(|underway| {
+                        matches!(underway, InProgress::Order { aim, .. }
                         if aim.target == ActionTarget::Unit(id) && Some(aim.slot) == entry)
+                    });
+                    if !boarder.waits {
+                        changed |= !coming;
+                        return coming;
+                    }
+                    // A unit that waits and took another order comes no more.
+                    if progress.in_progress().is_some() && !coming {
+                        changed = true;
+                        return false;
+                    }
+                    if grounded && let Some(slot) = entry {
+                        progress.order(
+                            slot,
+                            ActionTarget::Unit(id),
+                            &mut indexes.of(boarder.id, entity),
+                        );
+                        boarder.waits = false;
+                        changed = true;
+                    }
+                    true
                 });
-                if !boarder.waits {
-                    return coming;
-                }
-                // A unit that waits and took another order comes no more.
-                if progress.in_progress().is_some() && !coming {
-                    return false;
-                }
-                if grounded && let Some(slot) = entry {
-                    progress.order(
-                        slot,
-                        ActionTarget::Unit(id),
-                        &mut indexes.of(boarder.id, entity),
-                    );
-                    boarder.waits = false;
-                }
-                true
-            });
+            if changed {
+                riders.set_changed();
+            }
             let lands = riders.wants_ground();
             if let Some(mut goal) = goal {
                 if lands {

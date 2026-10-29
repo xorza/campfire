@@ -2,12 +2,12 @@ use crate::correction;
 use crate::mismatch_fn::MismatchFn;
 use crate::prediction_registration;
 use crate::prediction_registry;
+use crate::visual_diff::VisualDiff;
 use bevy_curve::Ease;
 use campfire_net_frame_interpolation::LerpFn;
 use campfire_net_frame_interpolation::linear_lerp;
 use campfire_net_replication::ComponentRegistration;
 use campfire_net_replication::ComponentRegistrator;
-use campfire_net_replication::Diffable;
 use campfire_net_replication::HistoryComponent;
 use core::fmt::Debug;
 
@@ -61,7 +61,7 @@ impl<'a, C, M> PredictedComponentRegistration<'a, C, M> {
     pub fn correct_linear<V, D>(self) -> Self
     where
         C: HistoryComponent,
-        V: HistoryComponent + Diffable<D>,
+        V: HistoryComponent + VisualDiff<D>,
         D: Ease + Debug + Clone + Default + Send + Sync + 'static,
     {
         self.correct_with::<V, D>(linear_lerp::<D>)
@@ -77,7 +77,7 @@ impl<'a, C, M> PredictedComponentRegistration<'a, C, M> {
     pub fn correct_with<V, D>(self, correction_fn: LerpFn<D>) -> Self
     where
         C: HistoryComponent,
-        V: HistoryComponent + Diffable<D>,
+        V: HistoryComponent + VisualDiff<D>,
         D: Debug + Clone + Default + Send + Sync + 'static,
     {
         let app = &mut *self.registration.app;

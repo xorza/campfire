@@ -1,7 +1,6 @@
 use crate::message_error::MessageError;
 use crate::receive_map_view::ReceiveMapView;
 use crate::send_map_view::SendMapView;
-use bytes::Buf;
 use campfire_codec::{Binary, Sink};
 use campfire_net_bytes::Reader;
 use campfire_net_bytes::WriteInteger;
@@ -90,25 +89,6 @@ impl<M> CxDeserializeFns<M> {
     }
 }
 
-/// How a message or an event encodes and decodes: through `codec`, or as the stack's own
-/// `ToBytes` types do.
-#[derive(Debug)]
-pub(crate) struct SerializeFns<M> {
-    /// Called to serialize the type into the writer
-    pub(crate) serialize: SerializeFn<M>,
-    /// Called to deserialize the type from the reader
-    pub(crate) deserialize: DeserializeFn<M>,
-}
-
-impl<M: Serialize + DeserializeOwned> Default for SerializeFns<M> {
-    fn default() -> Self {
-        Self {
-            serialize: default_serialize::<M>,
-            deserialize: default_deserialize::<M>,
-        }
-    }
-}
-
 /// Type of the serialize function without entity mapping
 pub(crate) type SerializeFn<M> = fn(message: &M, writer: &mut Writer);
 
@@ -160,19 +140,19 @@ impl Sink for WriterSink<'_> {
 }
 
 /// A message's encode in `codec`'s binary encoding, the one every message and component takes.
-fn default_serialize<M: Serialize + ?Sized>(message: &M, writer: &mut Writer) {
+pub(crate) fn default_serialize<M: Serialize + ?Sized>(message: &M, writer: &mut Writer) {
     Binary::encode_to(message, &mut WriterSink(writer));
 }
 
 /// A message's decode from its one encoding in `codec`'s binary encoding; on an error, the reader
 /// stays where it was.
-fn default_deserialize<M: Serialize + DeserializeOwned>(
+pub(crate) fn default_deserialize<M: Serialize + DeserializeOwned>(
     reader: &mut Reader,
 ) -> Result<M, MessageError> {
-    let taken = Binary::take::<M>(reader.chunk())?;
+    let taken = Binary::take::<M>(reader.rest())?;
     let read = reader.remaining() - taken.rest.len();
     let value = taken.value;
-    reader.advance(read);
+    reader.skip(read)?;
     Ok(value)
 }
 

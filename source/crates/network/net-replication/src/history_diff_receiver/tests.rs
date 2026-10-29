@@ -3,14 +3,12 @@ use super::*;
 use bevy_ecs::component::Component;
 use bevy_ecs::error::Result;
 
-use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Component, Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct TestDiffValue(u32);
 
-impl RepliconDiffable for TestDiffValue {
+impl Diffable for TestDiffValue {
     type Diff = u32;
 
     fn apply_diff(&mut self, diff: &Self::Diff) -> Result<()> {

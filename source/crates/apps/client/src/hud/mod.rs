@@ -385,12 +385,26 @@ fn badge_uv(rect: Rect, size: Vec2) -> Affine2 {
     Affine2::from_scale_angle_translation(rect.size() / size, 0.0, rect.min / size)
 }
 
+/// The units the HUD marks as selected, by their bars and rings, in stable id order, each once:
+/// each the player selected, a selected leader as its living spawns (02-engine-core.md, A member
+/// picks as its leader).
+#[derive(Resource, Debug, Default)]
+pub(crate) struct MarkedUnits(Vec<StableId>);
+
+impl MarkedUnits {
+    fn contains(&self, unit: StableId) -> bool {
+        self.0.binary_search(&unit).is_ok()
+    }
+}
+
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, Self::set_palette);
+        app.init_resource::<MarkedUnits>();
         app.add_systems(
             Update,
             (
+                Self::mark_selected,
                 Self::take_down_torn,
                 Self::regauge,
                 Self::reside,
@@ -626,11 +640,33 @@ impl HudPlugin {
         hud.0.hit_mark == HitMark::Ring
     }
 
-    /// Shows the bars of the units the player selected and of the one under the cursor alone,
-    /// and hides the others' (02-engine-core.md, Bars in screen space). A stand shows or hides
-    /// again only as the selection or the pointed unit changes, or as it is new.
+    /// Lists the units the HUD marks as selected, as the selection or a selected leader's spawns
+    /// change; the list changes only as they do.
+    fn mark_selected(
+        (selection, index): (Res<'_, Selection>, Res<'_, EntityIndex>),
+        leaders: Query<'_, '_, &LivingSpawns, With<Leader>>,
+        mut marked: ResMut<'_, MarkedUnits>,
+        mut now: Local<'_, Vec<StableId>>,
+    ) {
+        now.clear();
+        for &unit in selection.get() {
+            match index.get(unit).and_then(|unit| leaders.get(unit).ok()) {
+                Some(spawns) => now.extend(spawns.iter()),
+                None => now.push(unit),
+            }
+        }
+        now.sort_unstable();
+        now.dedup();
+        if marked.0 != *now {
+            marked.0.clone_from(&now);
+        }
+    }
+
+    /// Shows the bars of the units the HUD marks as selected and of the one under the cursor
+    /// alone, and hides the others' (02-engine-core.md, Bars in screen space). A stand shows or
+    /// hides again only as the marked units or the pointed unit change, or as it is new.
     fn show_selected_bars(
-        (selection, pointer): (Res<'_, Selection>, Pointer<'_, '_>),
+        (marked, pointer): (Res<'_, MarkedUnits>, Pointer<'_, '_>),
         (roots, units): (
             GaugedRoots<'_, '_>,
             Query<'_, '_, &StableId, Allow<Unpredicted>>,
@@ -639,7 +675,7 @@ impl HudPlugin {
         mut pointed: Local<'_, Option<StableId>>,
     ) {
         let now = pointer.unit_under(&[]).map(|unit| unit.id);
-        let changed = selection.is_changed() || now != *pointed;
+        let changed = marked.is_changed() || now != *pointed;
         *pointed = now;
         for (&DrawingOf(unit), gauged) in &roots {
             if !changed && !gauged.is_changed() {
@@ -648,7 +684,7 @@ impl HudPlugin {
             let (Some(stand), Ok(&id)) = (gauged.stand, units.get(unit)) else {
                 continue;
             };
-            let shown = now == Some(id) || selection.get().binary_search(&id).is_ok();
+            let shown = now == Some(id) || marked.contains(id);
             let visibility = if shown {
                 Visibility::Inherited
             } else {
@@ -665,16 +701,20 @@ impl HudPlugin {
     /// pixel of the screen at its depth, as an RTS draws its bars (02-engine-core.md, Bars in
     /// screen space). A stand turns in its drawing's root, which turns as its unit faces, so its
     /// own turn takes the root's away. A stand changes again only as the camera, its projection or
-    /// the window changes, its root moves, or it is new.
+    /// the window's height changes, its root moves, or it is new: a window changes as its cursor
+    /// moves, which moves no stand.
     fn face_camera(
         camera: Eye<'_, '_>,
-        window: Single<'_, '_, Ref<'_, Window>, With<PrimaryWindow>>,
+        window: Single<'_, '_, &Window, With<PrimaryWindow>>,
+        mut drawn_height: Local<'_, f32>,
         roots: Query<'_, '_, Ref<'_, Transform>, (Without<GaugeStand>, Without<Camera3d>)>,
         mut stands: Query<'_, '_, (&ChildOf, Ref<'_, GaugeStand>, &mut Transform)>,
     ) {
         let (eye, projection) = camera.into_inner();
         let facing = eye.rotation * Quat::from_rotation_x(FRAC_PI_2);
-        let moved = eye.is_changed() || projection.is_changed() || window.is_changed();
+        let resized = *drawn_height != window.height();
+        *drawn_height = window.height();
+        let moved = eye.is_changed() || projection.is_changed() || resized;
         let pixels = PixelScale::of(*eye, &projection, window.height());
         for (&ChildOf(root), stand, mut place) in &mut stands {
             let Ok(root) = roots.get(root) else {
@@ -960,9 +1000,8 @@ impl HudPlugin {
         }
     }
 
-    /// Puts a ring under each unit the player selected, at its reach, under each living spawn of a
-    /// selected leader in its place (02-engine-core.md, A member picks as its leader), and a wider
-    /// one under the unit the own avatar attacks, once each one's drawing has its shape, and again
+    /// Puts a ring under each unit the HUD marks as selected, at its reach, and a wider one under
+    /// the unit the own avatar attacks, once each one's drawing has its shape, and again
     /// under a new drawing of it; takes each ring away as its unit leaves the selection or the
     /// attack.
     #[expect(
@@ -970,11 +1009,7 @@ impl HudPlugin {
         reason = "a system takes each resource and query it reads"
     )]
     fn mark_rings(
-        (selection, index, leaders): (
-            Res<'_, Selection>,
-            Res<'_, EntityIndex>,
-            Query<'_, '_, &LivingSpawns, With<Leader>>,
-        ),
+        (marked, index): (Res<'_, MarkedUnits>, Res<'_, EntityIndex>),
         palette: Res<'_, HudPalette>,
         own: OwnPlayer<'_, '_>,
         slots: Query<'_, '_, &ActionProgress>,
@@ -984,13 +1019,7 @@ impl HudPlugin {
         mut commands: Commands<'_, '_>,
     ) {
         wanted.clear();
-        for &unit in selection.get() {
-            let led = index.get(unit).and_then(|unit| leaders.get(unit).ok());
-            match led {
-                Some(spawns) => wanted.extend(spawns.iter().map(|&spawn| (spawn, Marks::Selected))),
-                None => wanted.push((unit, Marks::Selected)),
-            }
-        }
+        wanted.extend(marked.0.iter().map(|&unit| (unit, Marks::Selected)));
         let target = own
             .avatar()
             .and_then(|avatar| slots.get(avatar.entity).ok())

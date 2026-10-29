@@ -55,17 +55,16 @@ impl Fact for UnitTypes {}
 /// No tag and no type.
 impl Default for UnitTypes {
     fn default() -> Self {
-        Self::new(Vec::new())
+        Self::new(&[])
     }
 }
 
 impl UnitTypes {
     /// The engine's tags `engine` at their places, as the release lists them, and no type.
-    pub fn new(engine: impl IntoIterator<Item = EngineTag>) -> Self {
-        let engine: Vec<EngineTag> = engine.into_iter().collect();
+    pub fn new(engine: &[EngineTag]) -> Self {
         Self {
-            tags: TagNames::new(&engine),
-            engine,
+            tags: TagNames::new(engine),
+            engine: engine.to_vec(),
             type_tags: Vec::new(),
             types: Arc::default(),
             origins: TypeOriginBook::default(),
@@ -189,7 +188,7 @@ impl UnitTypes {
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let source = cx.source();
         let fail = |error| BookError::rule(PackageIndex::MODE, BookPlace::Types, error);
-        let mut types = Self::new(source.engine_tags.iter().copied());
+        let mut types = Self::new(source.engine_tags);
         for name in cx.fact::<DeclaredTags>()?.of_packages(source.engine_tags) {
             types.declare(name.as_str()).map_err(fail)?;
         }

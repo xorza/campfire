@@ -70,7 +70,10 @@ fn two_segments_that_meet_chain_back_along_the_list_and_turn_by_a_curve() {
     assert!(near(first.start.point, [91.841_79, 1.788_894]));
     let direction = |road: BufferRoad| (road.end.point - road.start.point).normalize();
     let fifteen = 15.0_f32.to_radians();
-    assert!(near(direction(first), [fifteen.cos(), fifteen.sin()]));
+    assert!(near(
+        direction(first),
+        [libm::cosf(fifteen), libm::sinf(fifteen)]
+    ));
     assert!(near(last.start.point, [78.253_79, 0.0]));
     assert!(near(direction(last), [1.0, 0.0]));
     assert_eq!(
@@ -209,7 +212,7 @@ fn three_ends_of_a_straight_road_and_an_arm_meet_at_a_tee_or_an_h_where_the_arm_
 fn three_ends_none_near_a_line_meet_at_a_y_and_four_at_a_four_way() {
     // North, south-west and south-east, 120° apart: a Y. Its stem's end moves on 0.55 half
     // widths, 9.625, and each leg's 1.1 out, 19.25.
-    let (sin, cos) = 30.0_f32.to_radians().sin_cos();
+    let (sin, cos) = libm::sincosf(30.0_f32.to_radians());
     let (junctions, ends) = junction(&[
         [0.0, 100.0],
         [-100.0 * cos, -100.0 * sin],
@@ -284,4 +287,15 @@ fn an_end_that_asks_for_a_join_fades_into_the_road_it_meets_and_stacks_over_it()
     assert!(buffer.stacks.is_empty());
     let alone = RoadBuffer::chained(&[road]);
     assert_eq!(alone.roads.len(), 1);
+}
+
+/// A turn takes its sine and cosine from `libm` in software, so every OS gives the same bits:
+/// (1, 0) turned by 1 radian is (cos 1, sin 1), each rounded to the nearest `f32`.
+#[test]
+fn a_turn_gives_the_same_bits_on_every_os() {
+    let turned = plane::rotate(Vec2::X, 1.0);
+    assert_eq!(
+        [turned.x.to_bits(), turned.y.to_bits()],
+        [0x3f0a_5140, 0x3f57_6aa4]
+    );
 }

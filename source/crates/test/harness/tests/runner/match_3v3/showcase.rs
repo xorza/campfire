@@ -129,9 +129,8 @@ const fn stamp(index: u64) -> u64 {
 /// The item `name` of the 3v3.
 fn item(moba: &ScriptedMode<Moba3v3>, name: &str) -> ItemId {
     let mode = moba.packages().mode();
-    let items: Names<ItemId> = (mode.content.items().keys())
-        .map(DeclaredName::as_str)
-        .collect();
+    let items = mode.content.items().keys().map(DeclaredName::as_str);
+    let items = Names::<ItemId>::unique(items);
     items.named(name).unwrap()
 }
 
@@ -421,7 +420,7 @@ pub(crate) fn assert_casts(
         // the ticks a second, and carries the remainder to the next, so it adds as much as the
         // tick before, or a bit more or less.
         let pools = moba.packages().data().section_or_default::<ModePoolsData>();
-        let pools: Names<PoolId> = pools.0.keys().map(DeclaredName::as_str).collect();
+        let pools: Names<PoolId> = Names::unique(pools.0.keys().map(DeclaredName::as_str));
         for (name, cost) in &data.keys.cost {
             let pool = pools.named(name.as_str()).unwrap();
             let left = |at| showcase.at(at, player).pools[pool.index()].unwrap();

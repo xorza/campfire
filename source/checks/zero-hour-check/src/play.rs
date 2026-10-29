@@ -1,3 +1,5 @@
+use std::fmt::{self, Display, Formatter};
+
 use clap::ValueEnum;
 
 /// A play of the check, by the name its command line gives it.
@@ -38,39 +40,10 @@ pub(crate) enum Play {
     Drive,
 }
 
-impl Play {
-    /// Its name on the command line, which names its probe's file.
-    pub(crate) const fn name(self) -> &'static str {
-        match self {
-            Self::Skirmish => "skirmish",
-            Self::Supply => "supply",
-            Self::Helicopter => "helicopter",
-            Self::Jet => "jet",
-            Self::Science => "science",
-            Self::Gattling => "gattling",
-            Self::Patriot => "patriot",
-            Self::Stinger => "stinger",
-            Self::Missile => "missile",
-            Self::Combat => "combat",
-            Self::Transport => "transport",
-            Self::Garrison => "garrison",
-            Self::Base => "base",
-            Self::Attack => "attack",
-            Self::Drive => "drive",
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_plays_name_is_the_one_its_command_line_reads() {
-        for &play in Play::value_variants() {
-            let value = play.to_possible_value().unwrap();
-            assert_eq!(value.get_name(), play.name());
-            assert_eq!(Play::from_str(play.name(), false), Ok(play));
-        }
+/// Its name on the command line, which names its probe's file.
+impl Display for Play {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let value = self.to_possible_value().expect("the check skips no play");
+        f.write_str(value.get_name())
     }
 }

@@ -14,8 +14,8 @@ const CASES_ELSEWHERE: [&str; 2] = [
     "crates/test/measure/src/run_cost.rs",
 ];
 
-/// The calls that define a bench case.
-/// Spelled in parts, so that this file's own list holds none of them.
+/// The calls that define a bench case, which a file's code names past its comments. Spelled in
+/// parts, so that this file's own list holds none of them.
 const CASE_CALLS: [&str; 3] = [
     concat!("bench_", "function"),
     concat!("benchmark_", "group"),
@@ -42,7 +42,7 @@ pub(crate) fn a_crate_has_one_bench_target_and_its_cases_live_in_bench_files(
     }
     let elsewhere = Allowlist::new(&CASES_ELSEWHERE);
     for file in workspace.sources() {
-        let defines = CASE_CALLS.iter().any(|call| file.text.contains(call));
+        let defines = CASE_CALLS.iter().any(|call| file.code().contains(call));
         if defines && !is_bench(&file.path) && !elsewhere.allows(|path| *path == file.path) {
             found.push(format!("{}: a bench case outside a bench.rs", file.path));
         }

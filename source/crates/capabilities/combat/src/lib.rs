@@ -12,7 +12,8 @@ use campfire_actions::{
 };
 use campfire_common::EnumAll;
 use campfire_declarations::{
-    ById, ClientForm, Declarations, InstallCx, Module, ModuleSystems, ServerForm, SetPlace,
+    ById, ClientForm, Declarations, InstallCx, Module, ModuleSystems, NameSets, ServerForm,
+    SetPlace,
 };
 use campfire_math::RngStream;
 use campfire_script::{ApiVersion, EventPhase, Status};
@@ -213,10 +214,12 @@ impl Module for Combat {
         d.section::<CombatData>();
         d.section::<TurretData>();
         d.section::<ModeCombatData>();
+        d.extend::<NameSets>(ModeCombatData::armor_names);
         d.component::<TurretAim>();
         d.timed::<TurretAim>();
         d.book::<ById<UnitType, Turret>>(Turret::book);
         d.book::<ById<UnitType, TurretMount>>(Turret::mounts);
+        d.observer(Aiming::revived);
         d.part::<BodyUnit, TurretAim>(|at| at.of_type::<Turret>().map(TurretAim::rest));
         d.section::<BarrelsData>();
         d.section::<SecondLifeData>();

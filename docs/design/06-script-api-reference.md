@@ -17,6 +17,7 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `attack_hit` | `(target: Unit)` | action, modifier, AI | combat | since 1.0 | an extra attack of the acting unit on `target`, with the weapon it would choose against `target` at any distance, struck at once: no crit, no `on_attack`, and nothing when no weapon selects it |
 | `avatars` | `()` or `(team: text)`, `team` a team | every role of the sim | core | since 1.0 | the living avatars of every team or of `team`, by stable id |
 | `can_choose` | `(player: Player, choice: text, value: text)`, `choice` a choice | mode | core | since 1.0 | whether `player` may choose `value` of `choice`: no other player chose it in a unique choice |
+| `can_start` | `(unit: Unit, action: text)` | bot | orders | since 1.0 | whether `unit`, the bot's own, may start the train or the build of its slot that holds the action `action`, of any package, as the think began, as the order's own checks find it; a build's place its order finds |
 | `cancel_timer` | `(name: text)`, `name` a timer | mode | core | since 1.0 | ends every timer of `name` the call's script set, those the call set before among them |
 | `carry` | read | mode | core | planned | the carry the session loaded, which the mode writes for the next session |
 | `chance` | `(p: Num)` | every role of the sim | core | since 1.0 | true with probability `p`, from 0 to 1, from the secret stream |
@@ -37,14 +38,13 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `grant` | `(unit: Unit, kind: text, ids: array)`, `kind` a slot kind | mode | abilities | since 1.0 | puts the actions `ids`, loadout entries the mode depends on, in the slot kind `kind` of `unit`, after its slots of that kind, at the kind's first rank |
 | `grant_perk` | `(player: Player, id: text)`, `id` a perk | mode | progression | since 1.0 | gives `player` the perk `id`, with no point and no requirement, and its modifier |
 | `heal` | `(unit: Unit, amount: Num)` | every role of the sim | combat | since 1.0 | heals `unit`'s life pool, times one plus its `heal_scale` stat |
-| `idle` | `(unit: Unit)` | bot | orders | since 1.0 | whether `unit`, the bot's own, stood idle as the think began: no action under way, no target, nowhere to walk, no gather and no build |
+| `is_idle` | `(unit: Unit)` | bot | orders | since 1.0 | whether `unit`, the bot's own, stood idle as the think began: no action under way, no target, nowhere to walk, no gather and no build |
 | `kill` | `(unit: Unit)` | mode | combat | since 1.0 | takes `unit`'s life whole: it dies as the next tick's deaths find it, with no killer; nothing for a unit that does not live |
 | `knock_back` | `(unit: Unit, from: Vector, distance: Num, ms: ms)` | every role of the sim | navigation | since 1.0 | moves `unit` `distance` straight away from `from` over `ms` |
 | `land` | `(position: Vector)` | action | areas | since 1.0 | lands one more of the action's areas at `position`, its own cast; the new area, which spawns later in the tick |
 | `launch` | `(from: Vector, to: Vector or Unit)` or `(from: Vector, unit: Vector or Unit)` | action | projectiles | since 1.0 | launches one more of the action's projectiles from `from`, its own cast: along the direction `to` for a line type, homing on `unit` for a homing type, or on a curve or steered to `unit`'s center or to the point `to` for a curve or a steered type; the new projectile, which spawns later in the tick |
 | `learn` | `(avatar: Unit, slot: int)` | mode | abilities | since 1.0 | the ability in `slot` a rank more, up to its last |
 | `map` | read | every role | core | since 1.0 | the map: its paths and its markers |
-| `may_start` | `(unit: Unit, action: text)` | bot | orders | since 1.0 | whether `unit`, the bot's own, may start the train or the build of its slot that holds the action `action`, of any package, as the think began, as the order's own checks find it; a build's place its order finds |
 | `nearest_visible` | `(of: Unit, radius: Num, filter: text)`, `filter` a filter | every role | core | since 1.0 | the nearest living target, center to center, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, every unit in a match with no vision, `()` with none; a bot's `of` is of its team's vision group |
 | `offers` | `(choice: text)`, `choice` a choice | mode, bot | core | since 1.0 | the values `choice` offers, in order: the avatars in the order of the mode's dependencies, the loadout entries by id, or the values it lists |
 | `order` | `(units: array, directive: map)` | bot | orders | since 1.0 | gives `units`, a list of the bot's own, the order `directive`, a table as an order script's `directive` writes it, once the think returns |
@@ -54,7 +54,7 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `order_move` | `(position: Vector)` | AI | orders | since 1.0 | the unit that thinks drops its target and walks to `position`, within the map, off its path |
 | `order_reset` | `()` | AI | orders | since 1.0 | the unit that thinks drops its target and walks home, taking no order until there, where its pools fill |
 | `origin` | read | action | abilities | since 1.0 | where the action's unit stood as it started |
-| `own` | `(type: text)`, `type` a unit type | bot | orders | since 1.0 | the bot's own living units of `type`, by stable id, its sites among them |
+| `own_units` | `(type: text)`, `type` a unit type | bot | orders | since 1.0 | the bot's own living units of `type`, by stable id, its sites among them |
 | `params` | read | every role | core | since 1.0 | the params: an ability's at its rank, a modifier's then its ability's, the mode's, or a bot's then the mode's |
 | `pick` | `(list: array)` | every role of the sim | core | since 1.0 | an entry of `list`, each as likely, from the secret stream |
 | `player` | read | bot | orders | since 1.0 | the bot's own player |
@@ -161,7 +161,7 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `!=` | operator | core | since 1.0 | whether the two are two players |
 | `==` | operator | core | since 1.0 | whether the two are one player |
 | `has_perk` | `(id: text)`, `id` a perk | progression | since 1.0 | whether it has the perk `id` |
-| `held` | read | core | since 1.0 | whether a player or a bot held its slot as the match started |
+| `is_held` | read | core | since 1.0 | whether a player or a bot held its slot as the match started |
 | `is_out` | read | core | since 1.0 | whether it is out of play, as the last tick's end derived it |
 | `perk_points` | read | progression | since 1.0 | its unspent points to learn perks, which a player of a track of points has |
 | `player_slot` | read | core | since 1.0 | its player slot's place, from 0 |
@@ -180,6 +180,7 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `==` | operator | core | since 1.0 | whether the two are one unit |
 | `attack_range` | read | combat | since 1.0 | its attack's range |
 | `attack_target` | read | combat | since 1.0 | the unit its attack aims at, `()` with none |
+| `can_reach` | `(unit: Unit, range: Num)` | core | since 1.0 | whether `range` from the edge of its body reaches the other's, as a weapon's range and `nearest_visible` measure, boxes too |
 | `can_see` | `(unit: Unit)` | vision | since 1.0 | whether its team sees the other unit |
 | `has_modifier` | `(id: text)`, `id` a modifier | stats | since 1.0 | whether it carries the modifier of the script's package |
 | `has_tag` | `(tag: text)`, `tag` a tag | core | since 1.0 | whether it has the tag, of its type or a modifier |
@@ -201,7 +202,6 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `position` | read | core | since 1.0 | where it stands |
 | `queue` | read, gives a list of unit type names | production | since 1.0 | the unit types its queue trains, first the one under way, none with no queue |
 | `radius` | read | core | since 1.0 | its body's radius, 0 with no body, `()` for a box |
-| `reaches` | `(unit: Unit, range: Num)` | core | since 1.0 | whether `range` from the edge of its body reaches the other's, as a weapon's range and `nearest_visible` measure, boxes too |
 | `recent_attackers` | `(ms: ms)` | combat | since 1.0 | the living units that struck it within the last `ms`, rounded up to whole ticks |
 | `site_progress` | read | production | since 1.0 | the share of its build's time its site reached, from 0 to 1, `()` when it is no site |
 | `spawn_pos` | read | core | since 1.0 | where it spawned, where it respawns; `()` with none |
@@ -223,8 +223,8 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `==` | operator | core | since 1.0 | whether the two are one vector |
 | `direction_to` | `(position: Vector)` | core | since 1.0 | the unit vector towards `position` in the map's metric, `()` for the same point |
 | `distance_to` | `(position: Vector)` | core | since 1.0 | the distance to `position` in the map's metric |
+| `is_within` | `(position: Vector, radius: Num)` | core | since 1.0 | whether `position` is within `radius` in the map's metric, exactly: the reach rule between two points, which have no bodies |
 | `rotated_deg` | `(degrees: Num)` | core | since 1.0 | the vector turned by `degrees` about the vertical, counter-clockwise seen from above |
-| `within` | `(position: Vector, radius: Num)` | core | since 1.0 | whether `position` is within `radius` in the map's metric, exactly: the reach rule between two points, which have no bodies |
 | `x` | read | core | since 1.0 | its first component, across the ground |
 | `y` | read | core | since 1.0 | its height |
 | `z` | read | core | since 1.0 | its third component, across the ground |

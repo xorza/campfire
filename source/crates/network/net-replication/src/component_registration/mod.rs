@@ -8,7 +8,7 @@ use bevy_app::{App, PostUpdate};
 use bevy_ecs::component::Component;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_replicon::prelude::{AppRuleExt, ReplicationMode};
-use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
+use bevy_replicon::shared::replication::diff::Diffable;
 use bevy_replicon::shared::replication::registry::receive_fns::MutWrite;
 use serde::{Serialize, de::DeserializeOwned};
 
@@ -59,7 +59,7 @@ impl<'a, C> ComponentRegistration<'a, C> {
     /// does not also register the normal full-component replication rule.
     pub fn replicate_diff(self) -> ComponentRegistration<'a, C, DiffReplicated>
     where
-        C: RepliconDiffable,
+        C: Diffable,
     {
         self.app.replicate_diff::<C>();
         self.app.add_systems(

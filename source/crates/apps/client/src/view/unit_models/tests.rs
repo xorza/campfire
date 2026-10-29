@@ -519,6 +519,10 @@ fn a_model_at_a_bone_stands_where_its_hosts_node_stands_at_its_own_scale() {
     let mut world = World::new();
     let quarter = Quat::from_rotation_y(FRAC_PI_2);
     let host = world.spawn(Transform::from_scale(Vec3::splat(2.0))).id();
+    let undressed = Dressed {
+        hidden: Vec::new(),
+        pivots: None,
+    };
     let turret = Transform::from_xyz(0.0, 1.0, 0.0).with_rotation(quarter);
     let turret = world
         .spawn((turret, Name::new("turret"), ChildOf(host)))
@@ -528,6 +532,10 @@ fn a_model_at_a_bone_stands_where_its_hosts_node_stands_at_its_own_scale() {
     let attached = AtBone::new(host, Arc::from("firepoint01"), 0.5);
     let model = world.spawn((attached, Transform::IDENTITY)).id();
     let follow = world.register_system(UnitModelsPlugin::follow_bones);
+    // Before its host is dressed, the model waits where it stands.
+    world.run_system(follow).unwrap();
+    assert_eq!(*world.get::<Transform>(model).unwrap(), Transform::IDENTITY);
+    world.entity_mut(host).insert(undressed.clone());
     world.run_system(follow).unwrap();
     let stands = *world.get::<Transform>(model).unwrap();
     assert!(
@@ -537,8 +545,8 @@ fn a_model_at_a_bone_stands_where_its_hosts_node_stands_at_its_own_scale() {
     );
     assert!(stands.rotation.abs_diff_eq(quarter, 1e-6));
     assert_eq!(stands.scale, Vec3::splat(0.5));
-    // A host of no such node leaves the model as it stands.
-    let bare = world.spawn(Transform::IDENTITY).id();
+    // A host of no such node leaves the model as it stands, the node missing for good.
+    let bare = world.spawn((Transform::IDENTITY, undressed)).id();
     let lost = AtBone::new(bare, Arc::from("firepoint01"), 0.5);
     let lost = world.spawn((lost, Transform::from_xyz(5.0, 0.0, 0.0))).id();
     world.run_system(follow).unwrap();
@@ -546,4 +554,8 @@ fn a_model_at_a_bone_stands_where_its_hosts_node_stands_at_its_own_scale() {
         *world.get::<Transform>(lost).unwrap(),
         Transform::from_xyz(5.0, 0.0, 0.0)
     );
+    assert_eq!(world.get::<AtBone>(lost).unwrap().node, BoneNode::Missing);
+    world.spawn((Name::new("firepoint01"), ChildOf(bare)));
+    world.run_system(follow).unwrap();
+    assert_eq!(world.get::<AtBone>(lost).unwrap().node, BoneNode::Missing);
 }

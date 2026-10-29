@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::io::{self, Read, Write};
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -188,7 +189,7 @@ impl SessionDir {
         };
         let private = SessionPrivate::decode(&private).map_err(RestoreError::Private)?;
         let path = self.journal();
-        let stream = match InputFile::stream_within(&path, SessionLog::MAX_JOURNAL_LEN) {
+        let stream = match InputFile::stream(&path, SessionLog::MAX_JOURNAL_LEN) {
             Ok(stream) => stream,
             Err(PathError {
                 error: ReadError::Missing,
@@ -198,21 +199,22 @@ impl SessionDir {
         };
         let FileStamp { len, modified } = stream.stamp();
         // The journal streams through a buffer of one record into the log it rebuilds; a record
-        // the log refuses ends the rebuild, and the rest is read only to find the journal's end.
+        // the log refuses ends the rebuild and the read.
         let mut replay = None;
         let mut refused = None;
         let whole = JournalFrames::stream(stream.take(len), &mut |record| {
-            if refused.is_some() {
-                return;
-            }
             let taken = match &mut replay {
                 None => JournalReplay::begin(record, Version::ENGINE).map(|begun| {
                     replay = Some(begun);
                 }),
                 Some(replay) => replay.apply(record),
             };
-            if let Err(error) = taken {
-                refused = Some(error);
+            match taken {
+                Ok(()) => ControlFlow::Continue(()),
+                Err(error) => {
+                    refused = Some(error);
+                    ControlFlow::Break(())
+                }
             }
         })
         .map_err(RestoreError::Frames)?;
@@ -286,7 +288,11 @@ impl SessionDir {
         world.resource_scope(|world, mut reports: Mut<'_, Reports>| {
             let mut session = world.resource_mut::<Session>();
             let next = session.log().next_tick();
-            if let Some(journal) = session.journal_mut() {
+            // A checkpoint begun puts its record's start in the journal before its end, which
+            // its snapshot's write holds back; a report marked between them would end inside it,
+            // which no file holds, so it waits for the frame the record lands in.
+            let between = session.log().begun_checkpoint().is_some();
+            if !between && let Some(journal) = session.journal_mut() {
                 reports.mark(next, journal);
             }
             let session = world.resource::<Session>();
@@ -331,12 +337,16 @@ impl SessionDir {
             if failed.is_some() {
                 return Err(WalkStopped);
             }
-            let streamed = InputFile::stream(&journal)
+            let mut through = |record: &[u8]| {
+                visit(record);
+                ControlFlow::Continue(())
+            };
+            let streamed = InputFile::stream(&journal, SessionLog::MAX_JOURNAL_LEN)
                 .map_err(SessionPublishError::Read)
                 .and_then(|stream| {
                     let streamed = match bound {
-                        Bound::Whole => JournalFrames::stream(stream, visit),
-                        Bound::Bytes(len) => JournalFrames::stream(stream.take(len), visit),
+                        Bound::Whole => JournalFrames::stream(stream, &mut through),
+                        Bound::Bytes(len) => JournalFrames::stream(stream.take(len), &mut through),
                     };
                     streamed.map_err(SessionPublishError::Journal)
                 });

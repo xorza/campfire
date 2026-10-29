@@ -18,7 +18,15 @@ pub struct SeedChain {
 }
 
 impl SeedChain {
+    /// The most segments a session has, so a verifier bounds the seeds a log's segments take
+    /// before it hashes or holds any.
+    pub const MAX_LEN: NonZeroU32 = NonZeroU32::new(1024).unwrap();
+
     pub const fn new(root: [u8; 32], len: NonZeroU32) -> Self {
+        assert!(
+            len.get() <= Self::MAX_LEN.get(),
+            "a seed chain has at most `MAX_LEN` segments"
+        );
         Self {
             root: ServerSeed::new(root),
             len,

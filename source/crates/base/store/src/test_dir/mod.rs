@@ -151,6 +151,12 @@ impl TestDir {
         FileLink::make_dir(&self.path(target), &self.path(link));
     }
 
+    /// Makes `name`, relative to the root, a named pipe; false where the OS names none in the
+    /// file system.
+    pub fn pipe(&self, name: impl AsRef<Path>) -> bool {
+        FileLink::make_pipe(&self.path(name))
+    }
+
     /// Lets other users read the file or the directory `relative`.
     pub fn expose(&self, relative: impl AsRef<Path>) {
         UserOnly::expose(&self.path(relative));

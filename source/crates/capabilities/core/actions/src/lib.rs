@@ -1,3 +1,6 @@
+//! Actions: the slots a unit holds, the casts it starts from them, and what a cast costs and
+//! spends.
+
 // A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
 // in none (07-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]

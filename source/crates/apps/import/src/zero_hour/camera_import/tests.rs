@@ -9,7 +9,7 @@ fn the_half_fields_tangent_is_the_nearest_f32_to_its_exact_value() {
         clippy::cast_possible_truncation,
         reason = "the f64 tangent rounds to its nearest f32"
     )]
-    let rounded = f64::from(angle).tan() as f32;
+    let rounded = libm::tan(f64::from(angle)) as f32;
     assert_eq!(TAN_HALF_FIELD, rounded);
     assert_eq!(angle, f32::from_bits(0x3EDF_66F3));
 }

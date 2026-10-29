@@ -139,10 +139,8 @@ impl SessionLog {
         journal.append(&out);
         let mut start = 0;
         let mut segments = self.segments.since(0).skip(1).peekable();
-        for (tick, end) in (0..).zip(self.entries.tick_ends()) {
-            if let Some((number, segment)) =
-                segments.next_if(|(_, segment)| segment.tick == Tick::new(tick))
-            {
+        for (tick, end) in self.entries.tick_ends() {
+            if let Some((number, segment)) = segments.next_if(|(_, segment)| segment.tick == tick) {
                 segment.journal_whole(journal, number, &mut out);
             }
             for at in start..end {

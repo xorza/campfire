@@ -6,7 +6,7 @@ use crate::message_sender::MessageSender;
 use crate::send_queue::SendQueue;
 use crate::serialize_fns::CxDeserializeFns;
 use crate::serialize_fns::CxSerializeFns;
-use crate::serialize_fns::SerializeFns;
+use crate::serialize_fns::{default_deserialize, default_serialize};
 use bevy_app::App;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -26,46 +26,37 @@ impl AppMessageExt for App {
     fn register_message<M: Message + Serialize + DeserializeOwned>(
         &mut self,
     ) -> MessageRegistration<'_, M> {
-        register_message_with::<M>(self, SerializeFns::<M>::default())
-    }
-}
+        if self
+            .world_mut()
+            .get_resource_mut::<MessageRegistry>()
+            .is_none()
+        {
+            self.world_mut().init_resource::<MessageRegistry>();
+        }
+        let sender_id = self.world_mut().register_component::<MessageSender<M>>();
+        let receiver_id = self.world_mut().register_component::<MessageReceiver<M>>();
 
-/// Registers the message `M`, which encodes and decodes by `serialize_fns`.
-pub(crate) fn register_message_with<M: Message>(
-    app: &mut App,
-    serialize_fns: SerializeFns<M>,
-) -> MessageRegistration<'_, M> {
-    if app
-        .world_mut()
-        .get_resource_mut::<MessageRegistry>()
-        .is_none()
-    {
-        app.world_mut().init_resource::<MessageRegistry>();
-    }
-    // Register components for sending/receiving M
-    let sender_id = app.world_mut().register_component::<MessageSender<M>>();
-    let receiver_id = app.world_mut().register_component::<MessageReceiver<M>>();
-
-    let mut registry = app.world_mut().resource_mut::<MessageRegistry>();
-    registry.register::<M>(
-        MessageModeFns::Message {
-            send: SenderFns {
-                component_id: sender_id,
-                send_fn: SendQueue::<M>::send::<MessageSender<M>>,
-                discard_fn: SendQueue::<M>::discard::<MessageSender<M>>,
+        let mut registry = self.world_mut().resource_mut::<MessageRegistry>();
+        registry.register::<M>(
+            MessageModeFns::Message {
+                send: SenderFns {
+                    component_id: sender_id,
+                    send_fn: SendQueue::<M>::send::<MessageSender<M>>,
+                    discard_fn: SendQueue::<M>::discard::<MessageSender<M>>,
+                },
+                receive: ReceiveMessageFns {
+                    component_id: receiver_id,
+                    receive_message_fn: MessageReceiver::<M>::receive_message_typed,
+                    message_clear_fn: MessageReceiver::<M>::clear_typed,
+                },
             },
-            receive: ReceiveMessageFns {
-                component_id: receiver_id,
-                receive_message_fn: MessageReceiver::<M>::receive_message_typed,
-                message_clear_fn: MessageReceiver::<M>::clear_typed,
-            },
-        },
-        CxSerializeFns::new(serialize_fns.serialize),
-        CxDeserializeFns::new(serialize_fns.deserialize),
-    );
+            CxSerializeFns::new(default_serialize::<M>),
+            CxDeserializeFns::new(default_deserialize::<M>),
+        );
 
-    MessageRegistration {
-        app,
-        _marker: core::marker::PhantomData,
+        MessageRegistration {
+            app: self,
+            _marker: core::marker::PhantomData,
+        }
     }
 }

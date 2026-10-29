@@ -5,10 +5,10 @@ use campfire_client_files::{
     AlphaKey, Blend, ColorKey, EmissionVelocity, EmissionVolume, ParticleSystem, Spread,
 };
 use campfire_common::PlayerSlot;
-use campfire_math::SplitMix64;
 use campfire_values::Team;
 
 use crate::view::effects::effect_book::{EffectBook, GroupId, ListId, SoundId, SystemId};
+use crate::view::view_dice::ViewDice;
 
 /// The particle systems alive and their particles, stepped in whole steps of the book's length
 /// (02-engine-core.md, A system steps as its file says; 02-engine-core.md, A cap by priority, from
@@ -18,7 +18,7 @@ use crate::view::effects::effect_book::{EffectBook, GroupId, ListId, SoundId, Sy
 /// step allocates nothing once the slots grew to the most alive at once.
 #[derive(Debug)]
 pub(crate) struct ParticleRun {
-    rng: SplitMix64,
+    rng: ViewDice,
     systems: Vec<SystemSlot>,
     /// The systems alive, in the order they started, which is the order they step in.
     order: Vec<u32>,
@@ -158,7 +158,7 @@ impl ParticleRun {
     /// A run of no system, drawing from `seed`.
     pub(crate) const fn new(seed: u64) -> Self {
         Self {
-            rng: SplitMix64::new(seed),
+            rng: ViewDice::new(seed),
             systems: Vec::new(),
             order: Vec::new(),
             free_systems: Vec::new(),
@@ -190,11 +190,10 @@ impl ParticleRun {
         source: Affine3A,
         ground: impl Fn(f32, f32) -> f32,
     ) {
-        let count = u64::try_from(lists.len()).expect("a count fits u64");
-        if count == 0 {
+        if lists.is_empty() {
             return;
         }
-        let at = usize::try_from(self.below(count)).expect("an index below the count");
+        let at = self.rng.below(lists.len());
         self.play(book, lists[at], source, ground);
     }
 
@@ -226,7 +225,7 @@ impl ParticleRun {
             let offset = turn * spec.offset;
             for _ in 0..spec.count {
                 let radius = self.draw(spec.radius);
-                let angle = self.uniform(0.0, TAU);
+                let angle = self.rng.between(0.0, TAU);
                 let mut at =
                     place + offset + Vec3::new(radius * angle.cos(), 0.0, radius * angle.sin());
                 if spec.at_ground {
@@ -843,25 +842,27 @@ impl ParticleRun {
     fn volume_point(&mut self, spec: &ParticleSystem) -> Vec3 {
         match spec.volume {
             EmissionVolume::Point => Vec3::ZERO,
-            EmissionVolume::Line { start, end } => start + (end - start) * self.uniform(0.0, 1.0),
+            EmissionVolume::Line { start, end } => {
+                start + (end - start) * self.rng.between(0.0, 1.0)
+            }
             EmissionVolume::Box { half } => {
                 if spec.hollow {
                     // A side of the six alike, where the game draws one of seven numbers for them
                     // and puts the side of `x` at `y`'s half size.
-                    let side = self.below(6);
-                    let axis = usize::try_from(side % 3).expect("an axis fits usize");
+                    let side = self.rng.below(6);
+                    let axis = side % 3;
                     let mut point = Vec3::new(
-                        self.uniform(-half.x, half.x),
-                        self.uniform(-half.y, half.y),
-                        self.uniform(-half.z, half.z),
+                        self.rng.between(-half.x, half.x),
+                        self.rng.between(-half.y, half.y),
+                        self.rng.between(-half.z, half.z),
                     );
                     point[axis] = if side < 3 { -half[axis] } else { half[axis] };
                     point
                 } else {
                     Vec3::new(
-                        self.uniform(-half.x, half.x),
-                        self.uniform(-half.y, half.y),
-                        self.uniform(-half.z, half.z),
+                        self.rng.between(-half.x, half.x),
+                        self.rng.between(-half.y, half.y),
+                        self.rng.between(-half.z, half.z),
                     )
                 }
             }
@@ -869,21 +870,21 @@ impl ParticleRun {
                 let radius = if spec.hollow {
                     radius
                 } else {
-                    self.uniform(0.0, radius)
+                    self.rng.between(0.0, radius)
                 };
                 self.on_sphere() * radius
             }
             EmissionVolume::Cylinder { radius, length } => {
-                let angle = self.uniform(0.0, TAU);
+                let angle = self.rng.between(0.0, TAU);
                 let radius = if spec.hollow {
                     radius
                 } else {
-                    self.uniform(0.0, radius)
+                    self.rng.between(0.0, radius)
                 };
                 let half = length / 2.0;
                 Vec3::new(
                     radius * angle.cos(),
-                    self.uniform(-half, half),
+                    self.rng.between(-half, half),
                     radius * angle.sin(),
                 )
             }
@@ -900,7 +901,7 @@ impl ParticleRun {
             }
             EmissionVelocity::Cylindrical { radial, normal } => {
                 let radial = self.draw(radial);
-                let angle = self.uniform(0.0, TAU);
+                let angle = self.rng.between(0.0, TAU);
                 Vec3::new(
                     radial * angle.cos(),
                     self.draw(normal),
@@ -912,9 +913,9 @@ impl ParticleRun {
                 let speed = self.draw(speed);
                 loop {
                     let direction = Vec3::new(
-                        self.uniform(-1.0, 1.0),
-                        self.uniform(0.0, 1.0),
-                        self.uniform(-1.0, 1.0),
+                        self.rng.between(-1.0, 1.0),
+                        self.rng.between(0.0, 1.0),
+                        self.rng.between(-1.0, 1.0),
                     );
                     if direction != Vec3::ZERO {
                         break direction.normalize() * speed;
@@ -949,9 +950,9 @@ impl ParticleRun {
     fn on_sphere(&mut self) -> Vec3 {
         loop {
             let point = Vec3::new(
-                self.uniform(-1.0, 1.0),
-                self.uniform(-1.0, 1.0),
-                self.uniform(-1.0, 1.0),
+                self.rng.between(-1.0, 1.0),
+                self.rng.between(-1.0, 1.0),
+                self.rng.between(-1.0, 1.0),
             );
             if point != Vec3::ZERO {
                 return point.normalize();
@@ -961,19 +962,7 @@ impl ParticleRun {
 
     /// A value of `spread`.
     fn draw(&mut self, spread: Spread) -> f32 {
-        self.uniform(spread.low, spread.high)
-    }
-
-    /// A value from `low` to `high`, uniformly, from 24 bits of a draw.
-    #[expect(clippy::cast_precision_loss, reason = "24 bits fit an f32 whole")]
-    fn uniform(&mut self, low: f32, high: f32) -> f32 {
-        let share = (self.rng.next_u64() >> 40) as f32 / (1_u32 << 24) as f32;
-        low + (high - low) * share
-    }
-
-    /// A whole number below `bound`.
-    fn below(&mut self, bound: u64) -> u64 {
-        self.rng.below(bound)
+        self.rng.between(spread.low, spread.high)
     }
 
     /// `value` truncated to a count of no sign, as the game casts one.
@@ -1020,7 +1009,7 @@ impl ParticleRun {
 }
 
 #[cfg(test)]
-pub(crate) mod samples {
+pub(crate) mod internals {
     use std::collections::BTreeMap;
 
     use bevy::math::Vec3;

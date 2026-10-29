@@ -139,6 +139,12 @@ impl Volley {
     }
 }
 
+/// Moves the unit `id` of `game` to `position`.
+fn put(game: &mut Match, id: StableId, position: Vec3) {
+    let entity = game.unit_entity(id);
+    *game.get_mut::<Position>(entity).unwrap() = Position::from(position);
+}
+
 #[test]
 fn a_projectile_flies_to_its_target_and_strikes_as_it_reaches_its_body() {
     let mut game = volley_match();

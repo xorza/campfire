@@ -2,6 +2,8 @@ use super::*;
 use crate::correction::CorrectionFn;
 use crate::fixtures::protocol::linear_correction;
 use crate::rollback_plugin::RollbackPlugin;
+use crate::timeline_switch::SwitchRejection;
+use campfire_log::internals::LogCheck;
 use campfire_net_replication::internals::shared_replicon_app;
 
 use crate::correction_ease::CorrectionEase;
@@ -1202,25 +1204,40 @@ fn an_invalid_request_is_dropped() {
     app.world_mut().flush();
 
     // Wrong current mode (and a mode-less entity): nothing switches, no
-    // blend.
-    send_switch(
-        &mut app,
-        predicted,
-        TimelineSwitch::to_predicted().with_transition(Duration::from_millis(500)),
+    // blend, and each drop logs why.
+    let scoped = LogCheck::scoped(|| {
+        send_switch(
+            &mut app,
+            predicted,
+            TimelineSwitch::to_predicted().with_transition(Duration::from_millis(500)),
+        );
+        send_switch(
+            &mut app,
+            interpolated,
+            TimelineSwitch::to_interpolated().with_transition(Duration::from_millis(500)),
+        );
+        send_switch(
+            &mut app,
+            plain,
+            TimelineSwitch::to_predicted().with_transition(Duration::from_millis(500)),
+        );
+        // A flip has nothing to flip from there either: it resolves against the
+        // entity's markers, and there are none.
+        send_switch(&mut app, plain, TimelineSwitch::default());
+    });
+    let refused = |entity: Entity, rejection| SwitchRefused {
+        entity: entity.to_bits(),
+        rejection,
+    };
+    assert_eq!(
+        scoped.check.take::<SwitchRefused>(),
+        [
+            refused(predicted, SwitchRejection::NotInterpolated),
+            refused(interpolated, SwitchRejection::NotPredicted),
+            refused(plain, SwitchRejection::OnNeither),
+            refused(plain, SwitchRejection::OnNeither),
+        ]
     );
-    send_switch(
-        &mut app,
-        interpolated,
-        TimelineSwitch::to_interpolated().with_transition(Duration::from_millis(500)),
-    );
-    send_switch(
-        &mut app,
-        plain,
-        TimelineSwitch::to_predicted().with_transition(Duration::from_millis(500)),
-    );
-    // A flip has nothing to flip from there either: it resolves against the
-    // entity's markers, and there are none.
-    send_switch(&mut app, plain, TimelineSwitch::default());
 
     let world = app.world();
     assert!(world.get::<Predicted>(predicted).is_some());

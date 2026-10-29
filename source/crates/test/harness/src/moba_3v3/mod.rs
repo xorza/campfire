@@ -368,7 +368,7 @@ impl Moba3v3 {
         ]);
         let packages = tree.packages();
         let items = packages.mode().content.items();
-        let items: Names<ItemId> = items.keys().map(DeclaredName::as_str).collect();
+        let items: Names<ItemId> = Names::unique(items.keys().map(DeclaredName::as_str));
         let item = |name: &str| items.named(name).expect("an item of the 3v3");
         let script = Self::showcase_script(&item);
         let players = usize::try_from(Self::PLAYERS).expect("6 fits usize");

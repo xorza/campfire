@@ -12,7 +12,8 @@ use campfire_progression::*;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, SimComponent, SimWorld, SnapshotError};
 use campfire_stats::{
-    Level, ModifierData, PlayerModifiers, StatBook, StatValue, Stats, StatsData, UnitStats,
+    CarriedMut, Level, ModifierData, PlayerModifiers, StatBook, StatValue, Stats, StatsData,
+    UnitStats,
 };
 use campfire_units::internals::Spawn;
 use campfire_units::{TrackLevels, UnitTypeCore, Units};
@@ -163,6 +164,16 @@ fn a_unit_holds_the_modifier_of_its_level_alone_and_its_stats_follow() {
     assert_eq!(Stats::carried_modifiers(&game, id), [(elite, Some(id))]);
     assert_eq!(attack_damage(&game), Num::int(70));
     assert!(game.get::<Points>(game.unit_entity(id)).is_none());
+    // At the last level, a script's removal of `elite` holds only until the next tick, which
+    // grants it again from the unit, as its experience stands.
+    let entity = game.unit_entity(id);
+    CarriedMut::with(&mut game, entity, |carried| {
+        carried.remove(elite, Some(id));
+    })
+    .unwrap();
+    assert_eq!(Stats::carried_modifiers(&game, id), []);
+    game.step();
+    assert_eq!(Stats::carried_modifiers(&game, id), [(elite, Some(id))]);
 }
 
 #[test]

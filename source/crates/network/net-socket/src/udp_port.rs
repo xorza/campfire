@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use campfire_common::ErrorReport;
+use campfire_platform::DualStack;
 use polling::{Event, Events, PollMode, Poller};
 use quinn_udp::{RecvMeta, Transmit, UdpSocketState};
 use tracing::warn;
@@ -48,7 +49,7 @@ struct Wake {
 
 impl UdpPort {
     pub(crate) fn bind(address: SocketAddr) -> io::Result<Self> {
-        let socket = UdpSocket::bind(address)?;
+        let socket = DualStack::bind(address)?;
         let state = UdpSocketState::new((&socket).into())?;
         let poller = Poller::new()?;
         let mode = if poller.supports_level() {

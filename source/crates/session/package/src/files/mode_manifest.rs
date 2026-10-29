@@ -6,7 +6,7 @@ use campfire_declarations::CapabilitySet;
 use campfire_mode::TeamManifest;
 use campfire_script::{ApiVersion, ScriptLimits};
 use campfire_sim::Capability;
-use campfire_values::Speed;
+use campfire_values::{Speed, Team};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::files::dependency::Dependency;
@@ -56,6 +56,12 @@ impl ModeManifest {
             .iter()
             .map(|team| u64::from(team.player_slots))
             .sum()
+    }
+
+    /// The team of `name`, by its place among the teams; none for a name no team has.
+    pub fn team_named(&self, name: &str) -> Option<Team> {
+        let at = self.teams.iter().position(|team| team.name == *name)?;
+        Some(Team::new(u8::try_from(at).expect("a team's place fits u8")))
     }
 }
 

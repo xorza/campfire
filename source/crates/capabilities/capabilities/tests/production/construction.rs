@@ -2,9 +2,6 @@ use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::system::SystemState;
-
-use crate::halves;
-use campfire_codec::Toml;
 use campfire_combat::{Combat, DamageCause};
 use campfire_geometry::{Bounds, Grid, Polygon};
 use campfire_navigation::{Navigation, Walker};
@@ -16,11 +13,11 @@ use campfire_units::{
     BuildTarget, Deaths, GroundPoint, Leader, Life, LivingSpawns, MapBook, SeenBy, SpawnOf,
     UnitsWorld, Wall,
 };
-use campfire_values::{RelationSet, Share, TeamSet};
+use campfire_values::{RelationSet, TeamSet};
 use campfire_vision::{ByVision, Sight, Vision};
-use serde::Deserialize;
 
 use super::*;
+use crate::{halves, share};
 
 /// A build of slot 0 at (`x`, `z`), its box unturned.
 const fn at_point(x: i64, z: i64) -> OrdersDirective {
@@ -40,17 +37,6 @@ const fn at_site(site: StableId) -> OrdersDirective {
         slot: 0,
         target: BuildTarget::Site(site),
     }
-}
-
-/// The share `text` writes.
-fn share(text: &str) -> Share {
-    #[derive(Debug, Deserialize)]
-    struct Field {
-        share: Share,
-    }
-    Toml::parse::<Field>(&format!("share = \"{text}\""))
-        .unwrap()
-        .share
 }
 
 /// How a yard's build starts, how it grows and where it places, and its depot's body.

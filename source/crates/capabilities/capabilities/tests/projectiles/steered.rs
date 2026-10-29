@@ -8,13 +8,13 @@ use campfire_math::{Num, Vec3};
 use campfire_projectiles::*;
 use campfire_sim::MatchRate;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Position, SimWorld, StableId};
+use campfire_sim::{SimWorld, StableId};
 use campfire_stats::Stats;
 use campfire_units::internals::Spawn;
 use campfire_units::{BodyForm, BodyShape, Dead, Layer, UnitTypeCore, Units};
 use campfire_values::{Team, TypeScope, UnitType};
 
-use crate::projectiles::{target, volley_match};
+use crate::projectiles::{put, target, volley_match};
 
 /// A missile of 30 m/s, 1 m a tick at the tests' 30 ticks a second, steered as `steer` says.
 fn missile(steer: SteerData) -> ProjectileData {
@@ -112,12 +112,6 @@ fn near(got: Vec3, want: [&str; 3], bits: i64) -> bool {
         .into_iter()
         .zip(want.map(|text| text.parse::<Num>().unwrap()))
         .all(|(got, want)| (got - want).to_bits().abs() <= bits)
-}
-
-/// Moves the unit `id` of `game` to `position`.
-fn put(game: &mut Match, id: StableId, position: Vec3) {
-    let entity = game.unit_entity(id);
-    *game.get_mut::<Position>(entity).unwrap() = Position::from(position);
 }
 
 #[test]

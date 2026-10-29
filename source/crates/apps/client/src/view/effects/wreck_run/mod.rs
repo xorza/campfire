@@ -6,11 +6,11 @@ use bevy::gltf::GltfAssetLabel;
 use bevy::math::{Affine3A, EulerRot, Quat, Vec3};
 use bevy::transform::components::Transform;
 use campfire_client_files::{Wreck, WreckGround, WreckLaunch, WreckList};
-use campfire_math::SplitMix64;
 use campfire_values::PackageIndex;
 
 use crate::view::float_num::FloatNum;
 use crate::view::package_source::PackageAssets;
+use crate::view::view_dice::ViewDice;
 
 /// The wrecks of the match's deaths, the client's alone (02-engine-core.md, A wreck is the
 /// client's): each piece thrown from its unit's drawing, stepped at the effects' step by their
@@ -20,7 +20,7 @@ use crate::view::package_source::PackageAssets;
 #[derive(Debug)]
 pub(crate) struct WreckRun {
     pieces: Vec<WreckPiece>,
-    rng: SplitMix64,
+    rng: ViewDice,
 }
 
 /// A look's wreck as the client throws it: the scenes of its models, one drawn for each piece,
@@ -73,7 +73,7 @@ impl WreckRun {
     pub(crate) const fn new(seed: u64) -> Self {
         Self {
             pieces: Vec::new(),
-            rng: SplitMix64::new(seed),
+            rng: ViewDice::new(seed),
         }
     }
 
@@ -85,11 +85,10 @@ impl WreckRun {
         ground: &impl Fn(f32, f32) -> f32,
         spawn: impl FnMut(&AssetPath<'static>, Transform) -> Entity,
     ) {
-        let count = u64::try_from(lists.len()).expect("a count fits u64");
-        if count == 0 {
+        if lists.is_empty() {
             return;
         }
-        let at_list = usize::try_from(self.rng.below(count)).expect("an index below the count");
+        let at_list = self.rng.below(lists.len());
         self.throw(&lists[at_list], at, ground, spawn);
     }
 
@@ -114,38 +113,38 @@ impl WreckRun {
                     WreckLaunch::Still => Vec3::ZERO,
                     WreckLaunch::Grounded => {
                         start.y = ground(start.x, start.z);
-                        turn = Quat::from_rotation_y(self.uniform(0.0, TAU));
+                        turn = Quat::from_rotation_y(self.rng.between(0.0, TAU));
                         Vec3::ZERO
                     }
                     WreckLaunch::Out { across } => {
                         start.y = ground(start.x, start.z);
                         let across = across.float();
                         Vec3::new(
-                            self.uniform(-across, across),
+                            self.rng.between(-across, across),
                             0.0,
-                            self.uniform(-across, across),
+                            self.rng.between(-across, across),
                         )
                     }
                     WreckLaunch::Fling { across, up } => {
                         let across = across.float();
                         Vec3::new(
-                            self.uniform(-across, across),
-                            self.uniform(up[0].float(), up[1].float()),
-                            self.uniform(-across, across),
+                            self.rng.between(-across, across),
+                            self.rng.between(up[0].float(), up[1].float()),
+                            self.rng.between(-across, across),
                         )
                     }
                     WreckLaunch::Force { speed, pitch } => {
-                        let angle = self.uniform(0.0, TAU);
-                        let pitch = self.uniform(pitch[0].float(), pitch[1].float());
-                        let speed = self.uniform(speed[0].float(), speed[1].float());
+                        let angle = self.rng.between(0.0, TAU);
+                        let pitch = self.rng.between(pitch[0].float(), pitch[1].float());
+                        let speed = self.rng.between(speed[0].float(), speed[1].float());
                         let flat = speed * pitch.cos();
                         Vec3::new(flat * angle.cos(), speed * pitch.sin(), flat * angle.sin())
                     }
                 };
                 let spin = Vec3::new(
-                    self.uniform(-play.spin, play.spin),
-                    self.uniform(-play.spin, play.spin),
-                    self.uniform(-play.spin, play.spin),
+                    self.rng.between(-play.spin, play.spin),
+                    self.rng.between(-play.spin, play.spin),
+                    self.rng.between(-play.spin, play.spin),
                 );
                 let entity = spawn(
                     &scene,
@@ -189,18 +188,8 @@ impl WreckRun {
 
     /// One of `scenes`, drawn at random; none of none.
     fn pick(&mut self, scenes: &[AssetPath<'static>]) -> Option<AssetPath<'static>> {
-        let count = u64::try_from(scenes.len()).expect("a count fits u64");
-        let at = (count > 0).then(|| self.rng.below(count))?;
-        scenes
-            .get(usize::try_from(at).expect("an index below the count"))
-            .cloned()
-    }
-
-    /// A value from `low` to `high`, uniformly, from 24 bits of a draw.
-    #[expect(clippy::cast_precision_loss, reason = "24 bits fit an f32 whole")]
-    fn uniform(&mut self, low: f32, high: f32) -> f32 {
-        let share = (self.rng.next_u64() >> 40) as f32 / (1_u32 << 24) as f32;
-        low + (high - low) * share
+        let at = (!scenes.is_empty()).then(|| self.rng.below(scenes.len()))?;
+        scenes.get(at).cloned()
     }
 }
 

@@ -401,8 +401,10 @@ fn an_attack_move_takes_what_its_scan_finds_on_the_way_and_walks_on() {
         x: Num::ZERO,
         z: Num::int(12),
     };
-    let order = Order::payload(&[Order::one(scanner, OrdersDirective::AttackMove { to })]);
-    scene.game.step_with(&[(PlayerSlot::new(0), &order)]);
+    scene.game.step_orders(
+        PlayerSlot::new(0),
+        &[Order::one(scanner, OrdersDirective::AttackMove { to })],
+    );
     // After each tick: where it stands, where it walks to, its target, and its goal.
     let state = |scene: &Scene| {
         (
@@ -436,10 +438,14 @@ fn an_attack_move_takes_what_its_scan_finds_on_the_way_and_walks_on() {
         x: Num::ZERO,
         z: Num::ZERO,
     };
-    let back = Order::payload(&[Order::one(scanner, OrdersDirective::AttackMove { to })]);
-    scene.game.step_with(&[(PlayerSlot::new(0), &back)]);
+    scene.game.step_orders(
+        PlayerSlot::new(0),
+        &[Order::one(scanner, OrdersDirective::AttackMove { to })],
+    );
     assert_eq!(state(&scene).3, Some(Vec3::ZERO));
-    let stop = Order::payload(&[Order::one(scanner, OrdersDirective::Stop)]);
-    scene.game.step_with(&[(PlayerSlot::new(0), &stop)]);
+    scene.game.step_orders(
+        PlayerSlot::new(0),
+        &[Order::one(scanner, OrdersDirective::Stop)],
+    );
     assert_eq!(state(&scene), (z(11), None, None, None));
 }

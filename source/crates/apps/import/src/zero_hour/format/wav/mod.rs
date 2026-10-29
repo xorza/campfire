@@ -5,7 +5,8 @@ use crate::zero_hour::format::byte_cursor::ByteCursor;
 use crate::zero_hour::format::error::WavError;
 
 /// A WAV file of the original: its encoding, its channels, its samples a second, the bytes of one
-/// block of its data, its data, and the frames its `fact` chunk counts, none for a file of none.
+/// block of its data, its data, the frames its `fact` chunk counts, none for a file of none, and
+/// whether each chunk holds the bytes its size gives.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct WavFile<'a> {
     pub(crate) encoding: WavEncoding,
@@ -14,6 +15,7 @@ pub(crate) struct WavFile<'a> {
     block_align: u16,
     data: &'a [u8],
     frames: Option<u32>,
+    pub(crate) whole: bool,
 }
 
 /// A WAV file's encoding: PCM of 16 bits, or IMA ADPCM of 4.
@@ -48,8 +50,9 @@ const TAG_IMA_ADPCM: u16 = 17;
 
 impl<'a> WavFile<'a> {
     /// The WAV file `bytes`; an error for one of no RIFF `WAVE` header, of no `fmt ` or `data`
-    /// chunk, of another encoding than PCM of 16 bits or IMA ADPCM of 4, of no channel, or an
-    /// ADPCM block too short for its headers.
+    /// chunk, of another encoding than PCM of 16 bits or IMA ADPCM of 4, of no channel, of an
+    /// ADPCM block too short for its headers, or of more bytes a second of 16-bit PCM than a `u32`
+    /// counts.
     pub(crate) fn read(bytes: &'a [u8]) -> Result<Self, WavError> {
         let mut file = ByteCursor::new(bytes);
         let riff = file.take(12).map_err(|_| WavError::NotRiff)?;
@@ -59,11 +62,13 @@ impl<'a> WavFile<'a> {
         let mut format = None;
         let mut data = None;
         let mut frames = None;
+        let mut whole = true;
         while !file.is_empty() {
             let id = file.take(4).map_err(|_| WavError::CutShort)?;
             let size = file.u32().map_err(|_| WavError::CutShort)?;
             let size = usize::try_from(size).expect("a u32 fits usize");
             // The last chunk may end short of its size, as a file the game plays does.
+            whole &= size <= file.rest().len();
             let body = file
                 .take(size.min(file.rest().len()))
                 .expect("within the rest");
@@ -108,6 +113,10 @@ impl<'a> WavFile<'a> {
         if !fits {
             return Err(WavError::Layout);
         }
+        let pcm_block = channels.checked_mul(2);
+        if pcm_block.is_none_or(|block| rate.checked_mul(u32::from(block)).is_none()) {
+            return Err(WavError::Rate);
+        }
         Ok(Self {
             encoding,
             channels,
@@ -115,16 +124,28 @@ impl<'a> WavFile<'a> {
             block_align,
             data: data.ok_or(WavError::NoData)?,
             frames,
+            whole,
         })
     }
 
-    /// The samples of an IMA ADPCM file, frame by frame, each channel's in order, as each block
+    /// The samples of a 16-bit PCM file, of the whole frames its data holds; or of an IMA ADPCM
+    /// file, frame by frame, each channel's in order, as each block
     /// decodes: its header's sample, then its codes, a channel's eight codes of each four bytes
     /// in turn, a byte's low four bits first; a last block cut short decodes its whole runs, a
     /// mono one each of its bytes, and the samples stop at the frames its `fact` chunk counts.
     pub(crate) fn decode(&self) -> Vec<i16> {
-        debug_assert_eq!(self.encoding, WavEncoding::ImaAdpcm, "a file of codes");
         let channels = usize::from(self.channels);
+        if self.encoding == WavEncoding::Pcm16 {
+            // Its samples, of the whole frames its data holds.
+            let frame = 2 * channels;
+            let whole = self.data.len() / frame * frame;
+            return self.data[..whole]
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|&sample| i16::from_le_bytes(sample))
+                .collect();
+        }
         let mut samples = Vec::new();
         let mut frames = vec![0_i16; 8 * channels];
         for block in self.data.chunks(usize::from(self.block_align)) {
@@ -232,8 +253,8 @@ impl Decoder {
 
 #[cfg(test)]
 pub(crate) mod samples {
-    /// A WAV file of the tag, channels, rate, block and bits given, its `fact` chunk of `frames` when
-    /// it has one, and its data.
+    /// A WAV file of the tag, channels, rate, block and bits given, its `fact` chunk of `frames`
+    /// when it has one, and its data.
     pub(crate) fn wav(format: [u16; 4], rate: u32, frames: Option<u32>, data: &[u8]) -> Vec<u8> {
         let [tag, channels, block, bits] = format;
         let mut chunks = Vec::new();

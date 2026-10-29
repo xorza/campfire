@@ -1,4 +1,5 @@
 use super::*;
+use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::format::ini::object_ini::ObjectIni;
 use crate::zero_hour::import_names::ImportNames;
 
@@ -31,16 +32,22 @@ Object Tower
 End
 ";
 
-#[test]
-fn a_tower_is_an_aura_of_its_heal_an_upgrade_of_its_own_type_while_built_or_of_its_carrier() {
+/// The rules of a fixture's towers, and their import.
+#[derive(Debug)]
+struct Towers {
+    rules: ZeroHourRules,
+    import: PropagandaImport,
+}
+
+/// The towers of `towers`, of game data of an `ENTHUSIASTIC` rate of `enthusiastic`.
+fn towers(towers: &str, enthusiastic: f32) -> Result<Towers, ZeroHourError> {
     let mut rules = ZeroHourRules {
-        objects: ObjectIni::of(&[TOWERS]),
-        ..ZeroHourRules::default()
+        ..ZeroHourRules::of_objects(ObjectIni::of(&[towers]))
     };
     let list = "ObjectCreationList OCL_Tower\n  CreateObject\n    ObjectNames = Tower\n    \
                 ContainInsideSourceObject = Yes\n  End\nEnd\n";
     rules.creation_lists.read(list.as_bytes()).unwrap();
-    rules.game_data.enthusiastic_rate = 1.25;
+    rules.game_data.enthusiastic_rate = enthusiastic;
     rules.game_data.subliminal_rate = 1.5;
     let mut names = ImportNames::default();
     for object in ["Speaker", "Carrier"] {
@@ -48,7 +55,38 @@ fn a_tower_is_an_aura_of_its_heal_an_upgrade_of_its_own_type_while_built_or_of_i
         names.unit_type(object, &rules).unwrap();
     }
     let names = names.into_production().into_projectiles();
-    let import = PropagandaImport::of(&rules, names.types()).unwrap();
+    let import = PropagandaImport::of(&rules, names.types())?;
+    Ok(Towers { rules, import })
+}
+
+#[test]
+fn a_tower_of_a_number_of_no_num_drops_and_the_game_datas_fails() {
+    // The speaker's radius of 10⁴⁰ drops the speaker's tower alone, counted, and the carrier's
+    // stays; a rate of the game data of no `Num` fails the import.
+    let far = TOWERS.replacen("Radius = 150.0", "Radius = 1e40", 1);
+    let Towers { import, .. } = towers(&far, 1.25).unwrap();
+    assert_eq!(
+        import.upgrades.keys().collect::<Vec<_>>(),
+        [&TypeName::named("carrier")]
+    );
+    assert_eq!(import.modifiers.len(), 4);
+    let dropped: Vec<_> = import.dropped.into_iter().collect();
+    assert_eq!(
+        dropped,
+        [Dropped {
+            name: "Speaker".to_owned(),
+            cause: UpgradeDropCause::BadNumber,
+        }]
+    );
+    assert!(matches!(
+        towers(TOWERS, f32::INFINITY),
+        Err(ZeroHourError::Propaganda)
+    ));
+}
+
+#[test]
+fn a_tower_is_an_aura_of_its_heal_an_upgrade_of_its_own_type_while_built_or_of_its_carrier() {
+    let Towers { rules, import } = towers(TOWERS, 1.25).unwrap();
     let declared = |name: &str| DeclaredName::new(name).unwrap();
     // The speaker's aura is an upgrade of no trigger, its upgraded aura one of `Upgrade_Slogans`,
     // both while it is no site; the carrier's, upgrades of its module's trigger, and of that and

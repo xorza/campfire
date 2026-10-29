@@ -19,20 +19,6 @@ impl From<Vec<u8>> for Reader {
     }
 }
 
-impl Buf for Reader {
-    fn remaining(&self) -> usize {
-        self.0.len()
-    }
-
-    fn chunk(&self) -> &[u8] {
-        &self.0
-    }
-
-    fn advance(&mut self, cnt: usize) {
-        self.0.advance(cnt);
-    }
-}
-
 impl Reader {
     /// The next `len` bytes, split off into a `Bytes` that shares the buffer's memory;
     /// `Truncated` when fewer remain.
@@ -54,6 +40,20 @@ impl Reader {
             return Err(SerializationError::Truncated);
         }
         Ok(count)
+    }
+
+    /// The bytes not yet read, which a decoder of its own reads and then `skip`s.
+    pub fn rest(&self) -> &[u8] {
+        &self.0
+    }
+
+    /// Takes the next `len` bytes off the front unread; `Truncated` when fewer remain.
+    pub fn skip(&mut self, len: usize) -> Result<(), SerializationError> {
+        if len > self.0.len() {
+            return Err(SerializationError::Truncated);
+        }
+        self.0.advance(len);
+        Ok(())
     }
 
     pub const fn has_remaining(&self) -> bool {

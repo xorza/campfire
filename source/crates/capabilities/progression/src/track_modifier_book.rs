@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::Changed;
+use bevy_ecs::query::{Changed, Or};
 use bevy_ecs::resource::Resource;
-use bevy_ecs::system::{Query, Res, ResMut};
+use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section};
 use campfire_script::{MatchNames, UnknownName};
 use campfire_sim::StableId;
-use campfire_stats::{Grant, GrantFrom, Grants, Hold, Level, ModifierBook, Modifiers};
-use campfire_values::{ModifierId, NameId, Named, PackageIndex, Rank, TrackId};
+use campfire_stats::{GrantFrom, Grants, Hold, Level, ModifierBook, Modifiers};
+use campfire_values::{ModifierId, NameId, Named, PackageIndex, TrackId};
 
 use crate::experience::Experience;
 use crate::mode_tracks_data::ModeTracksData;
@@ -62,10 +62,15 @@ impl TrackModifierBook {
         Ok(Self::new(modifiers.collect::<Result<_, _>>()?))
     }
 
-    /// Pushes the grants of each unit whose experience changed that differ from what it holds
-    /// under a level's hold: the modifier of its level on each of its tracks that gives one,
-    /// from itself at rank 1, and a release of each other it holds so, as a passive is held
-    /// (04-capabilities/stats.md, Passives by one pass).
+    /// Pushes the grants of each unit whose experience or modifiers changed that differ from what
+    /// it holds under a level's hold: the modifier of its level on each of its tracks that gives
+    /// one, from itself at rank 1, and a release of each other it holds so, as a passive is held
+    /// (04-capabilities/stats.md, Passives by one pass). A change of its modifiers revisits it, as
+    /// a script's `remove_modifier` may take a level's instance off.
+    #[expect(
+        clippy::type_complexity,
+        reason = "a system takes each part it reads and writes"
+    )]
     pub(crate) fn want(
         book: Res<'_, Self>,
         mut grants: ResMut<'_, Grants>,
@@ -73,43 +78,22 @@ impl TrackModifierBook {
             '_,
             '_,
             (Entity, &StableId, &Experience, Option<&Modifiers>),
-            Changed<Experience>,
+            Or<(Changed<Experience>, Changed<Modifiers>)>,
         >,
+        mut wanted: Local<'_, Vec<ModifierId>>,
     ) {
         for (entity, &id, experience, modifiers) in &units {
-            let wanted = || {
+            wanted.clear();
+            wanted.extend(
                 experience
                     .iter()
-                    .filter_map(|held| book.of(held.track, held.level))
-            };
-            let held = || {
-                modifiers
-                    .into_iter()
-                    .flat_map(Modifiers::iter)
-                    .filter(|carried| {
-                        let instance = carried.instance;
-                        instance.source == Some(id) && instance.lifetime.held_by(Hold::Level)
-                    })
-            };
-            let grant = |modifier, rank| Grant {
-                modifier,
-                from: GrantFrom::Itself,
-                hold: Hold::Level,
-                action: None,
-                rank,
-            };
-            let mut run = grants.of(entity, id);
-            for carried in held() {
-                let modifier = carried.instance.id;
-                if !wanted().any(|wanted| wanted == modifier) {
-                    run.push(grant(modifier, None));
-                }
-            }
-            for modifier in wanted() {
-                if !held().any(|carried| carried.instance.id == modifier) {
-                    run.push(grant(modifier, Some(Rank::FIRST)));
-                }
-            }
+                    .filter_map(|held| book.of(held.track, held.level)),
+            );
+            wanted.sort_unstable();
+            wanted.dedup();
+            grants
+                .of(entity, id)
+                .hold_exactly(Hold::Level, GrantFrom::Itself, &wanted, modifiers);
         }
     }
 }

@@ -72,7 +72,7 @@ Each integer is big-endian. A datagram's first bit is 1 on a handshake packet an
 | 4 | `Alert` | The TLS alert, one byte |
 
 - **An address token is the server's.** A client keeps the 33 bytes as it got them and reads none of them.
-- **Packet session packets.** A client's datagram starts with the connection ID, whose first bit is 0; a server's starts with the header. The header is 3 bytes, or 10 with acknowledgements: the flags; the low 16 bits of the packet number; then, with acknowledgements, the low 16 bits of the largest number accepted, a `u32` of a bit for each of the 32 numbers below it, the nearest in the lowest bit, and a `u8` of the largest's ACK delay in units of 0.25 ms. The flags hold, from the high bit: 0; the type in 3 bits; the payload's kind in 2 bits, 0 on every type but `Payload`; whether acknowledgements follow, on each `AckOnly` and on a `Payload` only; and a reserved 0.
+- **Packet session packets.** A client's datagram starts with the connection ID, whose first bit is 0; a server's starts with the header. The header is 3 bytes, or 14 with acknowledgements: the flags; the low 16 bits of the packet number; then, with acknowledgements, the low 16 bits of the largest number accepted, a `u64` of a bit for each of the 64 numbers below it, the nearest in the lowest bit, and a `u8` of the largest's ACK delay in units of 0.25 ms. The flags hold, from the high bit: 0; the type in 3 bits; the payload's kind in 2 bits, 0 on every type but `Payload`; whether acknowledgements follow, on each `AckOnly` and on a `Payload` only; and a reserved 0.
 
 | Type | Packet | Body |
 | --- | --- | --- |

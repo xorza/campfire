@@ -1180,9 +1180,10 @@ impl Making {
         }
     }
 
-    /// Whether it is a research an upgrade's conflict holds back, by `upgrades`, its unit's type's:
-    /// a research of a modifier that `held` says is held or queued holds back each upgrade
-    /// conflicting with its own, as `TypeUpgrades::conflicting` gives them
+    /// Whether it is a research an upgrade's conflict holds back, by `upgrades`, its unit's type's,
+    /// as the server refuses it: an upgrade it withholds whose trigger `held` says its holder holds
+    /// or queues, or an upgrade it triggers whose conflict `held` says either holder holds or
+    /// queues, as the upgrade reads the player's modifiers and the unit's alike
     /// (riders-and-upgrades.md, A conflicting upgrade is refused).
     fn held_back(
         self,
@@ -1192,9 +1193,19 @@ impl Making {
         let Self::Research(spec) = self else {
             return false;
         };
-        let conflicting = upgrades.into_iter();
-        let mut conflicting = conflicting.flat_map(|upgrades| upgrades.conflicting(spec.modifier));
-        conflicting.any(|modifier| held(ResearchSpec { modifier, ..spec }))
+        let mut withheld = upgrades
+            .into_iter()
+            .flat_map(|upgrades| upgrades.withheld(spec.modifier));
+        let mut withholding = upgrades
+            .into_iter()
+            .flat_map(|upgrades| upgrades.withholding(spec.modifier));
+        let holders = [ResearchHolder::Player, ResearchHolder::Producer];
+        withheld.any(|modifier| held(ResearchSpec { modifier, ..spec }))
+            || withholding.any(|modifier| {
+                holders
+                    .into_iter()
+                    .any(|holder| held(ResearchSpec { modifier, holder }))
+            })
     }
 
     /// A cast's button, while its unit's `tags` pass its action's `when`; none, hidden, while

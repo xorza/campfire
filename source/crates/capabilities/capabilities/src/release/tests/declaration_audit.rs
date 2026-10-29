@@ -2,7 +2,8 @@
 //! declaration can, each a rule between declarations.
 
 use std::any::{TypeId, type_name};
-use std::fmt::Debug;
+use std::fmt::{Debug, Write};
+use std::path::Path;
 
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::entity::Entity;
@@ -16,6 +17,7 @@ use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, CastSpends};
 use campfire_combat::{BarrelTurns, ClipShots, ShotStreak};
 use campfire_common::EnumAll;
+use campfire_declarations::NamesFn;
 use campfire_declarations::{
     Book, BuildFn, Cache, Callbacks, ColumnFill, Declarations, EntityKind, ExtendFn, Fact,
     KindSpawn, KindVisitor, Listed, ModuleSystems, OneShot, Report, Role, RuleFn, Scratch, Section,
@@ -36,6 +38,7 @@ use campfire_sim::{
 };
 use campfire_states::{NotSent, Replication, StateTypes};
 use campfire_stats::Modifiers;
+use campfire_store::internals::PinnedFile;
 use campfire_units::{
     AtWork, BodyUnit, Dead, DeliveryEntity, OpenCellRun, Owner, SeenBy, TrackLevels, UnitEntity,
 };
@@ -45,7 +48,6 @@ use campfire_vision::{SeenCells, VisionColumn};
 use serde::{Deserialize, Serialize};
 
 use crate::release::Release;
-use campfire_declarations::NamesFn;
 
 /// A type, by its id, with its name for the problems.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,6 +62,20 @@ impl Named {
             id: TypeId::of::<T>(),
             name: type_name::<T>(),
         }
+    }
+    /// The type's name with no module path, its parameters' none either, so a type that moves
+    /// between modules keeps it: `a::B<c::D>` reads `B<D>`.
+    fn short(&self) -> String {
+        let mut short = String::new();
+        let mut rest = self.name;
+        while let Some(at) = rest.find("::") {
+            let head = &rest[..at];
+            let path = head.rfind(|c: char| !(c.is_alphanumeric() || c == '_'));
+            short.push_str(&head[..path.map_or(0, |at| at + 1)]);
+            rest = &rest[at + 2..];
+        }
+        short.push_str(rest);
+        short
     }
 }
 
@@ -492,31 +508,28 @@ impl OwnResources for DeclarationAudit {
     }
 }
 
+/// Each part a module declares, by its host, and each book, by its module's capability.
+const DECLARED: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/src/release/tests/declared.txt"
+);
+
 #[test]
 fn the_modules_declarations_keep_every_rule_between_them() {
     let mut audit = DeclarationAudit::default();
     Release::declare(Release::capabilities(), &mut audit);
     assert_eq!(audit.problems(), Vec::<String>::new());
-    // The audit read every module: the core's four kinds, the actions', the stats', the players',
-    // the mode's, vision's and progression's eleven parts of a player, its cooldowns, its bounty
-    // share, its commanded units, its explored cells and its experience, points and perks among
-    // them, the mode's three of the match, the 39 of a unit, the core's `Variation` and `Leaving`,
-    // production's `Leader`, items' `UseGroup`, orders' `NextThink`, `NextScan` and `AttackMove`,
-    // the core's `StatusTags`, combat's `TurretAim`, navigation's `ArrivedAt`, `AsideDepth`,
-    // `Hemmed`, `Altitude`, `FlightGoal`, `HeldPlace` and `ZeroHourDrive`, production's
-    // `HeldPlaces` and `Doors`, airfields' `Runways` and `Sortie`, interaction's `Riders`, and the
-    // mode's `IncomeClock` among them, and the 83 books, 16 of the core's, its variations among
-    // them, interaction's four, combat's range bonuses, armors, second lives, turrets, turret
-    // mounts, barrels and weapons, navigation's walkers, unit types' navigation, flight, movement
-    // models and crowd rule, orders' scans, production's trains, researches, gathers, spawns and
-    // sales, stats' type upgrades, the mode's victory, bounty, incomes and inputs, orders'
-    // retaliation and its types', and progression's experience, track modifiers and perks among
-    // them.
+    // The audit read every module: the core's four kinds, and each part and book, pinned.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 65);
-    assert_eq!(audit.books.len(), 83);
-    let core = audit.books.iter().filter(|book| book.declared_by.is_none());
-    assert_eq!(core.count(), 16);
+    let mut declared = String::new();
+    for (host, _, part) in &audit.parts {
+        writeln!(declared, "part {} {}", host.short(), part.short()).unwrap();
+    }
+    for book in &audit.books {
+        let by = book.declared_by.map_or("core", Capability::name);
+        writeln!(declared, "book {by} {}", book.ty.short()).unwrap();
+    }
+    PinnedFile::new(Path::new(DECLARED)).pin(declared.as_bytes(), 1 << 16);
     // The observers, the runs out of the schedule and the parts a server derives, which the
     // installer adds for their modules.
     assert_eq!(
@@ -532,6 +545,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             "ViewReader::enabled",
             "OrderSteps::forget_gone",
             "Level::raise",
+            "Aiming::revived",
             "HeldHits::drop_died",
             "UnitTracker<StaticBodies>::aged",
             "UnitTracker<StaticBodies>::disabled",

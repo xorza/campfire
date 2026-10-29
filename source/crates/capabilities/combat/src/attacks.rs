@@ -291,14 +291,14 @@ impl Attacks {
 
     /// Starts the attack of each unit the index of the attack targets holds on the unit its attacks
     /// aim at, its attack target or its turret target, in Act, when it has nothing under way, and
-    /// forgets each gone or with no target: with the
-    /// weapon combat chose against the target, once that weapon passes its checks, the target
-    /// is within its reach, and, for a weapon of its turret's slot kind, the turret lies within its
-    /// tolerance of the target's bearing and pitch (04-capabilities/combat.md, A unit type may have
-    /// a turret; 04-capabilities/combat.md, A turret may pitch), and the weapon's pre-attack, if it
-    /// has one, is done (04-capabilities/combat.md, A pre-attack). An attack in its windup stops
-    /// when the unit's tags keep it from attacking, or it lives no more, and such a unit starts
-    /// none. A target that is no living enemy any more is dropped, with the attack on it.
+    /// forgets each gone or with no target: with the weapon combat chose against the target, once
+    /// that weapon passes its checks, the target is within its reach, and, for a weapon of its
+    /// turret's slot kind, the turret lies within its tolerance of the target's bearing and pitch
+    /// (04-capabilities/combat.md, A unit type may have a turret; 04-capabilities/combat.md, A
+    /// turret may pitch), and the weapon's pre-attack, if it has one, is done
+    /// (04-capabilities/combat.md, A pre-attack). An attack in its windup stops when the unit's
+    /// tags keep it from attacking, or it lives no more, and such a unit starts none. A target that
+    /// is no living enemy any more is dropped, with the attack on it.
     pub(super) fn start_attacks(
         (tick, (book, weapons), turrets, bonuses): (
             Res<'_, SimTick>,
@@ -399,6 +399,18 @@ impl Attacks {
                         continue;
                     };
                     let held_slot = slots.slot(slot).expect("a weapon's slot");
+                    // The held weapon's reach of the unit, its range stretched by its bonus.
+                    let held_fit = || {
+                        let values = stretch
+                            .values_of(held_slot, &book)
+                            .expect("a held weapon's values");
+                        targets.reach(
+                            Placed::new(position.get(), Body::shape_of(body)),
+                            values.range,
+                            values.min_range,
+                            Placed::new(unit.position, unit.shape),
+                        )
+                    };
                     let turret = turrets
                         .get(unit_type)
                         .filter(|turret| turret.carries(slots, slot));
@@ -431,15 +443,7 @@ impl Attacks {
                     } else if let (Some(aim), Some(facing)) = (body_aim, facing.as_mut()) {
                         // A weapon no turret carries turns its attacker toward its target in its
                         // reach (04-capabilities/combat.md, An attacker aims its body).
-                        let values = stretch
-                            .values_of(held_slot, &book)
-                            .expect("a held weapon's values");
-                        let fit = targets.reach(
-                            Placed::new(position.get(), Body::shape_of(body)),
-                            values.range,
-                            values.min_range,
-                            Placed::new(unit.position, unit.shape),
-                        );
+                        let fit = held_fit();
                         let from = position.get();
                         let way =
                             Facing::along([unit.position.x - from.x, unit.position.z - from.z]);
@@ -495,15 +499,7 @@ impl Attacks {
                         // The pre-attack runs while the weapon reaches the target, ready or not, as
                         // Zero Hour's aim and fire states run through a reload, a clip's loaded as
                         // its reload starts.
-                        let values = stretch
-                            .values_of(held_slot, &book)
-                            .expect("a held weapon's values");
-                        let fit = targets.reach(
-                            Placed::new(position.get(), Body::shape_of(body)),
-                            values.range,
-                            values.min_range,
-                            Placed::new(unit.position, unit.shape),
-                        );
+                        let fit = held_fit();
                         if fit != RangeFit::Within || !pitched {
                             progress.end_pre_attack();
                             continue;
@@ -538,15 +534,7 @@ impl Attacks {
                     }
                     // Its reach is the weapon's range stretched by its bonus, which the check of
                     // the action alone does not know.
-                    let values = stretch
-                        .values_of(held_slot, &book)
-                        .expect("a held weapon's values");
-                    let reached = targets.reach(
-                        Placed::new(position.get(), Body::shape_of(body)),
-                        values.range,
-                        values.min_range,
-                        Placed::new(unit.position, unit.shape),
-                    );
+                    let reached = held_fit();
                     let started = times
                         .start(check, Some(from))
                         .filter(|_| reached == RangeFit::Within && pitched)

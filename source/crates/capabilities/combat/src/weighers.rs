@@ -16,8 +16,8 @@ pub struct Weighers(CallbackTable<Weigh, 1>);
 /// The mode's weighers of a damage and of a heal.
 #[derive(Debug, Clone, Copy)]
 pub struct Weigh {
-    pub damage: fn(&mut ScriptBatch<'_>, Damage) -> Option<Result<Num, CallError>>,
-    pub heal: fn(&mut ScriptBatch<'_>, Heal) -> Option<Result<Num, CallError>>,
+    pub damage: fn(&mut ScriptBatch<'_>, Damage) -> Result<Option<Num>, CallError>,
+    pub heal: fn(&mut ScriptBatch<'_>, Heal) -> Result<Option<Num>, CallError>,
 }
 
 impl Callbacks for Weighers {

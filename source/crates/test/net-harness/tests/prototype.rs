@@ -546,7 +546,7 @@ fn each_link_holds_its_own_players_resources_and_every_link_the_match_and_its_pl
     // goes to every client, and `left` to none.
     let packages = TestMode::Proving.packages();
     let resources = packages.data().section_or_default::<ResourcesData>();
-    let resources: Names<ResourceId> = resources.0.iter().map(DeclaredName::as_str).collect();
+    let resources: Names<ResourceId> = Names::unique(resources.0.iter().map(DeclaredName::as_str));
     let gold = resources.named("gold").unwrap();
     let setup = InProcessSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN)
         .into_builder()

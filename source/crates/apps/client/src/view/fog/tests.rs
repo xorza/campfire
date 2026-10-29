@@ -1,3 +1,4 @@
+use campfire_client_files::FogLevel;
 use campfire_geometry::{Bounds, Grid};
 use campfire_math::Num;
 use campfire_vision::BrushMap;
@@ -18,15 +19,16 @@ fn a_cell_keeps_the_light_of_seen_explored_or_shrouded_and_a_known_map_shrouds_n
     let seen = CellBits::of_cells(4, &[0]);
     let explored = CellBits::of_cells(4, &[0, 1]);
     let mut texels = [0; 16];
-    shrouded.texels(&seen, &explored, &mut texels);
+    let cells = |seen, explored| FogSight::Cells { seen, explored };
+    shrouded.texels(cells(&seen, &explored), &mut texels);
     let (clear, fogged, dark) = ([255; 4], [127, 127, 127, 255], [0, 0, 0, 255]);
     assert_eq!(texels, [clear, fogged, dark, dark].concat()[..]);
     // A map that starts known fogs each cell its team does not see.
     shrouded.shroud = false;
-    shrouded.texels(&seen, &CellBits::default(), &mut texels);
+    shrouded.texels(cells(&seen, &CellBits::default()), &mut texels);
     assert_eq!(texels, [clear, fogged, fogged, fogged].concat()[..]);
     // A spectator's fog keeps every cell's light.
-    shrouded.clear_texels(&mut texels);
+    shrouded.texels(FogSight::All, &mut texels);
     assert_eq!(texels, [clear; 4].concat()[..]);
     // Its cells of 1 m from the origin: a point's cell, row by row, none past the grid.
     let at = |x: f32, z: f32| shrouded.cell_at(Vec3::new(x, 7.0, z));

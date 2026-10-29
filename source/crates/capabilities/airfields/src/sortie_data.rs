@@ -11,7 +11,7 @@ use campfire_sim::MatchRate;
 use campfire_values::{DamageKind, Named, UnitType};
 use serde::{Deserialize, Serialize};
 
-use crate::error::AirfieldError;
+use crate::error::AirfieldDataError;
 
 /// A unit type's `sortie` section, a unit an airfield parks: the milliseconds it waits at its
 /// runway's start before it rolls, the meters a second its roll gains a second
@@ -76,14 +76,14 @@ impl SortieSpec {
             let at = || BookPlace::UnitType(unit.place());
             let broken = |problem| BookError::rule(unit.package, at(), problem);
             if unit.data.section::<FlightData>().is_none() {
-                return Err(broken(AirfieldError::SortieFlight));
+                return Err(broken(AirfieldDataError::SortieFlight));
             }
             let stranded = data
                 .stranded
                 .as_ref()
                 .map(|stranded| {
                     if stranded.share <= Num::ZERO || stranded.share > Num::ONE {
-                        return Err(broken(AirfieldError::StrandedShare));
+                        return Err(broken(AirfieldDataError::StrandedShare));
                     }
                     let kind = kinds.and_then(|kinds| kinds.named(stranded.kind.as_str()));
                     let kind = kind.ok_or_else(|| {
@@ -98,7 +98,7 @@ impl SortieSpec {
                 .transpose()?;
             let spec = Self::of(data, stranded, rate);
             if spec.acceleration <= Num::ZERO {
-                return Err(broken(AirfieldError::Acceleration));
+                return Err(broken(AirfieldDataError::Acceleration));
             }
             book.set(unit.unit_type, spec);
         }

@@ -12,11 +12,11 @@ use campfire_client_files::{AnimationMode, StartFrame};
 use crate::view::clip_clock::{ClipClock, ClipStart};
 use crate::view::drawing::Drawn;
 use crate::view::look_clips::{ClipTiming, LookClip, LookClips};
-use crate::view::look_states::LookDice;
 use crate::view::match_colors::Paint;
 use crate::view::model_scenes::ModelScenes;
 use crate::view::unit_looks::{DrawStates, LookModel, Showing};
 use crate::view::unit_models::{AtBone, Redress, Replaces};
+use crate::view::view_dice::ViewDice;
 
 /// A draw as a drawing shows it, as `W3DModelDraw` holds its current state and its next: what it
 /// shows, a state or a transition, none before its first; the state it shows next, once what it
@@ -70,7 +70,7 @@ pub(crate) struct ShowCx<'a, 'w, 's> {
     pub(crate) paint: Paint,
     pub(crate) held: u64,
     pub(crate) lacks: &'a [u16],
-    pub(crate) dice: &'a mut LookDice,
+    pub(crate) dice: &'a mut ViewDice,
     pub(crate) scenes: &'a mut ModelScenes,
     pub(crate) clips: &'a mut LookClips,
     pub(crate) timings: &'a Assets<ClipTiming>,
@@ -337,7 +337,7 @@ impl DrawShow {
 
 impl PlayStart {
     /// The start of a clip of `frames` frames, a random frame drawn of `dice`.
-    fn clip_start(self, frames: u32, dice: &mut LookDice) -> ClipStart {
+    fn clip_start(self, frames: u32, dice: &mut ViewDice) -> ClipStart {
         match self {
             Self::Frame(StartFrame::Natural) => ClipStart::Natural,
             Self::Frame(StartFrame::First) => ClipStart::First,
@@ -419,7 +419,7 @@ impl ShowCx<'_, '_, '_> {
 }
 
 #[cfg(test)]
-pub(crate) mod reach_in {
+pub(crate) mod internals {
     use super::*;
 
     impl DrawShow {

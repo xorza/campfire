@@ -1,5 +1,5 @@
+use crate::zero_hour::format::game_frames;
 use crate::zero_hour::format::ini::object_ini::ini_recoil::IniRecoil;
-use crate::zero_hour::game_time;
 
 /// A draw module's recoil of a barrel at its shot, by its draw frames, as `W3DModelDraw` holds
 /// it: its speed at the shot a frame, the most it moves, and the share of its speed each frame
@@ -26,7 +26,7 @@ impl BarrelRecoil {
     /// `ConvertVelocityInSecsToFrames` turns it, by `SECONDS_PER_LOGICFRAME_REAL`, in the game's
     /// `f32`.
     pub(crate) fn of(recoil: IniRecoil) -> Self {
-        let frame = 1.0 / game_time::FRAMES_PER_SECOND;
+        let frame = game_frames::SECONDS;
         Self {
             speed: recoil.speed.map_or(Self::SPEED, |speed| speed * frame),
             most: recoil.most,

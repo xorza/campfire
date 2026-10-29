@@ -47,12 +47,12 @@ fn a_dropped_map_wakes_its_thread_which_deletes_the_mapping() {
 }
 
 #[test]
-fn a_router_forwards_to_a_socket_bound_to_ipv4_and_not_loopback() {
+fn a_router_forwards_to_a_socket_that_takes_ipv4_and_not_loopback() {
     for (ip, forwardable) in [
         (IpAddr::V4(Ipv4Addr::UNSPECIFIED), true),
         (IpAddr::V4(Ipv4Addr::new(192, 168, 0, 5)), true),
         (IpAddr::V4(Ipv4Addr::LOCALHOST), false),
-        (IpAddr::V6(Ipv6Addr::UNSPECIFIED), false),
+        (IpAddr::V6(Ipv6Addr::UNSPECIFIED), true),
         (IpAddr::V6(Ipv6Addr::LOCALHOST), false),
         (
             IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)),

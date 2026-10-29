@@ -12,9 +12,11 @@ pub enum ProbeSpecError {
     /// The period is no whole count of milliseconds above 0.
     #[error("a probe's period is no whole count of milliseconds above 0")]
     Period(#[source] ParseIntError),
-    /// The units are none of `all`, `player=<n>`, `team=<n>`, `type=<name>` and `ids=<id>,<id>`.
+    /// The units are none of `all`, `player=<n>`, `team=<n>`, `type=<name>`, `ids=<id>,<id>`
+    /// and `state=<state>`.
     #[error(
-        "a probe's units are `all`, `player=<n>`, `team=<n>`, `type=<name>` or `ids=<id>,<id>`"
+        "a probe's units are `all`, `player=<n>`, `team=<n>`, `type=<name>`, `ids=<id>,<id>` or \
+         `state=<state>`"
     )]
     Units,
     #[error("a probe's number does not read")]
@@ -25,6 +27,9 @@ pub enum ProbeSpecError {
     /// A type's name is no name a package declares.
     #[error("a probe's type is no name a package declares")]
     Name,
+    /// A state is none of `idle`, `walking`, `stuck`, `working`, `fighting` and `acting`.
+    #[error("a probe's state is `idle`, `walking`, `stuck`, `working`, `fighting` or `acting`")]
+    State,
 }
 
 /// Why a probe does not probe a match.

@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 
-use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::world::World;
 use campfire_abilities::internals::{MANA, RAGE};
 use campfire_abilities::{Abilities, CastData};
@@ -19,7 +18,7 @@ use campfire_stats::Pools;
 use campfire_units::internals::Spawn;
 use campfire_units::{Life, MoveStep, Owner, UnitTypeCore, Units};
 use campfire_values::{
-    ActionId, FilterData, Number, PackageIndex, PackagePath, Param, Rank, Ranked, Scalar, Team,
+    ActionId, FilterData, Number, PackageIndex, PackagePath, Param, Rank, Ranked, Scalar,
     TypeScope, UnitType,
 };
 
@@ -44,46 +43,14 @@ pub trait AbilitiesFixtures {
     /// Gives `unit_type` a combatant's books, and pools of `mana` and `rage`.
     fn give_caster(world: &mut World, unit_type: UnitType, mana: i64, rage: i64);
 
-    /// A `combatant` of `team` with `parts`.
-    fn spawn_combatant(
-        world: &mut World,
-        position: impl Into<Vec3>,
-        team: Team,
-        parts: impl Bundle<Effect: NoBundleEffect>,
-    ) -> StableId;
-
-    /// A `caster` of `team` with `parts`.
-    fn spawn_caster(
-        world: &mut World,
-        position: impl Into<Vec3>,
-        team: Team,
-        parts: impl Bundle<Effect: NoBundleEffect>,
-    ) -> StableId;
-
-    /// A unit of `team` of the armed type `unit_type` that attacks `target`.
-    fn attacker(
-        world: &mut World,
-        unit_type: UnitType,
-        position: impl Into<Vec3>,
-        team: Team,
-        target: StableId,
-    ) -> StableId;
+    /// The unit of `spawn`, placed, that attacks `target`.
+    fn attacker(world: &mut World, spawn: Spawn, target: StableId) -> StableId;
 
     /// Player 0's `caster` at the origin, on team 0, with `action` at `rank`.
     fn caster(world: &mut World, action: ActionId, rank: u8) -> StableId;
 
-    /// Player 0's unit of the caster type `name` at the origin, on team 0, with `action` at
-    /// `rank`.
-    fn caster_of(world: &mut World, name: &str, action: ActionId, rank: u8) -> StableId;
-
-    /// Player 0's `caster` at `position`, on team 0, with `action` at `rank`.
-    fn caster_at(world: &mut World, position: Vec3, action: ActionId, rank: u8) -> StableId;
-
-    /// A `fighter`, a combatant's type, of team 0 at the origin, with `slots`.
-    fn fighter(world: &mut World, fighter: UnitType, slots: TimedSlots) -> StableId;
-
-    /// Player 0's `walking caster` at the origin with `action`.
-    fn walking_caster(world: &mut World, action: ActionId) -> StableId;
+    /// What a caster spawns with: player 0 as its owner, and `action` at `rank` in its slot 0.
+    fn caster_parts(action: ActionId, rank: u8) -> (Owner, TimedSlots);
 
     /// Loads `data` as the action `name` of package 0, of 5 ranks, with its script `source`.
     fn load(world: &mut World, name: &str, data: &ActionData, source: &str) -> ActionId;
@@ -133,38 +100,8 @@ impl AbilitiesFixtures for Abilities {
         Units::give_type(world, unit_type, pools);
     }
 
-    fn spawn_combatant(
-        world: &mut World,
-        position: impl Into<Vec3>,
-        team: Team,
-        parts: impl Bundle<Effect: NoBundleEffect>,
-    ) -> StableId {
-        Spawn::named(world, "combatant", position)
-            .team(team)
-            .parts(parts)
-            .place(world)
-    }
-
-    fn spawn_caster(
-        world: &mut World,
-        position: impl Into<Vec3>,
-        team: Team,
-        parts: impl Bundle<Effect: NoBundleEffect>,
-    ) -> StableId {
-        Spawn::named(world, "caster", position)
-            .team(team)
-            .parts(parts)
-            .place(world)
-    }
-
-    fn attacker(
-        world: &mut World,
-        unit_type: UnitType,
-        position: impl Into<Vec3>,
-        team: Team,
-        target: StableId,
-    ) -> StableId {
-        let id = Spawn::of(unit_type, position).team(team).place(world);
+    fn attacker(world: &mut World, spawn: Spawn, target: StableId) -> StableId {
+        let id = spawn.place(world);
         ProgressDues::change_unit(world, id, |progress, dues| {
             progress.set_attack_target(Some(AttackTarget::ordered(target)), dues);
         });
@@ -172,23 +109,17 @@ impl AbilitiesFixtures for Abilities {
     }
 
     fn caster(world: &mut World, action: ActionId, rank: u8) -> StableId {
-        Self::caster_of(world, "caster", action, rank)
+        Spawn::named(world, "caster", Vec3::ZERO)
+            .parts(Self::caster_parts(action, rank))
+            .place(world)
     }
 
-    fn caster_of(world: &mut World, name: &str, action: ActionId, rank: u8) -> StableId {
-        placed_caster(world, name, Vec3::ZERO, action, rank)
-    }
-
-    fn caster_at(world: &mut World, position: Vec3, action: ActionId, rank: u8) -> StableId {
-        placed_caster(world, "caster", position, action, rank)
-    }
-
-    fn fighter(world: &mut World, fighter: UnitType, slots: TimedSlots) -> StableId {
-        Spawn::of(fighter, Vec3::ZERO).parts(slots).place(world)
-    }
-
-    fn walking_caster(world: &mut World, action: ActionId) -> StableId {
-        Self::caster_of(world, "walking caster", action, 1)
+    fn caster_parts(action: ActionId, rank: u8) -> (Owner, TimedSlots) {
+        let slot = (action, SlotKind::new(0), Rank::new(rank));
+        (
+            Owner::new(PlayerSlot::new(0)),
+            TimedSlots::new(ActionSlots::new([slot])),
+        )
     }
 
     fn load(world: &mut World, name: &str, data: &ActionData, source: &str) -> ActionId {
@@ -234,25 +165,4 @@ impl AbilitiesFixtures for Abilities {
             ..ActionData::of(targeting(), CastData::default())
         }
     }
-}
-
-/// Player 0's unit of the caster type `name` at `position`, on team 0, with `action` at `rank`.
-fn placed_caster(
-    world: &mut World,
-    name: &str,
-    position: Vec3,
-    action: ActionId,
-    rank: u8,
-) -> StableId {
-    let parts = (
-        Owner::new(PlayerSlot::new(0)),
-        TimedSlots::new(ActionSlots::new([(
-            action,
-            SlotKind::new(0),
-            Rank::new(rank),
-        )])),
-    );
-    Spawn::named(world, name, position)
-        .parts(parts)
-        .place(world)
 }

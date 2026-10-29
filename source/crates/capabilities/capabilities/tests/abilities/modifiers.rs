@@ -128,7 +128,10 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     claws.keys.passive_modifier = Some(DeclaredName::new("ward").unwrap());
     let claws = Actions::load(&mut game, PackageIndex::MODE, "claws", &claws, None, 1).unwrap();
     let slots = TimedSlots::new(ActionSlots::new([(claws, SlotKind::new(0), Rank::new(1))]));
-    let beast = Abilities::spawn_combatant(&mut game, (0, 0, 0), Team::new(0), slots);
+    let beast = Spawn::named(&game, "combatant", (0, 0, 0))
+        .team(Team::new(0))
+        .parts(slots)
+        .place(&mut game);
     let entity = game.unit_entity(beast);
     game.step();
     let ward = Stats::modifier(&game, PackageIndex::MODE, "ward").unwrap();
@@ -524,13 +527,13 @@ fn an_xp_effect_to_a_unit_without_the_track_fails_its_cast_as_add_xp_does() {
     };
     let action = Actions::load(&mut game, PackageIndex::MODE, "strike", &data, None, 1).unwrap();
     Actions::load_effect_lists(&mut game, action, PackageIndex::MODE, &data);
-    let tracked = Abilities::spawn_combatant(
-        &mut game,
-        (1, 0, 0),
-        Team::new(1),
-        Experience::new(TrackSet::from([valor])),
-    );
-    let untracked = Abilities::spawn_combatant(&mut game, (-1, 0, 0), Team::new(1), ());
+    let tracked = Spawn::named(&game, "combatant", (1, 0, 0))
+        .team(Team::new(1))
+        .parts(Experience::new(TrackSet::from([valor])))
+        .place(&mut game);
+    let untracked = Spawn::named(&game, "combatant", (-1, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     let [first, second] = [(); 2].map(|()| Abilities::caster(&mut game, action, 1));
     Abilities::cast(&mut game, first, ActionTarget::Unit(tracked));
     assert_eq!(Abilities::failed_calls(&mut game), []);
@@ -595,7 +598,9 @@ fn an_xp_effect_to_a_source_that_despawned_fails_its_hit() {
     Actions::load_effect_lists(&mut game, action, PackageIndex::MODE, &data);
     let caster = Abilities::caster(&mut game, action, 1);
     game.insert_parts(caster, Experience::new(TrackSet::from([valor])));
-    let enemy = Abilities::spawn_combatant(&mut game, (4, 0, 0), Team::new(1), ());
+    let enemy = Spawn::named(&game, "combatant", (4, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     Abilities::cast(
         &mut game,
         caster,
@@ -639,11 +644,21 @@ fn on_interval(ctx, m) { throw "interval"; }
         book.set_assist_window(Some(Ticks::new(10)));
     });
     let striker = striker(500).load(&mut game);
-    let victim = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
+    let victim = Spawn::named(&game, "combatant", (1, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     let origin = Vec3::from((0, 0, 0));
-    let attacker = Abilities::attacker(&mut game, striker, origin, Team::new(0), victim);
-    let assister = Abilities::spawn_combatant(&mut game, (3, 0, 0), Team::new(0), ());
-    let bystander = Abilities::spawn_combatant(&mut game, (9, 0, 0), Team::new(1), ());
+    let attacker = Abilities::attacker(
+        &mut game,
+        Spawn::of(striker, origin).team(Team::new(0)),
+        victim,
+    );
+    let assister = Spawn::named(&game, "combatant", (3, 0, 0))
+        .team(Team::new(0))
+        .place(&mut game);
+    let bystander = Spawn::named(&game, "combatant", (9, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     for unit in [attacker, assister, victim] {
         Abilities::give(&mut game, unit, "log");
     }
@@ -766,10 +781,18 @@ fn on_damage_taken(ctx, m, d) {
         ],
     );
     let striker = striker(30).load(&mut game);
-    let victim = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
+    let victim = Spawn::named(&game, "combatant", (1, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     let origin = Vec3::from((0, 0, 0));
-    let attacker = Abilities::attacker(&mut game, striker, origin, Team::new(0), victim);
-    let echoer = Abilities::spawn_combatant(&mut game, (9, 0, 0), Team::new(1), ());
+    let attacker = Abilities::attacker(
+        &mut game,
+        Spawn::of(striker, origin).team(Team::new(0)),
+        victim,
+    );
+    let echoer = Spawn::named(&game, "combatant", (9, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     Abilities::give(&mut game, attacker, "double");
     Abilities::give(&mut game, echoer, "echo");
     DamagePass::queue(
@@ -811,7 +834,9 @@ fn on_damage_taken(ctx, m, d) {
 "#;
     let mut game =
         abilities_match_with_modifiers(hooks, &[("mend", scripted(None, &[("mend", 30)]))]);
-    let carrier = Abilities::spawn_combatant(&mut game, (0, 0, 0), Team::new(1), ());
+    let carrier = Spawn::named(&game, "combatant", (0, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     Abilities::give(&mut game, carrier, "mend");
     for (amount, kind) in [(450, 2), (100, 0)] {
         DamagePass::queue(

@@ -95,7 +95,7 @@ mod tests {
             armor: BTreeMap<DeclaredName, ArmorShare>,
         }
         let read = |text: &str| Toml::parse::<File>(text).map(|file| file.armor);
-        let kinds: Names<DamageKind> = ["small_arms", "crush", "explosion"].into_iter().collect();
+        let kinds: Names<DamageKind> = Names::unique(["small_arms", "crush", "explosion"]);
         let shares = read(r#"armor = { small_arms = "0.5", crush = "2" }"#).unwrap();
         let armor = Armor::of(&shares, &kinds).unwrap();
         let [arms, crush, explosion] = [0, 1, 2].map(DamageKind::new);

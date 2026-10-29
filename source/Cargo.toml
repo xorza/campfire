@@ -302,6 +302,9 @@ getrandom = { version = "=0.4.3", default-features = false }
 gltf-json = { version = "=1.4.1", default-features = false }
 httparse = { version = "=1.10.1", default-features = false }
 libc = { version = "=0.2.191", default-features = false }
+# The importer's transcendental functions, in software, so every OS writes the same package
+# (09-zero-hour.md, One reproducible package).
+libm = { version = "=0.2.16", default-features = false }
 miniz_oxide = { version = "=0.9.1", default-features = false }
 naga = { version = "=30.0.1", default-features = false }
 netdev = { version = "=0.46.3", default-features = false }
@@ -395,6 +398,8 @@ unused_import_braces = "warn"
 unused_lifetimes = "warn"
 unused_macro_rules = "warn"
 unused_qualifications = "warn"
+# Each file that writes `unsafe` expects it with its reason (02-engine-core.md, Unsafe only where
+# an outside API asks).
 unsafe_code = "warn"
 
 [workspace.lints.clippy]

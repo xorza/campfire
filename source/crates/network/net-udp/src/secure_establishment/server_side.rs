@@ -184,8 +184,13 @@ impl ServerSide {
         true
     }
 
-    /// Whether `ip` may start a handshake at `now`, within its live packet sessions and its bucket.
+    /// Whether `ip` may start a handshake at `now`, within the server's live packet sessions and
+    /// handshakes, its own, and its bucket.
     fn admit(&mut self, ip: IpAddr, now: Instant) -> bool {
+        let most = usize::try_from(self.admission_setup.most().get()).unwrap_or(usize::MAX);
+        if self.holders.len() >= most {
+            return false;
+        }
         let counts = &self.counts;
         let admission = self
             .admission

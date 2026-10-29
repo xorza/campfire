@@ -1,0 +1,148 @@
+part BodyUnit Facing
+part BodyUnit SpawnPoint
+part BodyUnit StatusTags
+part BodyUnit Variation
+part BodyUnit Body
+part BodyUnit MoveStep
+part BodyUnit TurnStep
+part BodyUnit AccelStep
+part BodyUnit Destination
+part BodyUnit Leaving
+part Player PlayerResources
+part Player CommandedUnits
+part Player PlayerCooldowns
+part BodyUnit ActionSlots
+part BodyUnit SlotTimes
+part BodyUnit ActionProgress
+part Player PlayerModifiers
+part BodyUnit Level
+part BodyUnit Modifiers
+part BodyUnit ModifierClocks
+part BodyUnit Pools
+part Player PlayerExperience
+part Player PlayerPoints
+part Player PlayerPerks
+part BodyUnit Experience
+part BodyUnit Points
+part BodyUnit TurretAim
+part BodyUnit Life
+part BodyUnit RecentAttackers
+part BodyUnit Route
+part BodyUnit Progress
+part BodyUnit ArrivedAt
+part BodyUnit AsideDepth
+part BodyUnit Hemmed
+part BodyUnit ZeroHourDrive
+part BodyUnit Altitude
+part BodyUnit FlightGoal
+part BodyUnit HeldPlace
+part UnitEntity Sight
+part Player ExploredCells
+part BodyUnit TrainQueue
+part BodyUnit Rally
+part BodyUnit HeldPlaces
+part BodyUnit Doors
+part BodyUnit Builder
+part BodyUnit Node
+part BodyUnit Gatherer
+part BodyUnit Leader
+part BodyUnit Runways
+part BodyUnit Sortie
+part BodyUnit Inventory
+part BodyUnit UseGroup
+part BodyUnit Riders
+part BodyUnit NextTurn<Acquire>
+part BodyUnit AttackMove
+part BodyUnit NextTurn<Ai>
+part MatchEntity Relations
+part MatchEntity ModeState<AudienceNone>
+part MatchEntity ModeState<AudienceAll>
+part Player PlayerState<AudienceNone>
+part Player PlayerState<AudienceOwner>
+part Player PlayerState<AudienceTeam>
+part UnitEntity IncomeClock
+part Player BountyShare
+part Player PlayerState<AudienceAll>
+book core UnitTypeBook
+book core UnitStateBook
+book core TypeOriginBook
+book core TagBook
+book core MapBook
+book core ScriptBook
+book core ById<UnitType, MoveStep>
+book core ById<UnitType, TurnStep>
+book core ById<UnitType, AccelStep>
+book core ById<UnitType, BodyForm>
+book core ById<UnitType, Variations>
+book mode BountyBook
+book mode ById<UnitType, TypeIncome>
+book mode VictoryBook
+book mode InputBook
+book core ResourceBook
+book core ActionBook
+book core EffectListBook
+book core SlotKindBook
+book core ById<UnitType, ActionSlots>
+book stats ModifierBook
+book stats ParamBook
+book stats StatBook
+book stats PoolBook
+book stats ById<UnitType, Pools>
+book stats ById<UnitType, TypePassive>
+book stats ById<UnitType, TypeUpgrades>
+book progression PerkBook
+book progression TrackBook
+book progression TrackModifierBook
+book progression ExperienceBook
+book progression ById<UnitType, TypeTracks>
+book combat ById<UnitType, Turret>
+book combat ById<UnitType, TurretMount>
+book combat ById<UnitType, Barrels>
+book combat DamageKindBook
+book combat CombatBook
+book combat ById<ActionId, Weapon>
+book combat ById<ActionId, RangeBonus>
+book combat ById<UnitType, Life>
+book combat ById<UnitType, OnDeath>
+book combat ById<UnitType, TypeArmor>
+book combat ById<UnitType, SecondLife>
+book navigation ById<UnitType, Walker>
+book navigation WalkerBook
+book navigation ById<UnitType, UnitNavigationData>
+book navigation ById<UnitType, FlightData>
+book navigation ById<UnitType, MovementModel>
+book navigation CrowdBook
+book navigation NavigationBook
+book navigation WallBook
+book vision ById<UnitType, Sight>
+book vision VisionBook
+book projectiles ById<UnitType, ProjectileSpec>
+book areas ById<UnitType, AreaSpec>
+book production ById<UnitType, SellSpec>
+book production ById<UnitType, ProducerSpec>
+book production ById<UnitType, SpawnSpec>
+book production ById<ActionId, TrainSpec>
+book production ById<ActionId, ResearchSpec>
+book production ById<ActionId, GatherSpec>
+book production RequirementBook
+book production SupplyCostBook
+book production BuildBook
+book production NodeBook
+book production SupplyBook
+book production ById<UnitType, Builder>
+book production ById<UnitType, Node>
+book production ById<UnitType, Gatherer>
+book airfields ById<UnitType, AirfieldData>
+book airfields ById<UnitType, SortieSpec>
+book items ItemBook
+book items ById<UnitType, Shop>
+book items ById<UnitType, Inventory>
+book items ById<UnitType, UseGroup>
+book interaction ById<UnitType, UseSpec>
+book interaction ById<UnitType, UseSlot>
+book interaction ById<UnitType, EnterSpec>
+book interaction ById<UnitType, RiderSize>
+book orders ById<UnitType, Acquire>
+book orders RetaliationBook
+book orders ById<UnitType, Retaliate>
+book orders ById<UnitType, Ai>

@@ -1,6 +1,28 @@
+use campfire_actions::ActionKeys;
+use campfire_actions::ActionRange;
+use campfire_actions::RangeField;
+use campfire_actions::Targeting;
+use campfire_combat::AttackData;
+use campfire_combat::BonusData;
+use campfire_combat::ClipData;
+use campfire_combat::ClipRefill;
+use campfire_combat::FallData;
+use campfire_combat::OuterData;
+use campfire_combat::PitchData;
+use campfire_combat::PreAttackData;
+use campfire_combat::PreAttackEach;
+use campfire_combat::ScatterData;
+use campfire_combat::SplashData;
+use campfire_combat::StageData;
+use campfire_combat::WeaponValue;
 use campfire_combat::{BarrelData, UnitOffset};
+use campfire_math::Num;
 use campfire_projectiles::{CruiseData, ProjectileHits, SteerData};
 use campfire_values::FilterData;
+use campfire_values::Ranked;
+use campfire_values::RelationSet;
+use campfire_values::Scalar;
+use campfire_values::Speed;
 
 use super::*;
 use crate::zero_hour::error::{NameClash, NameError};
@@ -8,7 +30,7 @@ use crate::zero_hour::format::ini::armor_ini::samples::ARMORS;
 use crate::zero_hour::format::ini::locomotor_ini::samples;
 use crate::zero_hour::format::ini::object_ini::ObjectIni;
 use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, OBJECTS};
-use crate::zero_hour::format::ini::weapon_ini::WeaponIni;
+use crate::zero_hour::format::ini::weapon_ini::RadiusAffects;
 use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::object_flight::samples::shell_projectile;
@@ -92,8 +114,7 @@ fn a_weapon_converts_with_its_shell_splash_scatter_pitch_and_speed_or_drops_by_i
     let mut ini = WeaponIni::default();
     ini.read(WEAPONS.as_bytes()).unwrap();
     let rules = ZeroHourRules {
-        objects: ObjectIni::of(&[DEFAULT_OBJECTS, OBJECTS, ROCKET]),
-        ..ZeroHourRules::default()
+        ..ZeroHourRules::of_objects(ObjectIni::of(&[DEFAULT_OBJECTS, OBJECTS, ROCKET]))
     };
     let of = |name: &str| {
         let id = DeclaredName::new(&format!("weapon_{}", name.to_lowercase())).unwrap();
@@ -304,8 +325,7 @@ fn a_missile_converts_to_a_steered_projectile_with_its_rings_and_minimum_or_drop
     let mut ini = WeaponIni::default();
     ini.read(MISSILE_WEAPONS.as_bytes()).unwrap();
     let mut rules = ZeroHourRules {
-        objects: ObjectIni::of(&[DEFAULT_OBJECTS, MISSILES]),
-        ..ZeroHourRules::default()
+        ..ZeroHourRules::of_objects(ObjectIni::of(&[DEFAULT_OBJECTS, MISSILES]))
     };
     rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
     let of = |name: &str| {
@@ -576,8 +596,7 @@ End
 fn weapons_of_one_name_but_case_share_an_action_only_of_the_same_numbers() {
     let import = |guns: &str| {
         let mut rules = ZeroHourRules {
-            objects: ObjectIni::of(&[SOLDIERS]),
-            ..ZeroHourRules::default()
+            ..ZeroHourRules::of_objects(ObjectIni::of(&[SOLDIERS]))
         };
         rules
             .locomotors
@@ -635,8 +654,7 @@ End
 #[test]
 fn a_slots_preference_is_its_weapons_filter_of_all_its_kinds_and_a_locked_slot_drops() {
     let mut rules = ZeroHourRules {
-        objects: ObjectIni::of(&[PREFERRING]),
-        ..ZeroHourRules::default()
+        ..ZeroHourRules::of_objects(ObjectIni::of(&[PREFERRING]))
     };
     let gun = |name: &str| {
         format!("Weapon {name}\n  PrimaryDamage = 5\n  DelayBetweenShots = 100\nEnd\n")
@@ -688,8 +706,7 @@ fn a_living_type_takes_its_armor_by_the_name_of_its_case() {
                  ArmorSet\n    Conditions = None\n    Armor = {armor}\n  End\nEnd\n"
         );
         let mut rules = ZeroHourRules {
-            objects: ObjectIni::of(&[&text]),
-            ..ZeroHourRules::default()
+            ..ZeroHourRules::of_objects(ObjectIni::of(&[&text]))
         };
         rules.armors.read(ARMORS.as_bytes()).unwrap();
         let mut names = ImportNames::default();
@@ -724,8 +741,11 @@ fn a_shell_takes_its_objects_name_when_its_weapons_fire_it_alike_and_else_one_of
     };
     let import = |second: &str, speeds: [u16; 2], extra: &str| {
         let mut rules = ZeroHourRules {
-            objects: ObjectIni::of(&[DEFAULT_OBJECTS, OBJECTS, &(tanks(second) + extra)]),
-            ..ZeroHourRules::default()
+            ..ZeroHourRules::of_objects(ObjectIni::of(&[
+                DEFAULT_OBJECTS,
+                OBJECTS,
+                &(tanks(second) + extra),
+            ]))
         };
         let text = gun("Cannon", speeds[0]) + gun("Howitzer", speeds[1]).as_str();
         rules.weapons.read(text.as_bytes()).unwrap();
@@ -838,8 +858,7 @@ fn a_types_weapons_that_fire_a_projectile_take_their_slots_barrels() {
     let mut ini = WeaponIni::default();
     ini.read(MISSILE_WEAPONS.as_bytes()).unwrap();
     let mut rules = ZeroHourRules {
-        objects: ObjectIni::of(&[DEFAULT_OBJECTS, MISSILES]),
-        ..ZeroHourRules::default()
+        ..ZeroHourRules::of_objects(ObjectIni::of(&[DEFAULT_OBJECTS, MISSILES]))
     };
     rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
     let id = |name: &str| DeclaredName::new(&format!("weapon_{}", name.to_lowercase())).unwrap();
@@ -928,8 +947,7 @@ Object Turret
 End
 ";
     let mut rules = ZeroHourRules {
-        objects: ObjectIni::of(&[objects]),
-        ..ZeroHourRules::default()
+        ..ZeroHourRules::of_objects(ObjectIni::of(&[objects]))
     };
     let list = "ObjectCreationList OCL_Turret\n  CreateObject\n    ObjectNames = Turret\n    \
                 ContainInsideSourceObject = Yes\n  End\nEnd\n";
@@ -975,4 +993,46 @@ End
         when("weapon_missiles_turret"),
         Some("all:upgrade_turret_created".to_owned())
     );
+}
+
+#[test]
+fn the_exhausts_are_of_every_action_a_weapon_converts_to_that_fires_a_projectile() {
+    // The Tank Hunter converts only to its upgraded action, which fires a missile, so its trail
+    // is listed though no `weapon_tankhunter` exists; the one shot fires none, so its exhaust is
+    // not; the buggy's converts to nothing.
+    let mut ini = WeaponIni::default();
+    let exhausted = |name: &str, trail: &str| {
+        format!(
+            "Weapon {name}\n  PrimaryDamage = 10\n  DelayBetweenShots = 100\n  \
+             ProjectileExhaust = {trail}\nEnd\n"
+        )
+    };
+    let text = [
+        exhausted("TankHunter", "HunterTrail"),
+        exhausted("OneShot", "ShotTrail"),
+        exhausted("BuggyRocket", "BuggyTrail"),
+    ]
+    .concat();
+    ini.read(text.as_bytes()).unwrap();
+    let rules = ZeroHourRules::default();
+    let id = |name: &str| DeclaredName::new(name).unwrap();
+    let weapon = |name: &str| {
+        ImportedWeapon::of(ini.get(name).unwrap(), &rules, &id("weapon"))
+            .unwrap()
+            .weapon
+    };
+    let mut hunter = weapon("TankHunter");
+    hunter.delivery = Some(ProjectileDeliveryData::one(id("missile")));
+    let combat = CombatImport {
+        actions: BTreeMap::from([
+            (id("weapon_tankhunter_upgraded"), hunter),
+            (id("weapon_oneshot"), weapon("OneShot")),
+        ]),
+        sources: BTreeMap::from([
+            (id("weapon_tankhunter_upgraded"), "TankHunter".to_owned()),
+            (id("weapon_oneshot"), "OneShot".to_owned()),
+        ]),
+        ..CombatImport::default()
+    };
+    assert_eq!(combat.exhausts(&ini), ["HunterTrail"]);
 }

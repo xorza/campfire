@@ -302,30 +302,32 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
         // one a bit farther is not; a body of radius 0.5 2.5 m away touches it; an enemy whose
         // tags block it as a target is reached all the same; an ally is not.
         let center = Num::int(4);
-        let edge = Abilities::spawn_combatant(
-            &mut game,
-            Vec3::from((center + Num::int(2), 0, 0)),
-            Team::new(1),
-            (),
-        );
-        let beyond = Abilities::spawn_combatant(
-            &mut game,
+        let edge = Spawn::named(&game, "combatant", Vec3::from((center + Num::int(2), 0, 0)))
+            .team(Team::new(1))
+            .place(&mut game);
+        let beyond = Spawn::named(
+            &game,
+            "combatant",
             Vec3::from((center, 0, Num::int(2) + Num::EPSILON)),
-            Team::new(1),
-            (),
-        );
+        )
+        .team(Team::new(1))
+        .place(&mut game);
         let body = Body::new(half_meters(1)).unwrap();
-        let wide = Abilities::spawn_combatant(
-            &mut game,
+        let wide = Spawn::named(
+            &game,
+            "combatant",
             Vec3::from((center - half_meters(5), 0, 0)),
-            Team::new(1),
-            body,
-        );
-        let hidden =
-            Abilities::spawn_combatant(&mut game, Vec3::from((center, 0, 1)), Team::new(1), ());
+        )
+        .team(Team::new(1))
+        .parts(body)
+        .place(&mut game);
+        let hidden = Spawn::named(&game, "combatant", Vec3::from((center, 0, 1)))
+            .team(Team::new(1))
+            .place(&mut game);
         Units::set_blocks(&mut game, hidden, &[Block::Target]);
-        let ally =
-            Abilities::spawn_combatant(&mut game, Vec3::from((center, 0, 0)), Team::new(0), ());
+        let ally = Spawn::named(&game, "combatant", Vec3::from((center, 0, 0)))
+            .team(Team::new(0))
+            .place(&mut game);
         let units = [edge, beyond, wide, hidden, ally, caster];
         let areas = |game: &mut Match| {
             let mut query = game.query::<&Area>();
@@ -420,14 +422,22 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
     // an enemy of no type, and one whose tags block it as a target. Outside it, 3 m away: an ally
     // and an enemy grunt.
     let point = |x: i16, z: i16| Vec3::from((x, 0, z));
-    let ally = Abilities::spawn_combatant(&mut game, point(1, 1), Team::new(0), ());
+    let ally = Spawn::named(&game, "combatant", point(1, 1))
+        .team(Team::new(0))
+        .place(&mut game);
     let enemy_grunt = Spawn::of(grunt, point(2, 0))
         .team(Team::new(1))
         .place(&mut game);
-    let enemy = Abilities::spawn_combatant(&mut game, point(1, -1), Team::new(1), ());
-    let hidden = Abilities::spawn_combatant(&mut game, point(0, 0), Team::new(1), ());
+    let enemy = Spawn::named(&game, "combatant", point(1, -1))
+        .team(Team::new(1))
+        .place(&mut game);
+    let hidden = Spawn::named(&game, "combatant", point(0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     Units::set_blocks(&mut game, hidden, &[Block::Target]);
-    let far_ally = Abilities::spawn_combatant(&mut game, point(4, 0), Team::new(0), ());
+    let far_ally = Spawn::named(&game, "combatant", point(4, 0))
+        .team(Team::new(0))
+        .place(&mut game);
     let far_grunt = Spawn::of(grunt, point(1, 3))
         .team(Team::new(1))
         .place(&mut game);

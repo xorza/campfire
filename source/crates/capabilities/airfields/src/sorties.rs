@@ -13,11 +13,11 @@ use campfire_common::{Tick, Ticks};
 use campfire_declarations::ById;
 use campfire_math::{Num, Rounding, Vec3};
 use campfire_navigation::FlightData;
-use campfire_production::{Doors, FramePoint, HeldPlaces, MadeAt, ProducerSpec};
+use campfire_production::{Doors, FramePoint, HeldPlaces, MadeAt, ProducerSpec, Sold};
 use campfire_sim::{EntityIndex, Keyed, MatchRate, Ordered, Position, SimTick, StableId};
 use campfire_units::{
     DashTo, Dead, Destination, Facing, FlightGoal, ForcedMove, Life, MoveStep, StatusTags,
-    UnitsWorld,
+    Unfinished, UnitsWorld,
 };
 use campfire_values::{ActionId, Team, UnitType};
 
@@ -33,7 +33,8 @@ use crate::sortie_data::SortieSpec;
 pub(crate) struct Sorties;
 
 /// The parts of an airfield a sortie reads and writes: its id, place, facing, type, team, runways
-/// and places.
+/// and places; of one that stands built and unsold, as Zero Hour's `findSuitableAirfield` refuses
+/// one under construction or sold.
 type Fields<'w, 's> = Query<
     'w,
     's,
@@ -50,7 +51,12 @@ type Fields<'w, 's> = Query<
             Option<&'static mut Doors>,
         ),
     ),
-    (Without<Dead>, Without<Sortie>),
+    (
+        Without<Dead>,
+        Without<Sortie>,
+        Without<Unfinished>,
+        Without<Sold>,
+    ),
 >;
 
 /// The parts of a unit of a sortie its sortie reads and writes.

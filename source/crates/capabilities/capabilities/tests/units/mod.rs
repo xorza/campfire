@@ -155,7 +155,7 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
     game.insert_parts(east, Body::of_box(box_body));
     let reaches = |game: &mut Match, from: StableId, to: &str, range: i64| {
         let source = format!(
-            r#"fn probe(ctx, of) {{ of.reaches(ctx.find(of, of.position, 6, "{to}")[0], {range}) }}"#
+            r#"fn probe(ctx, of) {{ of.can_reach(ctx.find(of, of.position, 6, "{to}")[0], {range}) }}"#
         );
         Units::probe(game, &source, from)
             .unwrap()
@@ -247,8 +247,8 @@ fn a_position_measures_reach_and_distance_in_the_maps_metric() {
         let found = ctx.find(of, of.position, 13, "enemies");
         let near = found[0];
         let up = found[1];
-        [of.position.within(near.position, 5), of.position.within(near.position, 4), of.position.within(up.position, 3),
-            of.position.within(up.position, 12), of.position.within(up.position, 13),
+        [of.position.is_within(near.position, 5), of.position.is_within(near.position, 4), of.position.is_within(up.position, 3),
+            of.position.is_within(up.position, 12), of.position.is_within(up.position, 13),
             of.position.distance_to(near.position), of.position.distance_to(up.position)]
     }"#;
     // Exactly, as every range. The near one is 5 m away in either metric: 3, 4, 5. The one up at
@@ -280,7 +280,7 @@ fn a_position_measures_reach_and_distance_in_the_maps_metric() {
     }
     let error = Units::probe(
         &mut game,
-        "fn probe(ctx, of) { of.position.within(of.position, -1) }",
+        "fn probe(ctx, of) { of.position.is_within(of.position, -1) }",
         of,
     )
     .unwrap_err();

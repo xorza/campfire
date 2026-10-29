@@ -8,8 +8,9 @@ use campfire_production::Production;
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::game_data_ini::GameDataIni;
+use crate::zero_hour::format::ini::object_ini::ObjectIni;
+use crate::zero_hour::format::ini::object_ini::ini_object::IniObject;
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::UpgradeEffect;
-use crate::zero_hour::format::ini::object_ini::{IniObject, ObjectIni};
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::upgrade_import;
 

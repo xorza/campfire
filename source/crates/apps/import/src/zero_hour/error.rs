@@ -113,9 +113,9 @@ pub enum ZeroHourError {
     /// The garrison's bonus of `GameData.ini` is no number the engine holds.
     #[error("the game data's garrison bonus is no number the engine holds")]
     GarrisonBonus,
-    /// A propaganda tower's radius or heal, or the game data's bonus of its rate of fire, is no
-    /// number the engine holds.
-    #[error("a propaganda tower's numbers are no numbers the engine holds")]
+    /// The game data's bonus of the rate of fire a propaganda tower gives is no number the
+    /// engine holds.
+    #[error("the game data's propaganda bonus is no number the engine holds")]
     Propaganda,
     /// The general's ranks of `Rank.ini` are not numbered from 1 on, rank 1 needs skill points,
     /// or a rank needs no more than the one before.
@@ -128,7 +128,7 @@ pub enum ZeroHourError {
     #[error("science {0} needs a rank past the last")]
     ScienceRank(String),
     /// A state holds a number the engine does not hold: a stride, a speed or a rise that is not
-    /// finite, or a speed range not above 0 and in order.
+    /// finite, or a speed range not above 0 and in order; its object's look drops.
     #[error("a state holds a stride, a speed or a rise the engine does not hold")]
     StateNumber,
     /// A draw module's state names a condition flag that is no declared name.
@@ -212,16 +212,10 @@ pub enum ZeroHourError {
     #[error(transparent)]
     NoPackagePath(#[from] NoPackagePath),
     /// A number of the wreck of an object or a creation list of this name is not finite, or past
-    /// what a number holds.
+    /// what a number holds: the generic debris's or the game data's fails the import, and one
+    /// object's drops its wrecks.
     #[error("a number of the wreck of {name} is not finite, or past what a number holds")]
     Wreck { name: String },
-    /// A spring of the chassis of an object of this name is not finite, or past what a number
-    /// holds.
-    #[error("a spring of the chassis of {name} is not finite, or past what a number holds")]
-    Chassis { name: String },
-    /// The width of an object's track is not finite, or past what a number holds.
-    #[error("the width of the track of {name} is not finite, or past what a number holds")]
-    Track { name: String },
     /// The game's `Multiplayer.ini` gives no team colors the engine takes.
     #[error("the game's team colors are none the engine takes")]
     TeamColors(#[from] TeamColorsError),

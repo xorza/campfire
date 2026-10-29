@@ -7,12 +7,12 @@ use campfire_units::UnitTypeBook;
 use campfire_values::{Team, TypeScope};
 
 use crate::match_probe::error::{ProbeRefusal, ProbeSpecError};
-use crate::match_probe::{MatchProbe, ProbeUnits};
+use crate::match_probe::{MatchProbe, ProbeState, ProbeUnits};
 
 /// A probe as text names it, `<period_ms>:<units>`, as `CAMPFIRE_PROBE`, the Zero Hour check's
 /// `--probe` and the verifier's take it: how often it writes, and the units it prints, `all`,
-/// `player=<n>` counted from 1, as a check names its players, `team=<n>`, `type=<name>` or
-/// `ids=<id>,<id>`.
+/// `player=<n>` counted from 1, as a check names its players, `team=<n>`, `type=<name>`,
+/// `ids=<id>,<id>` or `state=<state>`, as `stuck` names the walkers that make no progress.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProbeSpec {
     pub every_ms: NonZeroU64,
@@ -27,6 +27,7 @@ pub enum ProbeUnitsSpec {
     Team(Team),
     Type(DeclaredName),
     Ids(Vec<StableId>),
+    State(ProbeState),
 }
 
 impl ProbeSpec {
@@ -52,6 +53,7 @@ impl ProbeSpec {
                 ProbeUnits::Type(found.ok_or_else(|| ProbeRefusal::NoType(name.clone()))?)
             }
             ProbeUnitsSpec::Ids(ids) => ProbeUnits::Ids(ids.clone()),
+            &ProbeUnitsSpec::State(state) => ProbeUnits::State(state),
         };
         Ok(MatchProbe::new(every, units))
     }
@@ -93,6 +95,15 @@ impl FromStr for ProbeUnitsSpec {
                         .collect(),
                 )
             }
+            "state" => Self::State(match value {
+                "idle" => ProbeState::Idle,
+                "walking" => ProbeState::Walking,
+                "stuck" => ProbeState::Stuck,
+                "working" => ProbeState::Working,
+                "fighting" => ProbeState::Fighting,
+                "acting" => ProbeState::Acting,
+                _ => return Err(ProbeSpecError::State),
+            }),
             _ => return Err(ProbeSpecError::Units),
         })
     }
@@ -119,6 +130,8 @@ mod tests {
             ("1000:team=3", ProbeUnitsSpec::Team(Team::new(3))),
             ("1000:type=dozer", ProbeUnitsSpec::Type(name("dozer"))),
             ("1000:ids=9,2", ProbeUnitsSpec::Ids(vec![id(9), id(2)])),
+            ("1000:state=stuck", ProbeUnitsSpec::State(ProbeState::Stuck)),
+            ("1000:state=idle", ProbeUnitsSpec::State(ProbeState::Idle)),
         ] {
             let expected = ProbeSpec {
                 every_ms: every(1000),
@@ -131,6 +144,7 @@ mod tests {
             ("1000:some", ProbeSpecError::Units),
             ("1000:player=0", ProbeSpecError::Player),
             ("1000:type=", ProbeSpecError::Name),
+            ("1000:state=x", ProbeSpecError::State),
         ] {
             assert_eq!(text.parse::<ProbeSpec>(), Err(error), "{text}");
         }

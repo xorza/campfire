@@ -37,7 +37,8 @@ fn a_failed_journal_ends_the_server_with_its_exit_code() {
             visibility: rules.visibility().settings(),
             picks: &HostPicks::defaults(packages.data(), 1),
         })
-        .unwrap();
+        .unwrap()
+        .terms;
     let header = SessionHeader {
         terms,
         player_slots: vec![PlayerSlotStart::Open],

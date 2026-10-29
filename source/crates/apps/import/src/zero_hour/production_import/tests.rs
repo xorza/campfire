@@ -7,12 +7,17 @@ use campfire_production::{DropOffData, EmptyNode, GatherData, NodeData, SpawnsDa
 use campfire_values::{Distance, Scalar};
 
 use super::*;
+use crate::zero_hour::contain_import::ContainImport;
 use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
 use crate::zero_hour::format::ini::object_ini::ObjectIni;
-use crate::zero_hour::format::ini::object_ini::build_variations::VariationDropCause;
 use crate::zero_hour::import_names::ImportNames;
-use crate::zero_hour::supply_import::{ImportedGather, SupplyDropCause};
+use crate::zero_hour::production_import::faction_base::BaseSources;
+use crate::zero_hour::production_import::faction_base::FactionBase;
+use crate::zero_hour::skirmish_start::FactionStart;
+use crate::zero_hour::supply_drop_cause::SupplyDropCause;
+use crate::zero_hour::supply_import::ImportedGather;
+use crate::zero_hour::variation_drop_cause::VariationDropCause;
 
 #[test]
 fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction_building() {
@@ -316,8 +321,7 @@ const BUTTONS: &str = "CommandButton Command_Truck\n Command = UNIT_BUILD\n Obje
 fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of_money() {
     // The shipped box of 75; the placed objects, as a map places them.
     let mut rules = ZeroHourRules {
-        objects: ObjectIni::of(&[SUPPLY]),
-        ..ZeroHourRules::default()
+        ..ZeroHourRules::of_objects(ObjectIni::of(&[SUPPLY]))
     };
     rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
     rules.sets.read(SETS.as_bytes()).unwrap();
@@ -470,7 +474,7 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         cause: VariationDropCause::Unalike,
     };
     let dropped: Vec<&Dropped<VariationDropCause>> =
-        rules.objects.variations().dropped().into_iter().collect();
+        rules.variations.dropped().into_iter().collect();
     assert_eq!(dropped, [&unalike]);
     // The site of a production update keeps 3 spawns of a guard and a watch in turn, each back
     // 30,000 ms, 900 frames, after it dies, and trains nothing, its production section of no
@@ -567,8 +571,7 @@ fn a_variation_and_a_prerequisite_convert_their_own_command_sets_and_a_sale_its_
         CommandButton Command_Ghost\n Command = UNIT_BUILD\n Object = Ghost\nEnd\n\
         CommandButton Command_Sell\n Command = SELL\nEnd\n";
     let mut rules = ZeroHourRules {
-        objects: ObjectIni::of(&[OBJECTS]),
-        ..ZeroHourRules::default()
+        ..ZeroHourRules::of_objects(ObjectIni::of(&[OBJECTS]))
     };
     rules.game_data.sell_share = 0.5;
     rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
@@ -746,8 +749,7 @@ fn a_power_of_a_marker_s_burst_is_a_cast_of_its_building_and_its_sciences_raise_
         CommandButton Command_Twice\n Command = SPECIAL_POWER\n SpecialPower = Twice\nEnd\n\
         CommandButton Command_Medic\n Command = SPECIAL_POWER\n SpecialPower = Medic\nEnd\n";
     let mut rules = ZeroHourRules {
-        objects: ObjectIni::of(&[OBJECTS]),
-        ..ZeroHourRules::default()
+        ..ZeroHourRules::of_objects(ObjectIni::of(&[OBJECTS]))
     };
     rules.creation_lists.read(LISTS.as_bytes()).unwrap();
     rules.powers.read(POWERS.as_bytes()).unwrap();

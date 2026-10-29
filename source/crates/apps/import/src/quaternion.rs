@@ -17,6 +17,24 @@ pub(crate) struct Quaternion {
 impl Quaternion {
     pub(crate) const IDENTITY: Self = Self::from_array([0.0, 0.0, 0.0, 1.0]);
 
+    /// The rotation by `angle` radians about the x axis, of `libm`'s sine and cosine.
+    pub(crate) fn about_x(angle: f32) -> Self {
+        let (sin, cos) = libm::sincosf(angle / 2.0);
+        Self::from_array([sin, 0.0, 0.0, cos])
+    }
+
+    /// The rotation by `angle` radians about the y axis.
+    pub(crate) fn about_y(angle: f32) -> Self {
+        let (sin, cos) = libm::sincosf(angle / 2.0);
+        Self::from_array([0.0, sin, 0.0, cos])
+    }
+
+    /// The rotation by `angle` radians about the z axis.
+    pub(crate) fn about_z(angle: f32) -> Self {
+        let (sin, cos) = libm::sincosf(angle / 2.0);
+        Self::from_array([0.0, 0.0, sin, cos])
+    }
+
     /// The quaternion `x, y, z, w`.
     pub(crate) const fn from_array([x, y, z, w]: [f32; 4]) -> Self {
         Self { x, y, z, w }

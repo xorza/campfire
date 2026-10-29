@@ -4,26 +4,44 @@ use bevy_ecs::query::With;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Res, ResMut, Single};
 use campfire_common::{ExitStatus, Tick};
-use campfire_console::{ConsoleAnswer, ConsoleAsk, ConsoleRefusal, Reply, Request};
+use campfire_console::{
+    CameraAsk, ConsoleAnswer, ConsoleAsk, ConsoleRefusal, Reply, Request, RequestId, ShotAsk,
+};
 use campfire_host::{ConsoleStdio, Hosting, JoinState, ReceivedTick};
 use campfire_net_connection::Client;
 use campfire_net_messages::{MessageReceiver, MessageSender};
 
 use crate::net_protocol::JoinChannel;
 
-/// A client's console: the requests of its view, which its app answers; the requests of the
-/// match it forwards to its local server over their link, as its journal commands go, and their
-/// replies, a run's held until the client received
-/// the state of the tick it paused at and drew a frame of it, so a view after the reply shows
-/// that tick (08-sessions.md, A console's local match starts paused). A client of a remote server
-/// refuses them. Its transport, the standard streams or a test, fills and drains its queues.
+/// A client's console: the requests of its view, which its app answers; the requests of the match
+/// it forwards to its local server over their link, as its journal commands go, and their replies,
+/// a run's held until the client received the state of the tick it paused at and drew a frame of
+/// it, so a view after the reply shows that tick (08-sessions.md, A console's local match starts
+/// paused). A client of a remote server refuses them. Its transport, the standard streams or a
+/// test, fills and drains its queues.
 #[derive(Resource, Debug, Default)]
 pub struct ClientConsole {
     requests: Vec<Request>,
     /// The requests of the client's view, which its app answers.
-    views: Vec<Request>,
+    views: Vec<ViewRequest>,
+    /// The requests of a frame that are the match's, which the next swap makes `requests`.
+    others: Vec<Request>,
     replies: Vec<Reply>,
     held: Vec<HeldRun>,
+}
+
+/// A request of the client's view, which its app answers.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ViewRequest {
+    pub id: RequestId,
+    pub ask: ViewAsk,
+}
+
+/// What a request of the client's view asks.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ViewAsk {
+    Screenshot(ShotAsk),
+    Camera(CameraAsk),
 }
 
 /// A run's reply, held until the client draws the tick it names, and whether a frame of it ran.
@@ -46,8 +64,25 @@ impl ClientConsole {
 
     /// Moves the requests of the client's view, a screenshot's or the camera's, into `views`,
     /// for its app to answer.
-    pub fn take_views(&mut self, views: &mut Vec<Request>) {
+    pub fn take_views(&mut self, views: &mut Vec<ViewRequest>) {
         views.append(&mut self.views);
+    }
+
+    /// Moves the requests of the client's view out of the queued ones, the match's kept in their
+    /// order.
+    fn split_views(&mut self) {
+        for Request { id, ask } in self.requests.drain(..) {
+            let ask = match ask {
+                ConsoleAsk::Screenshot(ask) => ViewAsk::Screenshot(ask),
+                ConsoleAsk::Camera(ask) => ViewAsk::Camera(ask),
+                ask => {
+                    self.others.push(Request { id, ask });
+                    continue;
+                }
+            };
+            self.views.push(ViewRequest { id, ask });
+        }
+        std::mem::swap(&mut self.requests, &mut self.others);
     }
 
     /// Gives the reply of a request of the client's view.
@@ -63,13 +98,7 @@ impl ClientConsole {
         mut sender: Single<'_, '_, &mut MessageSender<Request>, With<Client>>,
     ) {
         let console = &mut *console;
-        let views = console.requests.extract_if(.., |request| {
-            matches!(
-                request.ask,
-                ConsoleAsk::Screenshot(_) | ConsoleAsk::Camera(_)
-            )
-        });
-        console.views.extend(views);
+        console.split_views();
         if *hosting == Hosting::Remote {
             let refused = console.requests.drain(..).map(|request| Reply {
                 id: request.id,
@@ -142,5 +171,38 @@ impl ClientConsole {
         if stdio.is_ended() {
             exit.write(AppExit::from_code(ExitStatus::Interrupted.code()));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_views_requests_leave_the_queue_and_the_matchs_stay_in_order() {
+        let request = |id, ask| Request {
+            id: RequestId(id),
+            ask,
+        };
+        let mut console = ClientConsole::default();
+        console.push([
+            request(1, ConsoleAsk::Status),
+            request(2, ConsoleAsk::Camera(CameraAsk::Read)),
+            request(3, ConsoleAsk::Status),
+        ]);
+        console.split_views();
+        let mut views = Vec::new();
+        console.take_views(&mut views);
+        let camera = ViewRequest {
+            id: RequestId(2),
+            ask: ViewAsk::Camera(CameraAsk::Read),
+        };
+        assert_eq!(views, [camera]);
+        let ids: Vec<u64> = console
+            .requests
+            .iter()
+            .map(|request| request.id.0)
+            .collect();
+        assert_eq!(ids, [1, 3]);
     }
 }

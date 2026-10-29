@@ -61,7 +61,10 @@ The kinds of crate, problem, IO, glue and test support, and their rules are the 
 ## Edges
 
 - **A stack crate depends on Campfire's base crates, never on `sim` or a capability,** so the
-  stack serves any app of the engine and no match's type crosses into it.
+  stack serves any app of the engine and no match's type crosses into it. A stack crate is a
+  `net-<name>` one; `net`, the session over the stack (02-engine-core.md, The session host is a
+  crate apart from its glue to the stack), sits above the session's crates and takes them, which
+  the layer rule of `rules` holds.
 - **A crate's dev-dependencies keep the workspace's rule** (02-engine-core.md, A dev-dependency
   adds only test support to its crate's build; 02-engine-core.md, A problem crate's test runs no
   app): a glue crate's test build holds the engine, and the stepper through `internals`.

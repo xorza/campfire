@@ -137,7 +137,7 @@ impl ItemBook {
             .content
             .get::<ItemsData>()
             .unwrap_or(&none);
-        let ids: Names<ItemId> = items.0.keys().map(DeclaredName::as_str).collect();
+        let ids: Names<ItemId> = Names::unique(items.0.keys().map(DeclaredName::as_str));
         let no_resources = Names::default();
         let resources = Items::resources(cx, &no_resources)?;
         let modifiers = cx.book::<ModifierBook>()?;
@@ -220,7 +220,7 @@ mod tests {
     fn book(items: impl IntoIterator<Item = ItemSpec>) -> Result<ItemBook, ItemError> {
         let items: Vec<ItemSpec> = items.into_iter().collect();
         let names: Vec<String> = (0..items.len()).map(|at| format!("item{at}")).collect();
-        ItemBook::new(names.iter().map(String::as_str).collect(), items)
+        ItemBook::new(Names::unique(names.iter().map(String::as_str)), items)
     }
 
     #[test]

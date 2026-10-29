@@ -16,7 +16,7 @@ use crate::unit_entity::UnitEntity;
 pub struct Leader;
 
 impl SimComponent for Leader {
-    const NAME: &'static str = "production.leader";
+    const NAME: &'static str = "units.leader";
     type Host = UnitEntity;
 
     // Its type leads its spawns, which the check of its kept spawns, production's, holds.

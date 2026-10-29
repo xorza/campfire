@@ -52,9 +52,9 @@ fn gather(ctx, faction) {
     let kinds = ctx.params[`gatherers_${faction}`];
     let held = 0;
     for kind in kinds {
-        for unit in ctx.own(kind) {
+        for unit in ctx.own_units(kind) {
             held += 1;
-            if ctx.idle(unit) {
+            if ctx.is_idle(unit) {
                 let slot = #{ slot: `gather_${kind}`, target: #{ unit: "all:node" } };
                 ctx.order([unit], #{ orders: #{ slot: slot } });
             }
@@ -62,18 +62,18 @@ fn gather(ctx, faction) {
     }
     let drop_offs = 0;
     for building in ctx.params[`drop_offs_${faction}`] {
-        drop_offs += ctx.own(building).len();
+        drop_offs += ctx.own_units(building).len();
     }
     if held >= drop_offs * ctx.params.gatherers {
         return;
     }
-    let producers = ctx.own(ctx.params[`start_building_${faction}`]);
+    let producers = ctx.own_units(ctx.params[`start_building_${faction}`]);
     for building in ctx.params[`base_buildings_${faction}`] {
-        producers += ctx.own(building);
+        producers += ctx.own_units(building);
     }
     for producer in producers {
         for kind in kinds {
-            if ctx.may_start(producer, `train_${kind}`) {
+            if ctx.can_start(producer, `train_${kind}`) {
                 let slot = #{ slot: `train_${kind}`, target: "none" };
                 ctx.order([producer], #{ orders: #{ slot: slot } });
                 return;
@@ -87,7 +87,7 @@ fn gather(ctx, faction) {
 fn build(ctx, faction, home) {
     let buildings = ctx.params[`base_buildings_${faction}`];
     for building in buildings {
-        for unit in ctx.own(building) {
+        for unit in ctx.own_units(building) {
             if unit.site_progress != () {
                 return;
             }
@@ -95,16 +95,16 @@ fn build(ctx, faction, home) {
     }
     let builders = [];
     for builder in ctx.params[`start_units_${faction}`] {
-        builders += ctx.own(builder);
+        builders += ctx.own_units(builder);
     }
     let near = #{ near: [home.x, home.z], gap: ctx.params.place_gap, steps: ctx.params.place_steps };
     for building in buildings {
-        if !ctx.own(building).is_empty() {
+        if !ctx.own_units(building).is_empty() {
             continue;
         }
         let action = `build_${building}`;
         for builder in builders {
-            if ctx.may_start(builder, action) {
+            if ctx.can_start(builder, action) {
                 let target = #{ point: #{ at: near, angle: 0 } };
                 ctx.order([builder], #{ orders: #{ build: #{ slot: action, target: target } } });
                 return;
@@ -118,16 +118,16 @@ fn build(ctx, faction, home) {
 fn train(ctx, faction) {
     let coming = false;
     let army = ctx.params[`army_units_${faction}`];
-    let producers = ctx.own(ctx.params[`start_building_${faction}`]);
+    let producers = ctx.own_units(ctx.params[`start_building_${faction}`]);
     for building in ctx.params[`base_buildings_${faction}`] {
-        producers += ctx.own(building);
+        producers += ctx.own_units(building);
     }
     for producer in producers {
         let pick = ();
         let fewest = 0;
         for unit in army {
-            if ctx.may_start(producer, `train_${unit}`) {
-                let held = ctx.own(unit).len();
+            if ctx.can_start(producer, `train_${unit}`) {
+                let held = ctx.own_units(unit).len();
                 if pick == () || held < fewest {
                     pick = unit;
                     fewest = held;
@@ -152,15 +152,15 @@ fn train(ctx, faction) {
 fn fight(ctx, me, faction, home, coming) {
     let army = [];
     for unit in ctx.params[`army_units_${faction}`] {
-        army += ctx.own(unit);
+        army += ctx.own_units(unit);
     }
     let at_home = [];
     let out = [];
     for unit in army {
-        if !ctx.idle(unit) {
+        if !ctx.is_idle(unit) {
             continue;
         }
-        if unit.position.within(home, ctx.params.guard) {
+        if unit.position.is_within(home, ctx.params.guard) {
             at_home.push(unit);
         } else {
             out.push(unit);
@@ -197,7 +197,7 @@ fn attack(ctx, units, target) {
     let close = [];
     let far = [];
     for unit in units {
-        if unit.position.within(target, ctx.params.reach) {
+        if unit.position.is_within(target, ctx.params.reach) {
             close.push(unit);
         } else {
             far.push(unit);
@@ -216,7 +216,7 @@ fn nearest_enemy_start(ctx, me, from) {
     let enemies = ctx.enemies(me.team);
     let nearest = ();
     for player in ctx.players {
-        if !player.held || !enemies.contains(player.team) {
+        if !player.is_held || !enemies.contains(player.team) {
             continue;
         }
         let start = start_point(ctx, player.player_slot);

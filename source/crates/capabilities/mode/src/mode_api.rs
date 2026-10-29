@@ -926,7 +926,7 @@ impl ModeApi {
         )
         .bind(
             field(
-                "held",
+                "is_held",
                 "whether a player or a bot held its slot as the match started",
             ),
             |ctx: &Ctx, player: &mut PlayerHandle| Self::is_held(ctx, player.player_slot()),

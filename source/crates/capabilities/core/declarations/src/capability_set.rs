@@ -1,9 +1,8 @@
-use bevy_ecs::resource::Resource;
 use campfire_sim::Capability;
 
 /// A match's declared capabilities: not `mode`, which every match has. `Release::capability_set`
 /// makes one of a mode's, each with the ones it builds on.
-#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CapabilitySet(u32);
 
 const _: () = assert!(

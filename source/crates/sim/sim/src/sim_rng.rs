@@ -5,9 +5,10 @@ use campfire_math::{Rng, RngStream};
 use crate::sim_tick::SimTick;
 use crate::stable_id::StableId;
 
-/// The random sequences of the running tick: its seed, the tick and how many ticks it started.
-/// The schedule starts each tick's sequences, and opening one takes `&self`, so systems draw in
-/// parallel. The seed is not state: it stays secret until its log segment is published.
+/// The random sequences of the running tick: its seed, the tick and how many ticks it started. The
+/// schedule starts each tick's sequences, and opening one takes `&self`, so the systems that draw
+/// read it as a `Res` and do not conflict over it. The seed is not state: it stays secret until its
+/// log segment is published.
 #[derive(Resource, Debug)]
 pub struct SimRng {
     seed: SegmentSeed,

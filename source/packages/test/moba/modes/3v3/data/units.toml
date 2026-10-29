@@ -1,6 +1,6 @@
 [units.melee_creep]
 tags = ["creep"]
-params = { aggro_range = "7.0", help_range = "5.0", help_window_ms = 2000 }
+params = { aggro_range = "7.0", avatars_first = 1, help_range = "5.0", help_window_ms = 2000 }
 experience = { gives = 59 }
 bounty = { resource = "gold", amount = 20 }
 pools = ["health"]
@@ -13,7 +13,7 @@ collision = { radius = "0.35" }
 
 [units.caster_creep]
 tags = ["creep"]
-params = { aggro_range = "7.0", help_range = "5.0", help_window_ms = 2000 }
+params = { aggro_range = "7.0", avatars_first = 1, help_range = "5.0", help_window_ms = 2000 }
 experience = { gives = 29 }
 bounty = { resource = "gold", amount = 15 }
 pools = ["health"]
@@ -26,7 +26,7 @@ collision = { radius = "0.35" }
 
 [units.super_creep]
 tags = ["creep"]
-params = { aggro_range = "7.0", help_range = "5.0", help_window_ms = 2000 }
+params = { aggro_range = "7.0", avatars_first = 1, help_range = "5.0", help_window_ms = 2000 }
 experience = { gives = 97 }
 bounty = { resource = "gold", amount = 40 }
 pools = ["health"]

@@ -20,6 +20,7 @@ use campfire_script::{ApiError, FailureKind, ScriptLimits};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, SimWorld, StableId};
 use campfire_stats::{ModifierData, StatBook, StatRule, StatValue, Stats, StatsData};
+use campfire_units::internals::Spawn;
 use campfire_units::{Life, UnitTypeCore, Units, UnitsWorld};
 use campfire_values::{
     Block, DamageKind, FilterData, Number, PackageIndex, Rank, Ranked, Stat, Team, TypeScope,
@@ -120,7 +121,9 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
             Abilities::load_weapon(&mut game, "salve", &data)
         });
         let out = if ranged { 4 } else { 1 };
-        let target = Abilities::spawn_combatant(&mut game, (out, 0, 0), Team::new(1), ());
+        let target = Spawn::named(&game, "combatant", (out, 0, 0))
+            .team(Team::new(1))
+            .place(&mut game);
         let attacker = if by_cast {
             let data = ActionData {
                 keys: ActionKeys {
@@ -138,13 +141,13 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
                     .into_iter()
                     .chain(weapons.map(|weapon| (weapon, SlotKind::new(1), Rank::new(1)))),
             ));
-            let caster = Abilities::fighter(&mut game, fighter, slots);
+            let caster = Spawn::of(fighter, Vec3::ZERO).parts(slots).place(&mut game);
             Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
             caster
         } else {
             let slots =
                 TimedSlots::new(ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]));
-            let attacker = Abilities::fighter(&mut game, fighter, slots);
+            let attacker = Spawn::of(fighter, Vec3::ZERO).parts(slots).place(&mut game);
             ProgressDues::change_unit(&mut game, attacker, |progress, dues| {
                 progress.set_attack_target(Some(AttackTarget::ordered(target)), dues);
             });
@@ -228,14 +231,18 @@ fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_eac
         ..sapper(false)
     };
     let weapon = Abilities::load_weapon(&mut game, "cannon", &cannon);
-    let attacker = Abilities::fighter(
-        &mut game,
-        fighter,
-        TimedSlots::new(ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))])),
-    );
+    let attacker = Spawn::of(fighter, Vec3::ZERO)
+        .parts(TimedSlots::new(ActionSlots::new([(
+            weapon,
+            SlotKind::new(0),
+            Rank::new(1),
+        )])))
+        .place(&mut game);
     let [target, near, far] = [1, 2, 4].map(|x| {
         let position = Vec3::from((Num::int(x) + Num::HALF * i64::from(x == 2), 0, 0));
-        Abilities::spawn_combatant(&mut game, position, Team::new(1), ())
+        Spawn::named(&game, "combatant", position)
+            .team(Team::new(1))
+            .place(&mut game)
     });
     ProgressDues::change_unit(&mut game, attacker, |progress, dues| {
         progress.set_attack_target(Some(AttackTarget::ordered(target)), dues);
@@ -270,12 +277,16 @@ fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_eac
     // which lands nothing, as an area whose source is gone does.
     let (mut game, fighter) = weapon_match();
     let weapon = Abilities::load_weapon(&mut game, "cannon", &cannon);
-    let attacker = Abilities::fighter(
-        &mut game,
-        fighter,
-        TimedSlots::new(ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))])),
-    );
-    let target = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
+    let attacker = Spawn::of(fighter, Vec3::ZERO)
+        .parts(TimedSlots::new(ActionSlots::new([(
+            weapon,
+            SlotKind::new(0),
+            Rank::new(1),
+        )])))
+        .place(&mut game);
+    let target = Spawn::named(&game, "combatant", (1, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     ProgressDues::change_unit(&mut game, attacker, |progress, dues| {
         progress.set_attack_target(Some(AttackTarget::ordered(target)), dues);
     });
@@ -311,12 +322,16 @@ fn a_list_spawns_for_its_attacker_once_the_attacker_is_gone() {
         ..sapper(false)
     };
     let weapon = Abilities::load_weapon(&mut game, "cannon", &cannon);
-    let attacker = Abilities::fighter(
-        &mut game,
-        fighter,
-        TimedSlots::new(ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))])),
-    );
-    let target = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
+    let attacker = Spawn::of(fighter, Vec3::ZERO)
+        .parts(TimedSlots::new(ActionSlots::new([(
+            weapon,
+            SlotKind::new(0),
+            Rank::new(1),
+        )])))
+        .place(&mut game);
+    let target = Spawn::named(&game, "combatant", (1, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     ProgressDues::change_unit(&mut game, attacker, |progress, dues| {
         progress.set_attack_target(Some(AttackTarget::ordered(target)), dues);
     });
@@ -346,12 +361,18 @@ fn a_weapons_list_runs_one_link_down_for_each_attack_that_reaches_a_living_targe
     // list still follows: its mark of 40 holds, and the bite of 30 comes off one of the shields.
     let (mut game, fighter) = weapon_match();
     let weapon = Abilities::load_weapon(&mut game, "sapper", &sapper(false));
-    let attacker = Abilities::fighter(
-        &mut game,
-        fighter,
-        TimedSlots::new(ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))])),
-    );
-    let mut target = |x| Abilities::spawn_combatant(&mut game, (x, 0, 0), Team::new(1), ());
+    let attacker = Spawn::of(fighter, Vec3::ZERO)
+        .parts(TimedSlots::new(ActionSlots::new([(
+            weapon,
+            SlotKind::new(0),
+            Rank::new(1),
+        )])))
+        .place(&mut game);
+    let mut target = |x| {
+        Spawn::named(&game, "combatant", (x, 0, 0))
+            .team(Team::new(1))
+            .place(&mut game)
+    };
     let [living, blocked, spent, deep, deepest, warded] = [1, 2, 3, 4, 5, 6].map(&mut target);
     // A tick first, whose stats derive each new unit's tags, as for every unit that spawns: the
     // blocked target's tags, set after it, stay.

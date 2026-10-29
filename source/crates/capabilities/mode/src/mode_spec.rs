@@ -100,7 +100,9 @@ impl ModeSpec {
             roster: Roster::new(units.avatars, &units.loadout),
             teams: Arc::new(teams),
             choices: ChoiceSpecs::new(&setup.data.choices),
-            timers: Arc::new(setup.data.timers.iter().map(DeclaredName::as_str).collect()),
+            timers: Arc::new(Names::unique(
+                setup.data.timers.iter().map(DeclaredName::as_str),
+            )),
             loadout_ranks,
             spawned: spawned.build(),
             bodies: bodies.clone(),

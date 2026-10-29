@@ -7,7 +7,7 @@ use campfire_script::{ApiVersion, DataSection, DataTable, Status};
 use campfire_values::UnitType;
 use serde::{Deserialize, Serialize};
 
-use crate::error::AirfieldError;
+use crate::error::AirfieldDataError;
 
 /// A unit type's `airfield` section: for each of its production's places, in their order, the point
 /// its unit waits at for its runway and the runway it takes; its runways, each from its start to
@@ -66,21 +66,33 @@ impl AirfieldData {
                 .map_or(0, |production| production.places.len());
             let at = || BookPlace::UnitType(unit.place());
             if data.places.len() != places {
-                return Err(BookError::rule(unit.package, at(), AirfieldError::Places));
+                return Err(BookError::rule(
+                    unit.package,
+                    at(),
+                    AirfieldDataError::Places,
+                ));
             }
             if data
                 .places
                 .iter()
                 .any(|place| usize::from(place.runway) >= data.runways.len())
             {
-                return Err(BookError::rule(unit.package, at(), AirfieldError::Runway));
+                return Err(BookError::rule(
+                    unit.package,
+                    at(),
+                    AirfieldDataError::Runway,
+                ));
             }
             let within = Num::ZERO..=Vec3::BOUND;
             if !(within.contains(&data.approach.height) && within.contains(&data.approach.past)) {
-                return Err(BookError::rule(unit.package, at(), AirfieldError::Approach));
+                return Err(BookError::rule(
+                    unit.package,
+                    at(),
+                    AirfieldDataError::Approach,
+                ));
             }
             if data.heal.is_some_and(|heal| heal <= Num::ZERO) {
-                return Err(BookError::rule(unit.package, at(), AirfieldError::Heal));
+                return Err(BookError::rule(unit.package, at(), AirfieldDataError::Heal));
             }
             book.set(unit.unit_type, data.clone());
         }

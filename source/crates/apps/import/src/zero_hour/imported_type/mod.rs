@@ -23,8 +23,9 @@ use crate::zero_hour::format::ini::ai_data_ini::AiRetaliation;
 use crate::zero_hour::format::ini::damage_type::DamageType;
 use crate::zero_hour::format::ini::locomotor_ini::Locomotor;
 use crate::zero_hour::format::ini::object_ini::fight_data::{BodyKind, IniTurretPitch};
+use crate::zero_hour::format::ini::object_ini::geometry::GeometryShape;
+use crate::zero_hour::format::ini::object_ini::ini_object::IniObject;
 use crate::zero_hour::format::ini::object_ini::ini_supply::IniSpawn;
-use crate::zero_hour::format::ini::object_ini::{GeometryShape, IniObject};
 use crate::zero_hour::game_time;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::model_bones::ModelBones;
@@ -136,7 +137,7 @@ impl ImportedType {
     /// refuse them. An object of build variations takes its first variation's type, of the body of
     /// each.
     pub(crate) fn of(object: &IniObject, rules: &ZeroHourRules) -> Result<Self, TypeError> {
-        match rules.objects.variations_of(object) {
+        match rules.variations.objects_of(&rules.objects, object) {
             Some(variations) => Self::varied(variations, rules),
             None => Self::plain(object, rules),
         }

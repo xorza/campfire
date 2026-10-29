@@ -42,16 +42,19 @@ mod rollback_check_state;
 mod rollback_check_systems;
 mod rollback_mode;
 mod rollback_plugin;
+mod rollback_refused;
 mod rollback_scan;
 mod rollback_setup;
 mod rollback_systems;
 mod switch_blend;
 mod switch_direction;
+mod switch_refused;
 mod tick_period_history;
 mod timeline_switch;
 mod timeline_switch_plugin;
 mod timeline_switch_setup;
 mod visual_correction;
+mod visual_diff;
 
 pub use crate::correction_ease::CorrectionEase;
 pub use crate::correction_policy::CorrectionPolicy;
@@ -85,6 +88,7 @@ pub use crate::switch_direction::SwitchDirection;
 pub use crate::timeline_switch::TimelineSwitch;
 pub use crate::timeline_switch_setup::TimelineSwitchSetup;
 pub use crate::visual_correction::{VisualCorrection, VisualOffset};
+pub use crate::visual_diff::VisualDiff;
 
 /// What the tests and benches of the layers above share: this layer's stack, test protocol,
 /// fixtures and measurements.

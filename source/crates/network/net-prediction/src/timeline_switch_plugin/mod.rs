@@ -66,7 +66,10 @@ use campfire_net_replication::DeferredEntityCommands;
 use campfire_net_replication::Interpolated;
 use campfire_net_replication::Predicted;
 use campfire_net_replication::ReplicationSystems;
-use tracing::{trace, warn};
+use tracing::trace;
+
+use crate::switch_refused::SwitchRefused;
+use campfire_log::LogEvent;
 
 /// The timeline-switch pipeline on the prediction client. Each of its systems is in
 /// [`PredictionSystems::All`], which runs only for client topologies: host-servers stay
@@ -165,7 +168,11 @@ impl TimelineSwitchPlugin {
                 match switch.resolve(OnTimeline::of(is_predicted, is_interpolated), &setup) {
                     Ok(pending) => pending,
                     Err(rejection) => {
-                        warn!(?entity, %rejection, "dropping invalid timeline switch");
+                        SwitchRefused {
+                            entity: entity.to_bits(),
+                            rejection,
+                        }
+                        .log();
                         commands.entity(entity).remove::<TimelineSwitch>();
                         continue;
                     }

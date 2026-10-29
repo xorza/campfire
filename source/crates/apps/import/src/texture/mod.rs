@@ -5,6 +5,7 @@ pub(crate) mod dds_file;
 pub(crate) mod error;
 pub(crate) mod mip_chain;
 pub(crate) mod srgb;
+pub(crate) mod texture_kind;
 pub(crate) mod tga_file;
 
 #[cfg(test)]

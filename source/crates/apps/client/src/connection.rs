@@ -1,22 +1,22 @@
 use std::net::SocketAddr;
 use std::path::Path;
-use std::process::ExitCode;
 use std::sync::{Arc, Mutex};
 
 use bevy::app::App;
 use bevy::ecs::entity::Entity;
-use campfire_common::{ErrorReport, ExitStatus};
 use campfire_host::{ClientDir, Hosting, JoinRole, LogSeen, Os, Pace, PlayerSlotBotArg, ServerPin};
 use campfire_net::{
-    LocalLobby, LocalPacePlugin, LocalReplay, LocalServer, LocalServerSetup, LocalSession, UdpLinks,
+    LocalLobby, LocalPacePlugin, LocalReplay, LocalServer, LocalServerError, LocalServerSetup,
+    LocalSession, UdpLinks,
 };
 use campfire_net_endpoint::Endpoint;
-use campfire_net_socket::ClientSocket;
+use campfire_net_socket::{BindError, ClientSocket};
 use campfire_package::ModePackages;
 use campfire_sim::MatchRate;
-use tracing::error;
+use campfire_store::DataDirError;
 
 use crate::command_line::{Args, PlayedServer};
+use crate::error::ClientLaunchError;
 
 /// The server the client plays on, once it is open, with the client's data directory: a remote
 /// one, by its pin and its address, or a local one, running, its data in the directory, with the
@@ -38,13 +38,13 @@ pub(crate) enum Connection {
 impl Connection {
     /// The server `args` names, its data directory open; a local one starts, of the mode
     /// `packages` holds, for a client of `role`, its data in that directory, at a pace of its
-    /// own. The exit code when the directory does not open or a local server does not start.
+    /// own; an error when the directory does not open or a local server does not start.
     pub(crate) fn open(
         args: &Args,
         role: JoinRole,
         packages: &Arc<ModePackages>,
         console: Option<&Arc<Mutex<LogSeen>>>,
-    ) -> Result<Self, ExitCode> {
+    ) -> Result<Self, ClientLaunchError> {
         match &args.server {
             PlayedServer::Remote {
                 address,
@@ -71,18 +71,14 @@ impl Connection {
                 let bots = bots
                     .iter()
                     .map(PlayerSlotBotArg::read)
-                    .collect::<Result<_, _>>()
-                    .map_err(|error| {
-                        error!(error = %ErrorReport::of(&error), "a server bot's orders file does not read");
-                        ExitCode::from(ExitStatus::Failure)
-                    })?;
+                    .collect::<Result<_, _>>()?;
                 let session = LocalSession::New(LocalLobby {
                     bots,
                     role,
                     options: options.clone(),
                     player_slot_picks: player_slot_picks.clone(),
                 });
-                Self::open_local(&data, packages, session, console)
+                Ok(Self::open_local(&data, packages, session, console)?)
             }
             PlayedServer::Replay {
                 report,
@@ -91,28 +87,25 @@ impl Connection {
                 ..
             } => {
                 let data = Self::open_dir(data)?;
-                let log = report.read_log().map_err(|error| {
-                    error!(report = %report.path().display(), error = %ErrorReport::of(&error), "the report's log does not read");
-                    ExitCode::from(ExitStatus::Failure)
-                })?;
+                let log = report.read_log()?;
                 let session = LocalSession::Replay(Box::new(LocalReplay {
                     log,
                     through: *through,
                 }));
-                Self::open_local(&data, packages, session, console)
+                Ok(Self::open_local(&data, packages, session, console)?)
             }
         }
     }
 
     /// The local server of the mode `packages` holds, opening `session`, its data in the
     /// client's data directory `data`, at a pace of its own, answering the client's `console`
-    /// when it has one; the exit code when it does not start.
+    /// when it has one.
     fn open_local(
         data: &Arc<ClientDir>,
         packages: &Arc<ModePackages>,
         session: LocalSession,
         console: Option<&Arc<Mutex<LogSeen>>>,
-    ) -> Result<Self, ExitCode> {
+    ) -> Result<Self, LocalServerError> {
         let pace = Arc::new(Pace::default());
         let reports = data.layout().clone();
         let server = LocalServer::start(LocalServerSetup {
@@ -123,10 +116,6 @@ impl Connection {
             os: Os::SYSTEM,
             reports,
             console: console.map(Arc::clone),
-        })
-        .map_err(|error| {
-            error!(error = %ErrorReport::of(&error), "the local server does not start");
-            ExitCode::from(ExitStatus::Failure)
         })?;
         Ok(Self::Local {
             server,
@@ -159,12 +148,9 @@ impl Connection {
         }
     }
 
-    /// The client's data directory at `path`; the exit code when it does not open.
-    fn open_dir(path: &Path) -> Result<Arc<ClientDir>, ExitCode> {
-        ClientDir::open(path).map(Arc::new).map_err(|error| {
-            error!(error = %ErrorReport::of(&error), "the data directory does not open");
-            ExitCode::from(ExitStatus::Failure)
-        })
+    /// The client's data directory at `path`.
+    fn open_dir(path: &Path) -> Result<Arc<ClientDir>, DataDirError> {
+        ClientDir::open(path).map(Arc::new)
     }
 
     /// What the client pins of the server.
@@ -178,16 +164,11 @@ impl Connection {
     /// Links `client`, the client entity of `app`, to the server: over the stack's sealed UDP to a
     /// remote one, which takes only the TLS key the pin names; over the sealed emulated link to a
     /// local one, whose pace the app then follows, at the session's rate, and whose new link after
-    /// each load it takes. The exit code when the client's socket does not open.
-    pub(crate) fn link(&mut self, app: &mut App, client: Entity) -> Result<(), ExitCode> {
+    /// each load it takes; an error when the client's socket does not open.
+    pub(crate) fn link(&mut self, app: &mut App, client: Entity) -> Result<(), BindError> {
         match self {
             Self::Remote { pin, address, .. } => {
-                let socket = ClientSocket::bind(*address, UdpLinks::client(pin.tls_key)).map_err(
-                    |error| {
-                        error!(error = %ErrorReport::of(&error), "the client's socket does not open");
-                        ExitCode::from(ExitStatus::Failure)
-                    },
-                )?;
+                let socket = ClientSocket::bind(*address, UdpLinks::client(pin.tls_key))?;
                 app.world_mut()
                     .entity_mut(client)
                     .insert(Endpoint::from(socket.endpoint()));

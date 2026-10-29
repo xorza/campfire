@@ -50,7 +50,7 @@ fn corridor(towers: &[(i64, i64)], camp: (i64, i64)) -> MapData {
 
 /// The layers `rules` declares, by layer.
 fn layer_table(rules: &ModeNavigationData) -> Names<Layer> {
-    rules.layers.iter().map(DeclaredName::as_str).collect()
+    Names::unique(rules.layers.iter().map(DeclaredName::as_str))
 }
 
 /// `map` resolved as a mode of one team, `west`, of `rules`, and checked walkable for `walkers`,

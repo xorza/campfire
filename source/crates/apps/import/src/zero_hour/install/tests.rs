@@ -2,6 +2,7 @@ use campfire_store::DurableFile;
 use campfire_store::internals::TestDir;
 
 use super::*;
+use crate::texture::texture_kind::TextureKind;
 use crate::zero_hour::format::big::big_archive::samples::big;
 use crate::zero_hour::format::big::error::ArchiveError;
 use crate::zero_hour::install::samples::FixtureInstall;
@@ -33,14 +34,14 @@ fn an_install_reads_each_file_from_the_first_archive_that_holds_it() {
         b"base only"
     );
     // A texture's format by its extension, of any case as a key folds it; another file is none.
-    let kind = |path: &str| TextureKind::of(&ArchivePath::of(path));
+    let kind = |path: &str| ArchivePath::of(path).extension().and_then(TextureKind::of);
     assert_eq!(kind("art\\textures\\Rock.DDS"), Some(TextureKind::Dds));
     assert_eq!(kind("art\\textures\\sign.tga"), Some(TextureKind::Tga));
     assert_eq!(kind("data\\ini\\object.ini"), None);
     // The language directory whose `Art` the archives hold; the object INI files in the game's
     // order: the default file, then the file, its directory's files, and its directories'
     // below.
-    assert_eq!(install.language().unwrap().as_deref(), Some("english"));
+    assert_eq!(install.language(), Some("english"));
     assert_eq!(
         install.inis("Object"),
         [
@@ -104,7 +105,7 @@ fn an_install_reads_each_file_from_the_first_archive_that_holds_it() {
     drop(install);
     test_dir.write("zh/c.BIG", german);
     assert!(matches!(
-        Install::open(&test_dir.path("zh")).unwrap().language(),
+        Install::open(&test_dir.path("zh")),
         Err(ZeroHourError::Languages(languages)) if languages == ["english", "german"]
     ));
 }

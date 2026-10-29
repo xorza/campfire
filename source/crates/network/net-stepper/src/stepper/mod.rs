@@ -81,8 +81,8 @@ struct ServerApp {
 /// its pass in the frame.
 ///
 /// It holds the process's log check, started before its apps and dropped after them, so a test
-/// fails on each event at Warn or Error its apps logged and it did not take (11-net-stack/testing.md,
-/// The stepper checks what its apps log).
+/// fails on each event at Warn or Error its apps logged and it did not take
+/// (11-net-stack/testing.md, The stepper checks what its apps log).
 #[derive(Debug)]
 pub struct Stepper<S> {
     stack: S,
@@ -184,7 +184,7 @@ impl<S: Stack> Stepper<S> {
             .insert_before(FixedUpdate, BeforeFixedUpdate);
         let endpoint = Endpoint::from(match self.remote {
             ClientKind::Udp => UdpServer::new((self.identity)(), self.udp_setup()).emulated(
-                AdmissionSetup::new(NonZeroU32::MAX, Duration::from_secs(1)),
+                AdmissionSetup::new(NonZeroU32::MAX, NonZeroU32::MAX, Duration::from_secs(1)),
                 self.seed,
             ),
             ClientKind::Plain => EndpointPieces::plain_server(EndpointSetup {

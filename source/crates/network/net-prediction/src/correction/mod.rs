@@ -7,11 +7,11 @@
 //!   the corrected visual state in one frame.
 //!
 //! A predicted component `C` shows through a visual component `V`, which a frame rule writes each
-//! frame from `C`'s last two ticks while `C` keeps the simulated value (11-net-stack/replication.md,
-//! The value on screen is its own component). Correction is installed for components registered
-//! with `correct_linear`, `correct_with`, or `correct_custom`. A built-in correction adds typed
-//! systems for `C`, its visual `V` and the error `D` of `V`, which record, decay and clear its
-//! [`VisualCorrection`] on `V`.
+//! frame from `C`'s last two ticks while `C` keeps the simulated value
+//! (11-net-stack/replication.md, The value on screen is its own component). Correction is installed
+//! for components registered with `correct_linear`, `correct_with`, or `correct_custom`. A built-in
+//! correction adds typed systems for `C`, its visual `V` and the error `D` of `V`, which record,
+//! decay and clear its [`VisualCorrection`] on `V`.
 //!
 //! # How a correction is recorded
 //!
@@ -75,6 +75,7 @@ use crate::switch_blend::SwitchBlend;
 use crate::switch_direction::SwitchDirection;
 use crate::timeline_switch_plugin::TimelineSwitchPlugin;
 use crate::visual_correction::{CONVERGED, VisualCorrection, VisualOffset};
+use crate::visual_diff::VisualDiff;
 use bevy_app::prelude::*;
 use bevy_ecs::entity::EntityLocation;
 use bevy_ecs::prelude::*;
@@ -85,7 +86,6 @@ use campfire_net_frame_interpolation::FrameInterpolationSystems;
 use campfire_net_frame_interpolation::FrameRegistry;
 use campfire_net_frame_interpolation::LerpFn;
 use campfire_net_replication::DeferredEntityCommands;
-use campfire_net_replication::Diffable;
 use campfire_net_replication::HistoryComponent;
 use campfire_net_replication::Interpolated;
 use core::fmt::Debug;
@@ -116,7 +116,7 @@ impl<C, V, D> CorrectionFn<C, V, D> {
         switches: Query<'_, '_, (Entity, &PendingSwitch, &V), Added<PendingSwitch>>,
         mut deferred: Deferred<'_, DeferredEntityCommands>,
     ) where
-        V: HistoryComponent + Diffable<D>,
+        V: HistoryComponent + VisualDiff<D>,
         D: Send + Sync + 'static,
     {
         for (entity, switch, value) in &switches {
@@ -145,7 +145,7 @@ impl<C, V, D> CorrectionFn<C, V, D> {
         time: Res<'_, Time<Virtual>>,
         mut blends: Query<'_, '_, (&SwitchBlend, &mut PreviousVisual<V>)>,
     ) where
-        V: HistoryComponent + Diffable<D>,
+        V: HistoryComponent + VisualDiff<D>,
         D: Send + Sync + 'static,
     {
         let now = time.elapsed();
@@ -190,7 +190,7 @@ impl<C, V, D> CorrectionFn<C, V, D> {
         >,
         mut deferred: Deferred<'_, DeferredEntityCommands>,
     ) where
-        V: HistoryComponent + Diffable<D>,
+        V: HistoryComponent + VisualDiff<D>,
         D: Debug + Send + Sync + 'static,
     {
         let start = time.elapsed();
@@ -210,6 +210,15 @@ impl<C, V, D> CorrectionFn<C, V, D> {
                 }
                 continue;
             };
+            // A rollback that left the shown value where it was made no jump, so nothing
+            // blends: an error of zero would rewrite the visual every frame of its window.
+            if live == previous {
+                if let Some(mut correction) = correction {
+                    correction.0 = None;
+                }
+                previous_visual.0 = None;
+                continue;
+            }
             // `diff(new)` is `new - self`, so this is `previous - live`: the apply
             // adds it to the destination, and the entity keeps rendering the value
             // it had before the jump.
@@ -250,7 +259,7 @@ impl<C, V, D> Debug for CorrectionFn<C, V, D> {
 /// [`RollbackSystems::VisualCorrection`].
 pub(crate) fn add_correction_systems<
     C: HistoryComponent,
-    V: HistoryComponent + Diffable<D>,
+    V: HistoryComponent + VisualDiff<D>,
     D: Default + Clone + Debug + Send + Sync + 'static,
 >(
     app: &mut App,
@@ -319,7 +328,7 @@ pub(crate) fn add_correction_systems<
 impl<C, V, D> CorrectionFn<C, V, D>
 where
     C: HistoryComponent,
-    V: HistoryComponent + Diffable<D>,
+    V: HistoryComponent + VisualDiff<D>,
     D: Default + Clone + Debug + Send + Sync + 'static,
 {
     /// Saves the visual each predicted entity shows as a rollback prepares: the rollback rewrites

@@ -172,21 +172,7 @@ impl PanelImport {
             if face.key.is_none() {
                 dropped.drop(&face.button, PanelDropCause::NoKey);
             }
-            let found = found(face.image.as_deref());
-            let icon = match found {
-                Ok((path, rect)) => {
-                    let icon = PanelIcon {
-                        texture: game_path::texture(&path)?,
-                        rect,
-                    };
-                    panel.textures.insert(path);
-                    Some(icon)
-                }
-                Err(cause) => {
-                    dropped.drop(&face.button, cause);
-                    None
-                }
-            };
+            let icon = panel.icon(found(face.image.as_deref()), &face.button, dropped)?;
             Ok(ButtonLook {
                 icon,
                 key: face.key,
@@ -203,6 +189,27 @@ impl PanelImport {
         panel.actions = actions;
         panel.grid.commands = commands;
         Ok(panel)
+    }
+
+    /// The icon of `found`, the image of an item named `item`, its texture among those the panel
+    /// writes; none, dropped into `dropped`, for an image the panel does not draw.
+    pub(crate) fn icon(
+        &mut self,
+        found: Result<(ArchivePath, IconRect), PanelDropCause>,
+        item: &str,
+        dropped: &mut Losses<PanelDropCause>,
+    ) -> Result<Option<PanelIcon>, ZeroHourError> {
+        match found {
+            Ok((path, rect)) => {
+                let texture = game_path::texture(&path)?;
+                self.textures.insert(path);
+                Ok(Some(PanelIcon { texture, rect }))
+            }
+            Err(cause) => {
+                dropped.drop(item, cause);
+                Ok(None)
+            }
+        }
     }
 
     /// The texture and the rectangle of the image `name` of `images`, its texture as `texture`

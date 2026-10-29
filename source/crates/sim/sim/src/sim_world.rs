@@ -159,7 +159,6 @@ pub(crate) mod internals {
     use crate::sim_world::SimWorld;
     use crate::sim_world_builder::internals::OpenBuild;
     use crate::stable_id::StableId;
-    use crate::stable_id::entity_index::EntityIndex;
     use crate::state_registry::StateRegistry;
     use crate::state_registry::error::SnapshotError;
     use crate::state_registry::internals::{Draws, Mutation};
@@ -366,14 +365,7 @@ pub(crate) mod internals {
         }
 
         fn restore_in_place(&mut self, snapshot: &[u8]) -> Result<StateHash, SnapshotError> {
-            let entities: Vec<Entity> = self
-                .resource::<EntityIndex>()
-                .iter()
-                .map(|(_, entity)| entity)
-                .collect();
-            for entity in entities {
-                self.despawn(entity);
-            }
+            self.despawn_state();
             self.restore(snapshot)
         }
     }

@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 
 use crate::zero_hour::error::{NameClash, NameError, TypeError};
-use crate::zero_hour::format::ini::object_ini::IniObject;
+use crate::zero_hour::format::ini::object_ini::ini_object::IniObject;
 use crate::zero_hour::imported_type::ImportedType;
 use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::unit_types::ImportedTypes;
@@ -58,14 +58,6 @@ pub(crate) struct NamedType<'n, 'r> {
     pub(crate) object: &'r IniObject,
 }
 
-/// A unit type so far: its name, the object that fields it, and the fields that object gives.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct TypedObject<'n, 'r> {
-    pub(crate) name: &'n TypeName,
-    pub(crate) object: &'r IniObject,
-    pub(crate) imported: &'n ImportedType,
-}
-
 impl<'r> ImportNames<'r> {
     /// The name `object` takes; an error when another object took it, or when it passes the
     /// bytes a declared name holds.
@@ -86,7 +78,7 @@ impl<'r> ImportNames<'r> {
         if !self.types.contains_key(&name) {
             let entry = TypeEntry {
                 imported: ImportedType::of(object, rules)?,
-                object: rules.objects.fielded(object),
+                object: rules.variations.fielded(&rules.objects, object),
             };
             self.types.insert(name.clone(), entry);
         }
@@ -142,8 +134,8 @@ impl<'r> ImportNames<'r> {
     }
 
     /// Each unit type so far, in the order of their names.
-    fn types(&self) -> impl Iterator<Item = TypedObject<'_, 'r>> {
-        self.types.iter().map(|(name, entry)| TypedObject {
+    fn types(&self) -> impl Iterator<Item = NamedType<'_, 'r>> {
+        self.types.iter().map(|(name, entry)| NamedType {
             name,
             object: entry.object,
             imported: &entry.imported,
@@ -205,7 +197,7 @@ impl<'r> ProductionNames<'r> {
 impl<'r> ProjectileNames<'r> {
     /// Each unit type but the projectiles, and the projectiles named so far, as
     /// `ImportNames::types` gives them.
-    pub(crate) fn types(&self) -> impl Iterator<Item = TypedObject<'_, 'r>> {
+    pub(crate) fn types(&self) -> impl Iterator<Item = NamedType<'_, 'r>> {
         self.0.types()
     }
 

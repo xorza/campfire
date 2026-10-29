@@ -17,7 +17,7 @@ impl<'de> DeserializeSeed<'de> for LoadoutSeed<'_> {
 
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<LoadoutFile, D::Error> {
         let readers = Release::sections();
-        let content = PackageContent::seed(&readers, self.0).deserialize(deserializer)?;
+        let content = PackageContent::seed(readers, self.0).deserialize(deserializer)?;
         Ok(LoadoutFile(content))
     }
 }

@@ -19,7 +19,6 @@ use crate::replicon_channel_map::RepliconChannelMap;
 use campfire_net_despawns::DespawnReplicated;
 use campfire_net_messages::MessageSystems;
 use tracing::debug;
-use tracing::error;
 
 /// Runs Replicon's client on the stack: its state follows the connection, its messages go through
 /// the transport, and a message names server entities through Replicon's `ServerEntityMap`, with no
@@ -86,8 +85,10 @@ impl ClientRepliconPlugin {
         mut confirmed_ticks: ResMut<'_, ConfirmedTickMap>,
     ) {
         for &MutateTickReceived { tick } in confirmed.read() {
+            // A server's fault, which `ConfirmedTickFaults` counts, as its peer's data may be
+            // anything: a line for each would let a peer fill the log.
             if confirmed_ticks.record_last_confirmed_tick(tick).is_none() {
-                error!(?tick, "missing confirmed tick for completed mutate tick");
+                debug!(?tick, "missing confirmed tick for completed mutate tick");
             }
         }
     }

@@ -48,8 +48,7 @@ End
 #[test]
 fn a_hive_lives_as_a_structure_and_an_undead_body_lives_twice_by_a_shared_modifier() {
     let rules = ZeroHourRules {
-        objects: ObjectIni::of(&[OBJECTS]),
-        ..ZeroHourRules::default()
+        ..ZeroHourRules::of_objects(ObjectIni::of(&[OBJECTS]))
     };
     let of = |name: &str| ImportedType::of(rules.objects.object(name.as_bytes()).unwrap(), &rules);
     let [fire_base, bus] = ["FireBase", "BattleBus"].map(|name| of(name).unwrap());

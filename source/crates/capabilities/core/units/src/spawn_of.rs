@@ -30,7 +30,7 @@ impl SpawnOf {
 }
 
 impl SimComponent for SpawnOf {
-    const NAME: &'static str = "production.spawn_of";
+    const NAME: &'static str = "units.spawn_of";
     type Host = UnitEntity;
 
     // Its spawner may be gone, as a spawn outlives it until the next tick's deaths.

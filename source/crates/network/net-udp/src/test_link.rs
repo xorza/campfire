@@ -39,7 +39,7 @@ impl TestLink {
 
     /// An admission that limits no address.
     pub const fn roomy() -> AdmissionSetup {
-        AdmissionSetup::new(NonZeroU32::MAX, Duration::from_secs(1))
+        AdmissionSetup::new(NonZeroU32::MAX, NonZeroU32::MAX, Duration::from_secs(1))
     }
 
     fn identity() -> ServerIdentity {

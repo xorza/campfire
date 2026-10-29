@@ -3,7 +3,7 @@ use crate::history_receive::{register_diff_marker_fns, register_marker_fns};
 use bevy_app::App;
 use campfire_net_replication::HistoryComponent;
 
-use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
+use bevy_replicon::shared::replication::diff::Diffable;
 use campfire_net_replication::ReplicationKind;
 
 /// How a rule member's confirmed history is written.
@@ -30,7 +30,7 @@ impl MemberMode {
         })
     }
 
-    pub(crate) fn diff<C: HistoryComponent + RepliconDiffable>() -> Self {
+    pub(crate) fn diff<C: HistoryComponent + Diffable>() -> Self {
         Self::Replicated(MemberHistoryFns {
             confirmed: ConfirmedHistoryFns::diff::<C>(),
             register_markers: register_diff_marker_fns::<C>,

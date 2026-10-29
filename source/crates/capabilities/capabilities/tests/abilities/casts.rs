@@ -46,7 +46,9 @@ fn damage_of_a_kind_the_mode_does_not_declare_fails_the_cast() {
         &LASH_OUT.replace(r#""magic""#, r#""fire""#),
     );
     let husk = Abilities::caster(&mut game, fire, 2);
-    let near = Abilities::spawn_combatant(&mut game, (3, 0, 0), Team::new(1), ());
+    let near = Spawn::named(&game, "combatant", (3, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     Abilities::cast(&mut game, husk, ActionTarget::None);
     // The call fails, so the cast applies nothing: no damage, no cost.
     assert_eq!(
@@ -70,19 +72,26 @@ fn lash_out_hits_every_enemy_within_its_radius_exactly() {
     Abilities::load(&mut game, "strike", &Abilities::strike(), STRIKE);
     let lash_out = Abilities::load(&mut game, "lash_out", &lash_out(), LASH_OUT);
     let husk = Abilities::caster(&mut game, lash_out, 2);
-    let near = Abilities::spawn_combatant(&mut game, (3, 0, 0), Team::new(1), ());
+    let near = Spawn::named(&game, "combatant", (3, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     // At exactly 3.5 m: within the radius.
-    let edge = Abilities::spawn_combatant(
-        &mut game,
-        Vec3::from((0, 0, half_meters(7))),
-        Team::new(1),
-        (),
-    );
-    let beyond = Abilities::spawn_combatant(&mut game, (4, 0, 0), Team::new(1), ());
+    let edge = Spawn::named(&game, "combatant", Vec3::from((0, 0, half_meters(7))))
+        .team(Team::new(1))
+        .place(&mut game);
+    let beyond = Spawn::named(&game, "combatant", (4, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     // Up at y = 9, 2 m away on the ground plane.
-    let high = Abilities::spawn_combatant(&mut game, (0, 9, 2), Team::new(1), ());
-    let ally = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(0), ());
-    let dead = Abilities::spawn_combatant(&mut game, (1, 0, 1), Team::new(1), ());
+    let high = Spawn::named(&game, "combatant", (0, 9, 2))
+        .team(Team::new(1))
+        .place(&mut game);
+    let ally = Spawn::named(&game, "combatant", (1, 0, 0))
+        .team(Team::new(0))
+        .place(&mut game);
+    let dead = Spawn::named(&game, "combatant", (1, 0, 1))
+        .team(Team::new(1))
+        .place(&mut game);
     game.insert_parts(dead, Dead);
 
     // Rank 2 deals 100, and 0.5 × 0 ability power: 500 → 400 for the three enemies in reach.
@@ -157,7 +166,10 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
     let caster = Abilities::caster(&mut game, aim, 1);
     game.insert_parts(caster, Navigation::walker(MoveStep::new(Num::ONE).unwrap()));
     let slots = TimedSlots::new(ActionSlots::new([(shove, SlotKind::new(0), Rank::new(1))]));
-    let shover = Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), slots);
+    let shover = Spawn::named(&game, "combatant", (5, 0, 0))
+        .team(Team::new(1))
+        .parts(slots)
+        .place(&mut game);
 
     // Aim starts in tick 0, to resolve in tick 9. Shove resolves in tick 2's Hit stage, after
     // Move, and knocks the caster along −x in ticks 3, 4 and 5: Aim's windup is interrupted in
@@ -298,7 +310,10 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
     let walker = || Navigation::walker(MoveStep::new(Num::ONE).unwrap());
     let caster = Abilities::caster(&mut game, lunge, 1);
     game.insert_parts(caster, walker());
-    let target = Abilities::spawn_combatant(&mut game, (2, 0, 0), enemy, walker());
+    let target = Spawn::named(&game, "combatant", (2, 0, 0))
+        .team(enemy)
+        .parts(walker())
+        .place(&mut game);
     // It resolves in tick 0. The caster, of the lower id, moves first each tick, at the target's
     // place before the target's own move: 1, 2, 3, then 4, and in tick 5 onto 5, where they
     // touch, as neither has a body. The target goes 3, 4, 5.
@@ -320,7 +335,9 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
     );
     assert_eq!(Abilities::failed_calls(&mut game), []);
     // A unit that does not walk takes no forced move: the list fails the cast.
-    let still = Abilities::spawn_combatant(&mut game, (6, 0, 0), enemy, ());
+    let still = Spawn::named(&game, "combatant", (6, 0, 0))
+        .team(enemy)
+        .place(&mut game);
     game.run_until(40);
     Abilities::cast(&mut game, caster, ActionTarget::Unit(still));
     let failed = Abilities::failed_calls(&mut game);
@@ -331,7 +348,10 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
     );
     // A dash a knock back cuts delivers nothing, as League of Legends' and Dota 2's cut dashes
     // deliver nothing: the knock back replaces it, and its end runs no `on_end`.
-    let far = Abilities::spawn_combatant(&mut game, (12, 0, 0), enemy, walker());
+    let far = Spawn::named(&game, "combatant", (12, 0, 0))
+        .team(enemy)
+        .parts(walker())
+        .place(&mut game);
     game.run_until(80);
     Abilities::cast(&mut game, caster, ActionTarget::Unit(far));
     let dashing = game.part::<ForcedMove>(caster);
@@ -390,7 +410,9 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
     Orders::load_ai(&mut game, spinner, &ai, spin).unwrap();
     let strike = Abilities::load(&mut game, "strike", &Abilities::strike(), STRIKE);
     let caster = Abilities::caster(&mut game, strike, 1);
-    let enemy = Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), ());
+    let enemy = Spawn::named(&game, "combatant", (5, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     let spinners: Vec<_> = (0..11)
         .map(|z| {
             Spawn::of(spinner, (0, 0, 20 + z))
@@ -453,10 +475,18 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     game.get_mut::<Pools>(entity)
         .unwrap()
         .take(MANA, Num::int(91));
-    let enemy = Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), ());
-    let far = Abilities::spawn_combatant(&mut game, (6, 0, 0), Team::new(1), ());
-    let ally = Abilities::spawn_combatant(&mut game, (1, 0, 1), Team::new(0), ());
-    let hidden = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
+    let enemy = Spawn::named(&game, "combatant", (5, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
+    let far = Spawn::named(&game, "combatant", (6, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
+    let ally = Spawn::named(&game, "combatant", (1, 0, 1))
+        .team(Team::new(0))
+        .place(&mut game);
+    let hidden = Spawn::named(&game, "combatant", (1, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     Units::set_blocks(&mut game, hidden, &[Block::Target]);
 
     // An ally, an untargetable enemy, a unit beyond 5 m, and no target at all are refused; so
@@ -533,7 +563,9 @@ fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
     let ownerless = Spawn::named(&game, "caster", (0, 0, 1))
         .parts(slots)
         .place(&mut game);
-    let enemy = Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), ());
+    let enemy = Spawn::named(&game, "combatant", (5, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     let player = PlayerSlot::new(0);
     game.player_resources_mut(player)
         .unwrap()
@@ -574,7 +606,9 @@ fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() 
     };
     let strike = Abilities::load(&mut game, "strike", &data, STRIKE);
     let caster = Abilities::caster(&mut game, strike, 1);
-    let enemy = Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), ());
+    let enemy = Spawn::named(&game, "combatant", (5, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     let target = ActionTarget::Unit(enemy);
     let aim = SlotAim { slot: 0, target };
     let ordered = Some(InProgress::Order {
@@ -669,7 +703,9 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
             let mut game = abilities_match();
             let action = Abilities::load(&mut game, "ability", &data, script);
             let caster = Abilities::caster(&mut game, action, 1);
-            let enemy = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
+            let enemy = Spawn::named(&game, "combatant", (1, 0, 0))
+                .team(Team::new(1))
+                .place(&mut game);
             if ordered {
                 Abilities::cast(&mut game, caster, ActionTarget::None);
                 let failed = FailedCall {
@@ -714,7 +750,9 @@ fn a_cast_under_way_ends_when_its_caster_dies() {
     };
     let strike = Abilities::load(&mut game, "strike", &windup, STRIKE);
     let caster = Abilities::caster(&mut game, strike, 1);
-    let enemy = Abilities::spawn_combatant(&mut game, (3, 0, 0), Team::new(1), ());
+    let enemy = Spawn::named(&game, "combatant", (3, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     Abilities::cast(&mut game, caster, ActionTarget::Unit(enemy));
     let started = InProgress::Order {
         aim: SlotAim {

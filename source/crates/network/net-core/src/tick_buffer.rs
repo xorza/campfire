@@ -198,11 +198,11 @@ impl<E> TickBuffer<E> {
             .partition_point(|tick| i64::from(tick.0) + i64::from(delta) <= 0);
         if saturated > 1 {
             self.ticks.drain(..saturated - 1);
-            let older: Vec<_> = self.entries.drain(..saturated - 1).collect();
-            let kept = self.entries.front_mut().unwrap();
-            for entry in older.into_iter().rev() {
-                collapse(entry, kept);
+            let mut kept = self.entries.remove(saturated - 1).unwrap();
+            for entry in self.entries.drain(..saturated - 1).rev() {
+                collapse(entry, &mut kept);
             }
+            self.entries.push_front(kept);
         }
         for tick in &mut self.ticks {
             *tick = *tick + delta;

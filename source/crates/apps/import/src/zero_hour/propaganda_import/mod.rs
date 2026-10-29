@@ -5,25 +5,37 @@ use campfire_stats::{HeldSources, UpgradeData};
 use campfire_values::{FilterData, Number, Stat};
 use serde::Serialize;
 
+use crate::zero_hour::dropped::Losses;
 use crate::zero_hour::error::{NameError, ZeroHourError};
+use crate::zero_hour::format::error::FloatError;
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::object_ini::ini_propaganda::IniPropaganda;
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::IniUpgradeModule;
 use crate::zero_hour::import_name::ImportName;
-use crate::zero_hour::import_names::TypedObject;
+use crate::zero_hour::import_names::NamedType;
 use crate::zero_hour::portable_structure;
 use crate::zero_hour::type_name::TypeName;
+use crate::zero_hour::upgrade_drop_cause::UpgradeDropCause;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// Zero Hour's propaganda towers as auras (riders-and-upgrades.md, A propaganda tower is an
 /// aura): the entries of the upgrades of each type of a `PropagandaTowerBehavior` of its own or
 /// whose upgrade makes a portable tower inside it, the upgrades their entries name, and the
-/// modifiers of the auras and of their heals.
+/// modifiers of the auras and of their heals; and the towers it drops, by their object's name.
 #[derive(Debug, Default)]
 pub(crate) struct PropagandaImport {
     pub(crate) upgrades: BTreeMap<TypeName, Vec<UpgradeData>>,
     pub(crate) named: BTreeSet<DeclaredName>,
     pub(crate) modifiers: BTreeMap<DeclaredName, PropagandaModifier>,
+    pub(crate) dropped: Losses<UpgradeDropCause>,
+}
+
+/// What the game data adds to the rate of fire of a unit a tower heals, and of one an upgraded
+/// tower heals: `ENTHUSIASTIC`'s and `SUBLIMINAL`'s bonus less 1.
+#[derive(Debug, Clone)]
+struct TowerRates {
+    heal: Number,
+    upgraded: Number,
 }
 
 /// A tower's modifier as the mode's data writes it, `[modifiers.<name>]`: an aura's, which holds
@@ -67,12 +79,30 @@ impl PropagandaImport {
     /// `Num`.
     pub(crate) fn of<'n, 'r>(
         rules: &'r ZeroHourRules,
-        types: impl IntoIterator<Item = TypedObject<'n, 'r>>,
+        types: impl IntoIterator<Item = NamedType<'n, 'r>>,
     ) -> Result<Self, ZeroHourError> {
         let mut import = Self::default();
-        for TypedObject { name, object, .. } in types {
+        let game = &rules.game_data;
+        let rate = |rate: f32| {
+            game_float::to_num(rate - 1.0)
+                .map(Number::from)
+                .map_err(|_| ZeroHourError::Propaganda)
+        };
+        let rates = TowerRates {
+            heal: rate(game.enthusiastic_rate)?,
+            upgraded: rate(game.subliminal_rate)?,
+        };
+        for NamedType { name, object, .. } in types {
             if let Some(tower) = object.propaganda() {
                 let names = TowerNames::of(name.declared())?;
+                // A tower's own number the engine cannot hold drops the tower alone
+                // (09-zero-hour.md, A fault of one object drops its part).
+                let Ok(modifiers) = Self::tower(tower, &names, &rates, rules) else {
+                    import
+                        .dropped
+                        .drop(&object.name, UpgradeDropCause::BadNumber);
+                    continue;
+                };
                 let built = |triggers, modifier: &DeclaredName| UpgradeData {
                     triggers,
                     all: true,
@@ -87,7 +117,7 @@ impl PropagandaImport {
                     entries.push(built(vec![required.clone()], &names.upgraded));
                     import.named.insert(required);
                 }
-                import.tower(tower, &names, rules)?;
+                import.modifiers.extend(modifiers);
             }
             for module in object.upgrades() {
                 let Some(structure) = portable_structure::structure(rules, module) else {
@@ -96,15 +126,22 @@ impl PropagandaImport {
                 let Some(tower) = structure.propaganda() else {
                     continue;
                 };
-                let structure = ImportName::latin(&structure.name).declared()?;
+                let structure_name = &structure.name;
+                let structure = ImportName::latin(structure_name).declared()?;
                 let names = TowerNames::of(&structure)?;
+                let Ok(modifiers) = Self::tower(tower, &names, &rates, rules) else {
+                    import
+                        .dropped
+                        .drop(structure_name, UpgradeDropCause::BadNumber);
+                    continue;
+                };
                 let entries = import.carried(module, tower, &names)?;
                 import
                     .upgrades
                     .entry(name.clone())
                     .or_default()
                     .extend(entries);
-                import.tower(tower, &names, rules)?;
+                import.modifiers.extend(modifiers);
             }
         }
         Ok(import)
@@ -152,20 +189,16 @@ impl PropagandaImport {
 
     /// The modifiers of `tower`, of `names`: its aura and its upgraded aura, each of its radius on
     /// the allied units but structures, and their heals, the upgraded one of what its heal adds
-    /// past the base, each with the rate of fire of `ENTHUSIASTIC` and of `SUBLIMINAL` less 1, as
-    /// `WeaponBonus::appendBonuses` adds a bonus.
+    /// past the base, each with its rate of fire of `rates`, as `WeaponBonus::appendBonuses` adds
+    /// a bonus; an error for a number of the tower's that no `Num` holds.
     fn tower(
-        &mut self,
         tower: &IniPropaganda,
         names: &TowerNames,
+        rates: &TowerRates,
         rules: &ZeroHourRules,
-    ) -> Result<(), ZeroHourError> {
-        let (game, rules) = (&rules.game_data, &rules.names);
-        let num = |value: f32| {
-            game_float::to_num(value)
-                .map(Number::from)
-                .map_err(|_| ZeroHourError::Propaganda)
-        };
+    ) -> Result<[(DeclaredName, PropagandaModifier); 4], FloatError> {
+        let rules = &rules.names;
+        let num = |value: f32| game_float::to_num(value).map(Number::from);
         let radius = num(tower.radius)?;
         let aura = |modifier: &DeclaredName| PropagandaModifier {
             stats: BTreeMap::new(),
@@ -176,30 +209,25 @@ impl PropagandaImport {
                 modifier: modifier.clone(),
             }),
         };
-        let heal = |share: f32, rate: f32| -> Result<PropagandaModifier, ZeroHourError> {
+        let heal = |share: f32, rate: &Number| -> Result<PropagandaModifier, FloatError> {
             Ok(PropagandaModifier {
                 stats: BTreeMap::from([
                     (rules.life_regen_share.clone(), num(share)?),
-                    (rules.propaganda_rate.clone(), num(rate - 1.0)?),
+                    (rules.propaganda_rate.clone(), rate.clone()),
                 ]),
                 held_sources: Some(HeldSources::One),
                 aura: None,
             })
         };
-        let modifiers = [
+        Ok([
             (names.aura.clone(), aura(&names.heal)),
-            (
-                names.heal.clone(),
-                heal(tower.heal, game.enthusiastic_rate)?,
-            ),
+            (names.heal.clone(), heal(tower.heal, &rates.heal)?),
             (names.upgraded.clone(), aura(&names.upgraded_heal)),
             (
                 names.upgraded_heal.clone(),
-                heal(tower.upgraded_heal - tower.heal, game.subliminal_rate)?,
+                heal(tower.upgraded_heal - tower.heal, &rates.upgraded)?,
             ),
-        ];
-        self.modifiers.extend(modifiers);
-        Ok(())
+        ])
     }
 }
 

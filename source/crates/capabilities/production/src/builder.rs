@@ -112,3 +112,15 @@ impl Builder {
         Ok(book.build())
     }
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::builder::{BuildOrder, Builder};
+
+    impl Builder {
+        /// A builder of `order`, as a test gives a unit its build.
+        pub(crate) const fn of(order: Option<BuildOrder>) -> Self {
+            Self(order)
+        }
+    }
+}

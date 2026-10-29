@@ -1,5 +1,6 @@
 use std::num::NonZeroU32;
 
+use crate::zero_hour::format::game_frames;
 use crate::zero_hour::format::ini::error::IniError;
 use crate::zero_hour::format::ini::ini_text::{BlockKinds, IniText};
 use crate::zero_hour::format::ini::weapon_bonus::{
@@ -119,7 +120,7 @@ impl Default for GameDataIni {
             damaged_threshold: 0.5,
             really_damaged_threshold: 0.1,
             max_particles: 0,
-            gravity: -(30.0 * 30.0),
+            gravity: -(game_frames::PER_SECOND * game_frames::PER_SECOND),
             ground_stiffness: 0.5,
             track_marks: false,
             most_tracks: 0,

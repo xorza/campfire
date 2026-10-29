@@ -176,6 +176,58 @@ impl SourceFile {
         modules
     }
 
+    /// Each gate at this file's top the rules cannot read, by its line: a `cfg` of `all` that
+    /// names `test` or `internals` on a module's declaration, an inner `#![cfg]` of either, or a
+    /// `#[path]` on a module, each of which would leave gated code read as production code
+    /// (02-engine-core.md, Structural rules).
+    pub(crate) fn gate_breaches(&self) -> Vec<usize> {
+        if !self.text.contains('#') {
+            return Vec::new();
+        }
+        let Ok(tokens) = TokenStream::from_str(&self.text) else {
+            return Vec::new();
+        };
+        let tokens: Vec<TokenTree> = tokens.into_iter().collect();
+        let names_gate = |meta: &Meta| {
+            let text = quote_text(meta);
+            meta.path().is_ident("cfg") && (text.contains("test") || text.contains("internals"))
+        };
+        // A gate of `all` holds its module from production code as a bare gate does, but the
+        // rules do not read it; one of `any` or `not` keeps it in some production build, as the
+        // rules read it.
+        let narrows = |meta: &Meta| {
+            names_gate(meta) && Gate::of_meta(meta).is_none() && quote_text(meta).starts_with("all")
+        };
+        let mut breaches = Vec::new();
+        let mut at = 0;
+        while at < tokens.len() {
+            let mut odd = Vec::new();
+            while let [TokenTree::Punct(pound), rest @ ..] = &tokens[at..]
+                && pound.as_char() == '#'
+            {
+                let inner = matches!(rest, [TokenTree::Punct(bang), ..] if bang.as_char() == '!');
+                let skip = usize::from(inner);
+                let Some(TokenTree::Group(group)) = rest.get(skip) else {
+                    break;
+                };
+                let line = pound.span().start().line;
+                if let Ok(meta) = syn::parse2::<Meta>(group.stream()) {
+                    if inner && names_gate(&meta) {
+                        breaches.push(line);
+                    } else if !inner && (narrows(&meta) || meta.path().is_ident("path")) {
+                        odd.push(line);
+                    }
+                }
+                at += 2 + skip;
+            }
+            if Self::declared_module(&tokens[at..]).is_some() {
+                breaches.extend(odd);
+            }
+            at += 1;
+        }
+        breaches
+    }
+
     /// The module that `tokens` declare at their start, `mod name;` past its visibility, with the
     /// count of tokens the declaration takes.
     fn declared_module(tokens: &[TokenTree]) -> Option<(String, usize)> {
@@ -495,4 +547,17 @@ fn production_code_holds_no_comment_and_the_view_with_comments_keeps_them() {
             .as_deref(),
         Some(text)
     );
+}
+
+/// The tokens of `meta` as text, to find the names a `cfg` holds.
+fn quote_text(meta: &Meta) -> String {
+    match meta {
+        Meta::List(list) => list.tokens.to_string(),
+        Meta::Path(path) => path
+            .segments
+            .iter()
+            .map(|segment| segment.ident.to_string())
+            .collect(),
+        Meta::NameValue(_) => String::new(),
+    }
 }

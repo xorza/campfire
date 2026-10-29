@@ -13,14 +13,13 @@ const COAST: u64 = 60;
 /// The stat the gun's period divides by, the third of the match's stats by name.
 const RATE_OF_FIRE: StatId = StatId::new(2);
 
-/// A gun's match, a server's or of `role`: the weapon stats and `rate_of_fire`, and the modifiers
-/// `mean` and `fast`, which add 1 and 2 to it.
-fn streak_match(role: Option<Role>) -> Match {
-    let builder = Match::builder(&[Capability::Stats, Capability::Combat]);
-    let mut game = match role {
-        Some(role) => builder.role(role).build(),
-        None => builder.build(),
-    };
+/// The capabilities of a gun's match.
+const GUN: [Capability; 2] = [Capability::Stats, Capability::Combat];
+
+/// A gun's match of `builder`: the weapon stats and `rate_of_fire`, and the modifiers `mean` and
+/// `fast`, which add 1 and 2 to it.
+fn streak_match(builder: MatchBuilder) -> Match {
+    let mut game = builder.build();
     let rules = ["attack_rate", "damage", "rate_of_fire"]
         .map(|name| (Stat::named(name).unwrap(), StatRule::default()));
     Stats::load_rules(&mut game, &BTreeMap::from(rules));
@@ -90,7 +89,7 @@ fn a_streak_speeds_its_weapon_a_stage_at_a_time_and_its_coast_ends_it() {
     // sixth, in tick 28, passes 5, so it holds `fast` in its place: ⌊8 ÷ (1 + 2)⌋ = 2. Each
     // period is read as the shot goes off, before it counts, so the hits come in ticks 0, 8, 16,
     // 20, 24, 28, 32 and 34.
-    let mut game = streak_match(None);
+    let mut game = streak_match(Match::builder(&GUN));
     let [gunner, dummy] = gun_fight(&mut game, ());
     let [mean, fast] = [modifier(&game, "mean"), modifier(&game, "fast")];
     let mut health = Stats::health(&game, dummy);
@@ -124,7 +123,7 @@ fn a_server_counts_each_units_streak_and_a_client_none() {
     // On a server, every unit with slots holds its streak from its spawn, the dummy's empty; a
     // predicting client holds none, and its gun's period reads only the modifiers the server
     // sends, so with none it fires each 8 ticks.
-    let mut game = streak_match(None);
+    let mut game = streak_match(Match::builder(&GUN));
     let [gunner, dummy] = gun_fight(&mut game, ());
     assert_eq!(
         game.try_part::<ShotStreak>(dummy),
@@ -136,7 +135,7 @@ fn a_server_counts_each_units_streak_and_a_client_none() {
         Some(&ShotStreak::default())
     );
 
-    let mut client = streak_match(Some(Role::Client));
+    let mut client = streak_match(Match::builder(&GUN).role(Role::Client));
     let [gunner, _] = gun_fight(&mut client, Unpredicted);
     assert_eq!(client.try_part::<ShotStreak>(gunner), None);
     let mut readies = Vec::new();

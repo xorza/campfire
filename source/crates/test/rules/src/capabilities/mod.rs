@@ -5,6 +5,7 @@ use crate::workspace::{Crate, Workspace};
 
 pub(crate) mod genre_words;
 pub(crate) mod lookups;
+pub(crate) mod part_names;
 pub(crate) mod roles;
 pub(crate) mod sets;
 

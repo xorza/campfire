@@ -221,7 +221,7 @@ fn an_animation_is_found_by_its_name_and_dropped_without_a_hierarchy_or_a_pivot_
         test_dir: _dir,
         install,
     } = FixtureInstall::new();
-    let mut assets = ModelAssets::new(&install).unwrap();
+    let mut assets = ModelAssets::new(&install);
     let mut cause = |name| match ConvertedAnimation::of(name, &mut assets).unwrap() {
         ConvertedAnimation::Glb { .. } => None,
         ConvertedAnimation::Dropped(cause) => Some(cause),

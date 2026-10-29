@@ -8,7 +8,11 @@ use super::*;
 fn an_address_takes_its_handshakes_each_back_after_its_share_of_the_refill() {
     // Two for each address over 60 s: each handshake comes back 30 s after the bucket was full
     // again.
-    let setup = AdmissionSetup::new(NonZeroU32::new(2).unwrap(), Duration::from_secs(60));
+    let setup = AdmissionSetup::new(
+        NonZeroU32::new(2).unwrap(),
+        NonZeroU32::MAX,
+        Duration::from_secs(60),
+    );
     let start = Instant::ZERO;
     let mut admission = Admission::new(setup, start);
     let ip = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 7));
@@ -29,7 +33,11 @@ fn an_address_takes_its_handshakes_each_back_after_its_share_of_the_refill() {
 
 #[test]
 fn the_live_connections_of_an_address_refuse_a_handshake_and_each_address_counts_alone() {
-    let setup = AdmissionSetup::new(NonZeroU32::new(3).unwrap(), Duration::from_secs(60));
+    let setup = AdmissionSetup::new(
+        NonZeroU32::new(3).unwrap(),
+        NonZeroU32::MAX,
+        Duration::from_secs(60),
+    );
     let now = Instant::ZERO;
     let mut admission = Admission::new(setup, now);
     let ip = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 7));
@@ -60,7 +68,7 @@ fn the_live_connections_of_an_address_refuse_a_handshake_and_each_address_counts
 /// one each and a 17th is refused, while a /64 of another /48 takes its own.
 #[test]
 fn an_ipv6_site_holds_sixteen_addresses_worth_of_handshakes() {
-    let setup = AdmissionSetup::new(NonZeroU32::MIN, Duration::from_secs(60));
+    let setup = AdmissionSetup::new(NonZeroU32::MIN, NonZeroU32::MAX, Duration::from_secs(60));
     let now = Instant::ZERO;
     let mut admission = Admission::new(setup, now);
     let host =
@@ -123,7 +131,11 @@ impl EveryBucket {
 fn a_handshake_is_admitted_as_a_walk_of_every_bucket_admits_it() {
     // Three for each address over 3 s, 20,000 handshakes from 40 addresses, a loopback one among
     // them, at steps of 0 to 99 ms, each with 0 to 3 live connections: each answer the walk's.
-    let setup = AdmissionSetup::new(NonZeroU32::new(3).unwrap(), Duration::from_secs(3));
+    let setup = AdmissionSetup::new(
+        NonZeroU32::new(3).unwrap(),
+        NonZeroU32::MAX,
+        Duration::from_secs(3),
+    );
     let start = Instant::ZERO;
     let mut admission = Admission::new(setup, start);
     let mut every = EveryBucket {

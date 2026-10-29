@@ -32,19 +32,6 @@ pub(crate) enum EngineMessage {
 const ENGLISH: &str = include_str!("../locale/en.ftl");
 
 impl EngineMessage {
-    #[cfg(test)]
-    const ALL: [Self; 9] = [
-        Self::Victory,
-        Self::Defeat,
-        Self::MatchEnded,
-        Self::Sell,
-        Self::Stop,
-        Self::AttackMove,
-        Self::Rally,
-        Self::Exit,
-        Self::Evacuate,
-    ];
-
     /// The name of the panel's `command`.
     pub(crate) const fn of(command: PanelCommand) -> Self {
         match command {
@@ -114,10 +101,23 @@ mod tests {
 
     use super::*;
 
+    /// Every message, so one no test lists fails the text's check.
+    const ALL: [EngineMessage; 9] = [
+        EngineMessage::Victory,
+        EngineMessage::Defeat,
+        EngineMessage::MatchEnded,
+        EngineMessage::Sell,
+        EngineMessage::Stop,
+        EngineMessage::AttackMove,
+        EngineMessage::Rally,
+        EngineMessage::Exit,
+        EngineMessage::Evacuate,
+    ];
+
     #[test]
     fn the_engine_s_file_gives_each_of_its_messages_and_no_other() {
         let text = EngineText::english();
-        let shown = EngineMessage::ALL.map(|message| text.text(message));
+        let shown = ALL.map(|message| text.text(message));
         assert_eq!(
             shown,
             [
@@ -140,6 +140,6 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(ids, EngineMessage::ALL.map(EngineMessage::id));
+        assert_eq!(ids, ALL.map(EngineMessage::id));
     }
 }

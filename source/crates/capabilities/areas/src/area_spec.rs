@@ -8,7 +8,7 @@ use campfire_units::UnitTypes;
 use campfire_values::{ModifierId, Named, RelationSet, TimeTooLarge, UnitType};
 
 use crate::area_data::AreaData;
-use crate::error::AreaError;
+use crate::error::AreaDataError;
 
 /// An area type as a match runs it: its radius, its delay and its duration in ticks, what it
 /// reaches, and the modifiers it holds inside.
@@ -36,7 +36,7 @@ impl AreaSpec {
         tags: &TagNames,
         rate: MatchRate,
         modifier: impl Fn(&DeclaredName) -> Result<ModifierId, UnknownName>,
-    ) -> Result<Self, AreaError> {
+    ) -> Result<Self, AreaDataError> {
         let inside = |affects, name: &Option<DeclaredName>| {
             let modifier = name.as_ref().map(&modifier).transpose()?;
             Ok::<_, UnknownName>(modifier.map(|modifier| (affects, modifier)))
@@ -91,8 +91,8 @@ impl AreaSpec {
             };
             let at = || BookPlace::UnitType(unit.place());
             let spec = Self::of(area, tags, cx.rate(), modifier).map_err(|error| match error {
-                AreaError::Time(error) => BookError::rule(unit.package, at(), error),
-                AreaError::Unknown(name) => BookError::unknown(unit.package, at(), name),
+                AreaDataError::Time(error) => BookError::rule(unit.package, at(), error),
+                AreaDataError::Unknown(name) => BookError::unknown(unit.package, at(), name),
             })?;
             book.set(unit.unit_type, spec);
         }

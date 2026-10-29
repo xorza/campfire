@@ -1,11 +1,13 @@
 use bevy_ecs::change_detection::DetectChangesMut;
-use bevy_ecs::query::Has;
+use bevy_ecs::lifecycle::Remove;
+use bevy_ecs::observer::On;
+use bevy_ecs::query::{Has, With};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_actions::{ActionProgress, ActionSlots, AttackTargets, Targets};
 use campfire_common::Tick;
 use campfire_declarations::ById;
 use campfire_math::{Num, Vec3};
-use campfire_sim::{DueIndex, DueUnit, Position};
+use campfire_sim::{DueIndex, DueUnit, Position, StableId};
 use campfire_units::{Body, Dead, Facing, MapBook};
 use campfire_values::{Team, UnitType};
 
@@ -17,15 +19,27 @@ use crate::turret::turret_aim::TurretAim;
 pub(crate) struct Aiming;
 
 impl Aiming {
-    /// Turns each living unit's turret, in place, toward its attack target, when that target is
-    /// a living enemy, as the unit's attack takes it, and the weapon combat chose against it is
-    /// of a slot the turret carries, by at most
-    /// its turns a tick, and else back toward its rest at half those, as Zero Hour's turret aims
-    /// only for the weapon slots it controls (`AIUpdateInterface::getWhichTurretForCurrentWeapon`;
-    /// 04-capabilities/combat.md, A unit type may have a turret; 04-capabilities/combat.md, A
-    /// turret may pitch). It visits the units with an attack target and the turrets not at rest;
-    /// a dead unit's turret keeps its aim. Its owner's client turns its own units' turrets as the
-    /// server does.
+    /// Puts the unit whose `Dead` goes back into the turning, as it lives again, its turret
+    /// where its death held it: an observer of `Dead`'s removal.
+    pub(crate) fn revived(
+        removed: On<'_, '_, Remove<Dead>>,
+        turrets: Query<'_, '_, &StableId, With<TurretAim>>,
+        turning: Option<ResMut<'_, DueIndex<TurretAim>>>,
+    ) {
+        let entity = removed.entity;
+        if let (Ok(&id), Some(mut turning)) = (turrets.get(entity), turning) {
+            turning.push(Tick::ZERO, id, entity);
+        }
+    }
+
+    /// Turns each living unit's turret, in place, toward its attack target, when that target is a
+    /// living enemy, as the unit's attack takes it, and the weapon combat chose against it is of a
+    /// slot the turret carries, by at most its turns a tick, and else back toward its rest at half
+    /// those, as Zero Hour's turret aims only for the weapon slots it controls
+    /// (`AIUpdateInterface::getWhichTurretForCurrentWeapon`; 04-capabilities/combat.md, A unit type
+    /// may have a turret; 04-capabilities/combat.md, A turret may pitch). It visits the units with
+    /// an attack target and the turrets not at rest; a dead unit's turret keeps its aim. Its
+    /// owner's client turns its own units' turrets as the server does.
     pub(crate) fn aim(
         turrets: Res<'_, ById<UnitType, Turret>>,
         targets: Targets<'_, '_>,
@@ -63,7 +77,10 @@ impl Aiming {
                 turning.forget(entity);
                 continue;
             };
+            // A dead unit's turret holds still: it leaves the turning, which its revival puts it
+            // back in.
             if dead {
+                turning.forget(entity);
                 continue;
             }
             let turret = turrets

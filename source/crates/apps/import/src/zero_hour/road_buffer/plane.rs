@@ -4,7 +4,7 @@ use bevy_math::Vec2;
 
 /// `vector` turned by `angle`, counter-clockwise (`Vector2::Rotate`, `Vector3::Rotate_Z`).
 pub(super) fn rotate(vector: Vec2, angle: f32) -> Vec2 {
-    let (sin, cos) = angle.sin_cos();
+    let (sin, cos) = libm::sincosf(angle);
     Vec2::new(
         vector.x * cos - vector.y * sin,
         vector.x * sin + vector.y * cos,

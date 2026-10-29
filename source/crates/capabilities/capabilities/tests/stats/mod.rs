@@ -126,11 +126,10 @@ fn a_pool_regains_its_share_of_its_maximum_a_second() {
 
 #[test]
 fn a_units_stats_follow_its_type_and_level_within_their_limits() {
-    // A hero of health 380 + 76 a level, regen 1.5, mana 250 + 45, attack damage 51 + 3,
-    // attack speed 0.625 + 0.0625, move speed 4 + 0.25 and turn rate 90° + 6°. Its health is a
-    // pool as its mana is
-    // in a match with no life pool, and its life where health is the life pool: the amounts are
-    // the same.
+    // A hero of health 380 + 76 a level, regen 1.5, mana 250 + 45, attack damage 51 + 3, attack
+    // speed 0.625 + 0.0625, move speed 4 + 0.25 and turn rate 90° + 6°. Its health is a pool as its
+    // mana is in a match with no life pool, and its life where health is the life pool: the amounts
+    // are the same.
     let hero = stats(&[
         (stat("health"), Num::int(380), Num::int(76)),
         (stat("health_regen"), sixteenths(24), Num::ZERO),
@@ -226,6 +225,16 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
             assert_eq!(pools(&game), spent);
         }
     }
+}
+
+/// The declared name `text`.
+fn name(text: &str) -> DeclaredName {
+    DeclaredName::new(text).unwrap()
+}
+
+/// The value of the param `text`.
+fn param(text: &str) -> Number {
+    Number::Param(ParamRef { param: name(text) })
 }
 
 /// An application from `source` of modifier `id`, changing `stat` by `value` a stack with `op`,
@@ -458,6 +467,14 @@ fn a_hurt_type_holds_its_modifier_at_its_share_of_life_and_below_and_drops_it_ab
         below: Some(Share::billionths(500_000_000).unwrap()),
         modifier: hurt,
     };
+    // A hurt reads its unit's life, so a change of life revisits its units; an upgrade of
+    // triggers alone does not.
+    let triggered = TypeUpgrade {
+        below: None,
+        ..upgrade.clone()
+    };
+    assert!(TypeUpgrades(Box::new([upgrade.clone()])).reads_life());
+    assert!(!TypeUpgrades(Box::new([triggered])).reads_life());
     Units::give_type(
         &mut game,
         UnitType::new(0),
@@ -630,11 +647,6 @@ fn warding_match() -> (Match, ModifierId) {
         &Stats::modifier_data(None),
         None,
     );
-    let param = |name: &str| {
-        Number::Param(ParamRef {
-            param: DeclaredName::new(name).unwrap(),
-        })
-    };
     let against_armor = |per_point: i64| {
         Param::Scaling(Scaling {
             base: Ranked::One(Num::ZERO),
@@ -1111,4 +1123,52 @@ fn a_held_modifier_of_one_source_holds_from_the_lowest_source_alone() {
     game.entity_mut(entity).insert(Dead);
     game.step();
     assert_eq!(sources(&game, "heartened"), [false, true]);
+}
+
+#[test]
+fn a_client_holds_a_modifier_of_one_source_from_an_unseen_source_alone() {
+    // On a predicting client, the ally holds `heartened` from the first carrier, the lower id, as
+    // the server sent it, while the client holds none of that carrier's modifiers, so it cannot
+    // see its aura: the second carrier's aura, which it sees, adds none beside it, as the server
+    // holds the lowest source's alone (riders-and-upgrades.md, A held modifier may hold from one
+    // source).
+    let mut game = Match::builder(&[Capability::Stats])
+        .role(Role::Client)
+        .build();
+    let book = StatBook::new(&Stats::rules(), Num::int(6));
+    book.load_into(&mut game);
+    let heartened = ModifierData {
+        held_sources: HeldSources::One,
+        ..Stats::modifier_data(None)
+    };
+    let uplift = Stats::modifier_data(Some(AuraData {
+        radius: Number::Value(Scalar::Int(2)),
+        affects: FilterData::parse("allies").unwrap(),
+        modifier: DeclaredName::new("heartened").unwrap(),
+    }));
+    for (name, data) in [("heartened", heartened), ("uplift", uplift)] {
+        Stats::load_modifier(&mut game, PackageIndex::MODE, name, &data, None);
+    }
+    let named = |game: &Match, name| Stats::modifier(game, PackageIndex::MODE, name).unwrap();
+    let plain = Units::load_next_type(&mut game, &UnitTypeCore::default());
+    let spawn = |game: &mut Match, x: i64| {
+        let at = Vec3::new(Num::int(x), Num::ZERO, Num::ZERO);
+        Spawn::of(plain, at).team(Team::new(0)).place(game)
+    };
+    let [first, second, ally] = [0, 2, 1].map(|x| spawn(&mut game, x));
+    let entity = game.entity_of(second).unwrap();
+    let aura = Stats::aura(named(&game, "uplift"), second, Num::int(2));
+    CarriedMut::with(&mut game, entity, |carried| carried.apply(aura)).unwrap();
+    let unseen = game.entity_of(first).unwrap();
+    game.entity_mut(unseen).remove::<Modifiers>();
+    let heartened = named(&game, "heartened");
+    Stats::give_modifier(&mut game, ally, heartened, Applier::from_unit(first).held());
+    game.step();
+    let modifiers = game
+        .get::<Modifiers>(game.entity_of(ally).unwrap())
+        .unwrap();
+    assert_eq!(
+        [first, second].map(|source| modifiers.get(heartened, Some(source)).is_some()),
+        [true, false]
+    );
 }

@@ -4,7 +4,7 @@ use std::panic::{self, AssertUnwindSafe};
 use std::sync::mpsc;
 use std::thread;
 
-use tempfile::TempDir;
+use crate::test_dir::TestDir;
 
 use super::*;
 use crate::durable_file::error::DurableError;
@@ -211,8 +211,8 @@ fn a_writer_dropped_in_a_panic_returns_while_its_sync_does_not() {
 
 #[test]
 fn a_new_file_holds_its_head_then_its_records_and_a_reopen_cuts_a_torn_tail() {
-    let dir = TempDir::new().unwrap();
-    let path = dir.path().join("journal");
+    let dir = TestDir::new();
+    let path = dir.root().join("journal");
     let writer = AppendWriter::create(ThreadName::fixture("journal"), &path, b"head/").unwrap();
     let watch = writer.watch();
     for record in [&b"first/"[..], b"", b"third/"] {
@@ -237,7 +237,7 @@ fn a_new_file_holds_its_head_then_its_records_and_a_reopen_cuts_a_torn_tail() {
     // A file that is not there does not reopen; one in a directory that is not there is not
     // made.
     assert!(matches!(
-        AppendWriter::reopen(ThreadName::fixture("journal"), &dir.path().join("none"), 0),
+        AppendWriter::reopen(ThreadName::fixture("journal"), &dir.root().join("none"), 0),
         Err(PathError {
             error: AppendOpenError::Open(_),
             ..
@@ -246,7 +246,7 @@ fn a_new_file_holds_its_head_then_its_records_and_a_reopen_cuts_a_torn_tail() {
     assert!(matches!(
         AppendWriter::create(
             ThreadName::fixture("journal"),
-            &dir.path().join("none").join("journal"),
+            &dir.root().join("none").join("journal"),
             b""
         ),
         Err(PathError {

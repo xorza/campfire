@@ -536,6 +536,15 @@ pub(crate) mod internals {
             symlink_dir(target, link)
         }
 
+        /// Windows names no pipe in the file system, so a path holds none.
+        #[expect(
+            clippy::unnecessary_wraps,
+            reason = "the one form of every OS's make, which Unix's `mkfifo` can fail"
+        )]
+        pub(crate) const fn make_pipe(_: &Path) -> io::Result<bool> {
+            Ok(false)
+        }
+
         pub(crate) fn exposure_at(path: &Path) -> io::Result<Option<String>> {
             let path = wide(path)?;
             let mut owner = PSID::default();

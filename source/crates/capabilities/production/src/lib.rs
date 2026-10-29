@@ -30,6 +30,7 @@ use crate::leaders::Leaders;
 use crate::production_column::RowReads;
 use crate::sales::Sales;
 
+mod activity;
 mod book_builders;
 mod build_book;
 mod build_data;
@@ -93,6 +94,7 @@ mod train_spec;
 mod trained_units;
 mod trains;
 
+pub use crate::activity::{Activity, ActivityParts};
 pub use crate::build_book::{BuildBook, BuildSpec, NewBuild, PlacementCheck, Style};
 pub use crate::build_data::BuildData;
 pub use crate::build_places::{BuildPlaces, PlaceSearch};

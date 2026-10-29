@@ -3,8 +3,8 @@
 drive_ticks = 1711
 
 [fingerprints]
-game = "75740e5cc4b419729c1f1bc89bdba613da4b60f1c0ad6a501efac5dbc2bfeb00"
-rules = "c93a04334fb50b1dd157c12409bdcc08240a9f1dc0ac982556ace70ee967121b"
+game = "cd3a43ce43a2994caf4af322a3e4a0ea96d93beb90bb7f8c32019082411d1107"
+rules = "eb4084de6d20209e818b0863096d1a5a8949dafc39310a8f6997d2fe24b5fd2c"
 
 [map]
 heights = [270, 340]
@@ -40,15 +40,15 @@ joins = 16
 dropped = [0, 0, 0]
 
 [looks]
-varied = 1265
-empty = 273
-states = 20057
-untested = 232
+varied = 894
+empty = 142
+states = 17193
+untested = 190
 night = 15
 snowy = 17
-animations = 2774
+animations = 2678
 dropped_animations = [47, 0, 1]
-dropped_states = [324, 24]
+dropped_states = [324, 24, 0]
 
 [ranger]
 stands = ["airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_sta", "airngr_skl.airngr_ida", "airngr_skl.airngr_idb"]
@@ -84,16 +84,16 @@ riders = 354
 dropped = [0, 0, 15, 4, 1, 9, 0, 12, 6, 0, 0, 1, 0, 0, 0, 0, 14, 4]
 
 [effects]
-systems = 559
+systems = 561
 lists = 398
 textures = 46
 fires = 73
 hits = 0
-trails = 3
+trails = 4
 ends = 32
-deaths = 1252
-bones = 2271
-dropped = [35, 0, 8, 2, 7, 0, 18, 65, 139, 46, 5, 0, 42, 1, 9, 3, 0, 14, 77, 0]
+deaths = 866
+bones = 1882
+dropped = [35, 0, 8, 2, 7, 0, 18, 65, 139, 46, 5, 0, 42, 1, 9, 3, 0, 14, 77, 0, 0]
 
 [panel]
 icons = 474
@@ -107,7 +107,7 @@ dropped = [1, 31, 2, 0, 0, 4]
 sounds = 465
 lists = 278
 fires = 96
-voiced = 631
+voiced = 489
 files = 1604
 tracks = 33
 playlists = 13

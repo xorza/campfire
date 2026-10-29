@@ -10,11 +10,12 @@ use campfire_threads::Parallel;
 
 use crate::workspace::Workspace;
 use crate::{
-    bans, capabilities, citations, cycles, dev_dependencies, errors, manifests, platform,
-    re_exports, suffixes, test_homes, test_modules, test_support, type_names, world,
+    bans, capabilities, citations, cycles, dev_dependencies, errors, layers, manifests, platform,
+    re_exports, source_files, suffixes, test_homes, test_modules, test_support, type_names, world,
 };
 
-/// A rule: its name, the path of its check, and the check, which panics on what breaks it.
+/// A rule: its name, which is the path of its check, and the check, which panics on what breaks
+/// it.
 #[derive(Debug, Clone, Copy)]
 struct Rule {
     name: &'static str,
@@ -28,14 +29,16 @@ macro_rules! rules {
     };
 }
 
-const RULES: [Rule; 43] = rules![
+const RULES: [Rule; 47] = rules![
     bans::each_banned_call_goes_through_its_proxy_alone,
     bans::a_crates_clippy_toml_is_the_workspaces_with_its_own_entries,
     bans::no_tick_reads_removals_that_age_with_the_app,
     bans::each_crate_a_match_runs_on_bans_floats,
     bans::no_crate_a_match_runs_on_reads_the_wall_clock,
     capabilities::genre_words::no_capability_names_a_genres_words,
+    capabilities::genre_words::no_capability_names_a_game_outside_its_module,
     capabilities::lookups::a_name_is_looked_up_only_by_a_script_call_or_the_load,
+    capabilities::part_names::a_parts_name_takes_its_declaring_modules_prefix,
     capabilities::roles::each_role_of_a_module_takes_the_modules_name,
     capabilities::roles::a_book_and_a_data_table_take_their_suffix,
     capabilities::sets::a_module_names_another_modules_sets_only_where_its_sets_run,
@@ -44,6 +47,7 @@ const RULES: [Rule; 43] = rules![
     cycles::no_crates_modules_import_each_other_in_a_cycle,
     dev_dependencies::a_dev_dependency_adds_only_test_support,
     errors::every_error_the_workspace_writes_goes_through_its_report,
+    layers::each_crate_requires_only_its_own_layer_or_lower,
     manifests::common_and_each_proxy_depend_on_their_listed_crates_alone,
     manifests::only_common_names_the_crate_of_its_derives,
     manifests::the_design_marks_built_exactly_the_crates_of_the_workspace_with_their_kinds,
@@ -62,6 +66,7 @@ const RULES: [Rule; 43] = rules![
     platform::only_the_platform_module_names_an_os,
     re_exports::no_crate_re_exports_another_crate,
     re_exports::no_module_re_exports_its_own_crates_item,
+    source_files::a_module_is_gated_by_a_bare_cfg_of_test_or_internals,
     suffixes::a_declared_name_keeps_its_suffix,
     suffixes::a_package_data_struct_refuses_a_field_it_does_not_hold,
     test_homes::a_test_lives_in_the_lowest_crate_that_can_hold_it,

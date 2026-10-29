@@ -201,6 +201,16 @@ fn rotated_y_turns_on_the_ground_plane() {
     assert_eq!(v(0, 7, 1).rotated_y(quarter), v(1, 7, 0));
     assert_eq!(v(2, -3, 5).rotated_y(half), v(-2, -3, -5));
     assert_eq!(v(2, -3, 5).rotated_y(Num::ZERO.sin_cos()), v(2, -3, 5));
+    // A pair of no angle, of each field its least, sums two products of 2¹²⁶ past an `i128`: no
+    // vector, as each overflow gives, not a panic.
+    let past = SinCos {
+        sin: Num::from_bits(i64::MIN),
+        cos: Num::from_bits(i64::MIN),
+    };
+    let least = raw(i64::MIN, 0, i64::MIN);
+    assert_eq!(least.checked_rotated_y(past), None);
+    let least = raw(i64::MIN, i64::MIN, 0);
+    assert_eq!(least.checked_rotated_z(past), None);
 }
 
 #[test]

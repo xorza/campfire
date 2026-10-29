@@ -3,7 +3,7 @@ use thiserror::Error;
 /// Why an `airfield` breaks a rule of airfields. Packages are untrusted, so each is an expected
 /// failure.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum AirfieldError {
+pub enum AirfieldDataError {
     /// Its places are not as many as its type's production names.
     #[error("its airfield's places are not its production's")]
     Places,

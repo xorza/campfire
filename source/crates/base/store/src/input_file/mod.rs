@@ -80,16 +80,10 @@ impl InputFile {
             .map_err(|error| PathError::at(path)(ReadError::NotText(error.utf8_error())))
     }
 
-    /// The regular file at `path`, open to read in pieces; its reader bounds what it takes.
-    pub fn stream(path: &Path) -> Result<InputStream, PathError<ReadError>> {
-        Self::open(path)
-            .and_then(InputStream::of)
-            .map_err(PathError::at(path))
-    }
-
-    /// The regular file at `path`, open to read in pieces, as `stream` opens it, of at most
-    /// `max_len` bytes as it opened; `TooLarge` for a longer one.
-    pub fn stream_within(path: &Path, max_len: usize) -> Result<InputStream, PathError<ReadError>> {
+    /// The regular file at `path`, open to read in pieces, of at most `max_len` bytes as it
+    /// opened; `TooLarge` for a longer one, as every read names its bound (AGENTS.md, All file I/O
+    /// goes through `store`).
+    pub fn stream(path: &Path, max_len: usize) -> Result<InputStream, PathError<ReadError>> {
         let open = || {
             let opened = Self::open(path)?;
             if opened.longer_than(max_len) {
@@ -98,6 +92,20 @@ impl InputFile {
             InputStream::of(opened)
         };
         open().map_err(PathError::at(path))
+    }
+
+    /// The stamp of the regular file at `path`, its length and its last change, read from its
+    /// handle as a read checks it; no byte of it is read.
+    pub fn stamp(path: &Path) -> Result<FileStamp, PathError<ReadError>> {
+        let stamp = || {
+            let Opened { metadata, .. } = Self::open(path)?;
+            let modified = metadata.modified().map_err(ReadError::Read)?;
+            Ok(FileStamp {
+                len: metadata.len(),
+                modified,
+            })
+        };
+        stamp().map_err(PathError::at(path))
     }
 
     /// The regular file at `path`, open to read ranges of; each read is bounded by its range.

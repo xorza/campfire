@@ -56,7 +56,7 @@ impl FileIndex {
 
     /// The most bytes a file of a package holds, which its read allocates: 2 GiB, past any
     /// texture or model an importer writes.
-    const MAX_FILE_LEN: u64 = 1 << 31;
+    pub const MAX_FILE_LEN: u64 = 1 << 31;
 
     /// The index of `rows` and its encoding, refused unless every package reads it back: no row
     /// of the index's own path or under it in any case, no two paths or directories on their way

@@ -201,16 +201,16 @@ mod tests {
         assert_eq!(InputFile::read_if_present(&path, 16).unwrap(), None);
         assert!(file.write_if(true, b"made").unwrap());
         assert_eq!(InputFile::read(&path, 16).unwrap(), b"made");
-        let made = InputFile::stream(&path).unwrap().stamp();
+        let made = InputFile::stream(&path, 64).unwrap().stamp();
         // The same bytes leave the file and its time of change as they are; a prefix of them is
         // other bytes, which the file, longer than the bound of their read, is written with.
         assert!(file.write_if(true, b"made").unwrap());
-        assert_eq!(InputFile::stream(&path).unwrap().stamp(), made);
+        assert_eq!(InputFile::stream(&path, 64).unwrap().stamp(), made);
         assert!(file.write_if(true, b"ma").unwrap());
         assert_eq!(test_dir.read("pinned.txt"), b"ma");
         assert!(file.write_if(true, b"made").unwrap());
         assert_ne!(
-            InputFile::stream(&path).unwrap().stamp().modified,
+            InputFile::stream(&path, 64).unwrap().stamp().modified,
             made.modified
         );
         // A pin compares the file whole when the run does not bless, and else writes it.

@@ -5,7 +5,7 @@ use bevy::math::Quat;
 use campfire_client_files::{EffectList, EffectSets, EffectsFile, ListedSystem, SlaveSystem};
 
 use super::*;
-use crate::view::effects::particle_run::samples::{book, name, system};
+use crate::view::effects::particle_run::internals::{book, name, system};
 
 /// Starts the system `text` of `book` at `at`.
 fn start(run: &mut ParticleRun, book: &EffectBook, text: &str, at: Vec3) -> SystemKey {

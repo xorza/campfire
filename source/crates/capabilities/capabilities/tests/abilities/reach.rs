@@ -15,6 +15,7 @@ use campfire_script::ScriptLimits;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimTick, SimWorld};
 use campfire_stats::Stats;
+use campfire_units::internals::Spawn;
 use campfire_units::{Body, Dead, Destination, GroundPoint, MoveStep, Units};
 use campfire_values::{ActionId, Block, FilterData, Number, PackagePath, Ranked, Scalar, Team};
 
@@ -46,8 +47,11 @@ fn on_resolve(ctx, caster, target) {
     let clamped = Abilities::load(&mut game, "leap", &leap(true), script);
     let plain = Abilities::load(&mut game, "hop", &leap(false), script);
     let point = |x, z| ActionTarget::Point(Vec3::from((x, 0, z)));
-    let enemy =
-        |game: &mut Match, x, z| Abilities::spawn_combatant(game, (x, 0, z), Team::new(1), ());
+    let enemy = |game: &mut Match, x, z| {
+        Spawn::named(game, "combatant", (x, 0, z))
+            .team(Team::new(1))
+            .place(game)
+    };
     // From the origin, 4 m of range: an aim at 10 m along x lands at 4 m; one at 2 m stays.
     for (aim, at) in [(point(10, 0), (4, 0)), (point(2, 0), (2, 0))] {
         let caster = Abilities::caster(&mut game, clamped, 1);
@@ -58,12 +62,13 @@ fn on_resolve(ctx, caster, target) {
     // An aim at (9, 12), 15 m off, lands on its line at 4 m: (2.4, 3.2), rounded once each, and
     // a bit shorter where that rounding ends past the range; the enemy there is struck.
     let caster = Abilities::caster(&mut game, clamped, 1);
-    let struck = Abilities::spawn_combatant(
-        &mut game,
+    let struck = Spawn::named(
+        &game,
+        "combatant",
         Vec3::from((Num::int(12) / 5, 0, Num::int(16) / 5)),
-        Team::new(1),
-        (),
-    );
+    )
+    .team(Team::new(1))
+    .place(&mut game);
     Abilities::cast(&mut game, caster, point(9, 12));
     assert_eq!(Stats::health(&game, struck), 490);
     // An action that does not clamp starts no cast at a point beyond its range.
@@ -87,11 +92,15 @@ fn on_resolve(ctx, caster, target) {
     let near =
         |x: &str, z: &str| Vec3::from((x.parse::<Num>().unwrap(), 0, z.parse::<Num>().unwrap()));
     let caster = boxed(&mut game);
-    let struck = Abilities::spawn_combatant(&mut game, near("5.6", "0"), Team::new(1), ());
+    let struck = Spawn::named(&game, "combatant", near("5.6", "0"))
+        .team(Team::new(1))
+        .place(&mut game);
     Abilities::cast(&mut game, caster, point(10, 0));
     assert_eq!(Stats::health(&game, struck), 490);
     let caster = boxed(&mut game);
-    let struck = Abilities::spawn_combatant(&mut game, near("3.34", "4.46"), Team::new(1), ());
+    let struck = Spawn::named(&game, "combatant", near("3.34", "4.46"))
+        .team(Team::new(1))
+        .place(&mut game);
     Abilities::cast(&mut game, caster, point(9, 12));
     assert_eq!(Stats::health(&game, struck), 490);
     assert_eq!(Abilities::failed_calls(&mut game), []);
@@ -172,8 +181,12 @@ fn a_cast_beyond_its_range_walks_in_range_first_and_starts_there() {
     // A hop at (10, 0) from the origin, a meter a tick: the Act stage of tick t finds the caster
     // at t, before that tick's step, and 10 − t m within 4 m first in tick 6, where it stops and
     // hops.
-    let hopper = Abilities::walking_caster(&mut game, reaching.hop);
-    let still = Abilities::spawn_combatant(&mut game, (10, 0, 0), Team::new(1), ());
+    let hopper = Spawn::named(&game, "walking caster", Vec3::ZERO)
+        .parts(Abilities::caster_parts(reaching.hop, 1))
+        .place(&mut game);
+    let still = Spawn::named(&game, "combatant", (10, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     Abilities::cast(
         &mut game,
         hopper,
@@ -195,10 +208,14 @@ fn a_cast_beyond_its_range_walks_in_range_first_and_starts_there() {
 
     // A jab at an enemy at 12 m that walks away half a meter a tick: the Act stage of tick t
     // finds it at 12 + t/2 and the caster at t, 12 − t/2 m apart, within 4 m first in tick 16.
-    let jabber = Abilities::walking_caster(&mut game, reaching.jab);
+    let jabber = Spawn::named(&game, "walking caster", Vec3::ZERO)
+        .parts(Abilities::caster_parts(reaching.jab, 1))
+        .place(&mut game);
     let start = game.resource::<SimTick>().start().get();
-    let fleeing =
-        Abilities::spawn_combatant(&mut game, (12, 0, 0), Team::new(1), walker(half_meters(1)));
+    let fleeing = Spawn::named(&game, "combatant", (12, 0, 0))
+        .team(Team::new(1))
+        .parts(walker(half_meters(1)))
+        .place(&mut game);
     let away = Destination::to(Some(Vec3::from((100, 0, 0))));
     game.insert_parts(fleeing, away);
     Abilities::cast(&mut game, jabber, ActionTarget::Unit(fleeing));
@@ -216,9 +233,13 @@ fn a_cast_beyond_its_range_walks_in_range_first_and_starts_there() {
     // A lob at an enemy 1 m off, inside its minimum of 2 m: the caster walks straight away from
     // it to halfway between 2 and 4 m, (−2, 0, 0), a meter a tick; in tick 1 it stands at −1, 2 m
     // off, at its minimum, which it takes, and stops there. A caster that does not walk drops it.
-    let lobber = Abilities::walking_caster(&mut game, reaching.lob);
+    let lobber = Spawn::named(&game, "walking caster", Vec3::ZERO)
+        .parts(Abilities::caster_parts(reaching.lob, 1))
+        .place(&mut game);
     let start = game.resource::<SimTick>().start().get();
-    let close = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
+    let close = Spawn::named(&game, "combatant", (1, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     Abilities::cast(&mut game, lobber, ActionTarget::Unit(close));
     assert!(game.part::<ActionProgress>(lobber).is_approaching());
     assert_eq!(
@@ -234,7 +255,9 @@ fn a_cast_beyond_its_range_walks_in_range_first_and_starts_there() {
     );
     assert_eq!(game.part::<Destination>(lobber).get(), None);
     let standing = Abilities::caster(&mut game, reaching.lob, 1);
-    let beside = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
+    let beside = Spawn::named(&game, "combatant", (1, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     Abilities::cast(&mut game, standing, ActionTarget::Unit(beside));
     assert_eq!(game.part::<ActionProgress>(standing).in_progress(), None);
     game.step();
@@ -246,11 +269,14 @@ fn a_cast_beyond_its_range_walks_in_range_first_and_starts_there() {
 fn a_new_order_a_block_or_a_failed_check_ends_a_walk_in_range() {
     let mut game = Abilities::match_of(ScriptLimits::ROOMY, &Reaching::CAPABILITIES);
     let reaching = Reaching::place(&mut game);
-    let mover = Abilities::walking_caster(&mut game, reaching.jab);
-    let far = Abilities::spawn_combatant(&mut game, (0, 0, 30), Team::new(1), ());
+    let mover = Spawn::named(&game, "walking caster", Vec3::ZERO)
+        .parts(Abilities::caster_parts(reaching.jab, 1))
+        .place(&mut game);
+    let far = Spawn::named(&game, "combatant", (0, 0, 30))
+        .team(Team::new(1))
+        .place(&mut game);
     let send = |game: &mut Match, action| {
-        let payload = Order::payload(&[Order::one(mover, action)]);
-        game.step_with(&[(PlayerSlot::new(0), &payload)]);
+        game.step_orders(PlayerSlot::new(0), &[Order::one(mover, action)]);
     };
     let jab = OrdersDirective::Slot {
         slot: 0,

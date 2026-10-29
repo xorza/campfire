@@ -6,7 +6,7 @@
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use campfire_common::{StateHash, Tick};
+use campfire_common::Tick;
 use campfire_harness::HashTrail;
 use campfire_host::internals::TickHashes;
 use campfire_host::{JournalCut, Publisher, RestoreError, ServerDir, SessionDir};
@@ -19,9 +19,11 @@ use campfire_runner::{Replay, Session};
 use campfire_store::DurableDir;
 use campfire_store::internals::TestDir;
 
+use crate::PlayedMatch;
+
 /// The scenario's match, its server's data in `scratch`, after 90 steps; with the state hash after
 /// each tick the server ran.
-fn played(test_dir: &TestDir) -> (InProcessMatch, Vec<StateHash>) {
+fn played(test_dir: &TestDir) -> PlayedMatch {
     let mut local = InProcessMatch::new(InProcessSetup::duo(
         LinkModel::perfect(),
         InProcessMatch::SEED_CHAIN,
@@ -38,13 +40,19 @@ fn played(test_dir: &TestDir) -> (InProcessMatch, Vec<StateHash>) {
         .resource::<TickHashes>()
         .get()
         .to_vec();
-    (local, hashes)
+    PlayedMatch {
+        game: local,
+        hashes,
+    }
 }
 
 #[test]
 fn a_restarted_server_replays_its_log_and_plays_on() {
     let test_dir = TestDir::new();
-    let (mut local, before) = played(&test_dir);
+    let PlayedMatch {
+        game: mut local,
+        hashes: before,
+    } = played(&test_dir);
     let cut = local.next_tick(End::Server);
     assert_eq!(before.len(), usize::try_from(cut).unwrap());
     local.restart_server();
@@ -65,7 +73,10 @@ fn a_restarted_server_replays_its_log_and_plays_on() {
 #[test]
 fn a_session_past_its_window_ends_aborted_its_journal_cut_at_a_tear() {
     let test_dir = TestDir::new();
-    let (mut local, before) = played(&test_dir);
+    let PlayedMatch {
+        game: mut local,
+        hashes: before,
+    } = played(&test_dir);
     let cut = local.next_tick(End::Server);
     let id = local
         .server()

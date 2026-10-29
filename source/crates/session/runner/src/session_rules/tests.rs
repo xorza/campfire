@@ -28,15 +28,17 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
     let terms = |hz| {
         let hz = NonZeroU32::new(hz).unwrap();
         let visibility = rules.visibility().settings();
-        rules.terms(HostChoices {
-            server_key: key,
-            seed_commitment: commitment,
-            tick_hz: hz,
-            inputs,
-            player_slots: plan.to_vec(),
-            visibility,
-            picks: &HostPicks::defaults(packages.data(), plan.len()),
-        })
+        rules
+            .terms(HostChoices {
+                server_key: key,
+                seed_commitment: commitment,
+                tick_hz: hz,
+                inputs,
+                player_slots: plan.to_vec(),
+                visibility,
+                picks: &HostPicks::defaults(packages.data(), plan.len()),
+            })
+            .map(|offered| offered.terms)
     };
     for hz in [19, 61] {
         assert_eq!(

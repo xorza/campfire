@@ -209,10 +209,7 @@ fn share_xp(ctx, unit) {
 "#;
 /// The resource `name` of the mode's `RESOURCES`.
 fn resource(name: &str) -> Option<ResourceId> {
-    RESOURCES
-        .into_iter()
-        .collect::<Names<ResourceId>>()
-        .named(name)
+    Names::<ResourceId>::unique(RESOURCES).named(name)
 }
 
 /// `text` with its one `old` replaced by `new`, as a test's change of a file of the test mode.

@@ -47,7 +47,9 @@ in [UDP research](../../research/udp.md#port-mapping).
   warns that a player outside joins only if that NAT forwards the port, and keeps the mapping, as
   a modem that forwards to the router makes it reachable.
 - **IPv4 alone.** A host on IPv6 needs no translation, and its firewall's pinhole stays the
-  host's; a server bound to loopback, or to IPv6, maps nothing.
+  host's; a server bound to loopback, or to an IPv6 address but the wildcard, maps nothing. The
+  wildcard `[::]` takes IPv4 too (11-net-stack/udp.md, An IPv6 socket is dual-stack), so its IPv4 port is
+  mapped as `0.0.0.0`'s is.
 - **The app names the mapping,** which a UPnP router lists by that name.
 - **The draws come from the mapper's `Random`, the clock from the OS.** A nonce must be unguessable
   (RFC 6887 §11.2), so a build draws from the OS, and a test from a seed, which fixes each nonce and

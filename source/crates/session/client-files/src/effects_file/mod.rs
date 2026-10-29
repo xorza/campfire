@@ -97,27 +97,27 @@ impl EffectsFile {
         })
     }
 
-    /// It, its wrecks meeting the ground as `wrecks` says; refused for a ground that does not
-    /// hold.
-    pub fn with_wrecks(mut self, wrecks: WreckGround) -> Result<Self, EffectsError> {
+    /// Meets the ground with its wrecks as `wrecks` says; refused for a ground that does not
+    /// hold, which leaves it as it was.
+    pub fn set_wrecks(&mut self, wrecks: WreckGround) -> Result<(), EffectsError> {
         if !wrecks.holds() {
             return Err(EffectsError::Wrecks);
         }
         self.wrecks = wrecks;
-        Ok(self)
+        Ok(())
     }
 
-    /// It, holding `sounds` beside its own, one of a name it holds in that one's place; refused
-    /// for one that does not hold.
-    pub fn with_sounds(
-        mut self,
+    /// Holds `sounds` beside its own, one of a name it holds in that one's place; refused for one
+    /// that does not hold, which leaves it as it was.
+    pub fn add_sounds(
+        &mut self,
         sounds: BTreeMap<DeclaredName, SoundEvent>,
-    ) -> Result<Self, EffectsError> {
+    ) -> Result<(), EffectsError> {
         if let Some((name, _)) = sounds.iter().find(|(_, sound)| !sound.holds()) {
             return Err(EffectsError::Sound(name.clone()));
         }
         self.sounds.extend(sounds);
-        Ok(self)
+        Ok(())
     }
 
     /// How a wreck meets the ground.
@@ -125,13 +125,13 @@ impl EffectsFile {
         self.wrecks
     }
 
-    /// It, its treads throwing their dust as `treads` says and laying their tracks as `tracks`
-    /// says; refused for either that does not hold.
-    pub fn with_treads(
-        mut self,
+    /// Throws its treads' dust as `treads` says and lays their tracks as `tracks` says; refused
+    /// for either that does not hold, which leaves it as it was.
+    pub fn set_treads(
+        &mut self,
         treads: TreadDust,
         tracks: TrackMarks,
-    ) -> Result<Self, EffectsError> {
+    ) -> Result<(), EffectsError> {
         if !treads.holds() {
             return Err(EffectsError::Treads);
         }
@@ -140,7 +140,7 @@ impl EffectsFile {
         }
         self.treads = treads;
         self.tracks = tracks;
-        Ok(self)
+        Ok(())
     }
 
     /// How a tread throws its dust.
@@ -221,9 +221,10 @@ impl<'de> Deserialize<'de> for EffectsFile {
             sounds,
             lists,
         };
-        let file = Self::new(step, cap, sets).map_err(D::Error::custom)?;
-        let file = file.with_wrecks(wrecks).map_err(D::Error::custom)?;
-        file.with_treads(treads, tracks).map_err(D::Error::custom)
+        let mut file = Self::new(step, cap, sets).map_err(D::Error::custom)?;
+        file.set_wrecks(wrecks).map_err(D::Error::custom)?;
+        file.set_treads(treads, tracks).map_err(D::Error::custom)?;
+        Ok(file)
     }
 }
 

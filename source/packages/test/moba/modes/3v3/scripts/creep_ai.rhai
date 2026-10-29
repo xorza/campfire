@@ -6,11 +6,16 @@ fn on_think(ctx, unit) {
     if target == () {
         target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:creep");
     }
-    if target == () {
+    // A mode whose creeps' `avatars_first` is 1 has them try an enemy avatar before a
+    // structure; each other tries a structure first.
+    if target == () && unit.params.avatars_first == 1 {
         target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:avatar");
     }
     if target == () {
         target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:structure");
+    }
+    if target == () {
+        target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:avatar");
     }
     if target == () {
         ctx.order_follow_path();
@@ -41,5 +46,5 @@ fn keep_target(unit) {
 
 // Whether `unit` sees `other` within its aggro range, as `nearest_visible` measures it.
 fn in_reach(unit, other) {
-    unit.can_see(other) && unit.reaches(other, unit.params.aggro_range)
+    unit.can_see(other) && unit.can_reach(other, unit.params.aggro_range)
 }

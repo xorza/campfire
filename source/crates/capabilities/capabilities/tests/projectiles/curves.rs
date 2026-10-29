@@ -65,12 +65,6 @@ fn state(game: &mut Match) -> FlightState {
     *game.query::<&FlightState>().single(game).unwrap()
 }
 
-/// Moves the unit `id` of `game` to `position`.
-fn put(game: &mut Match, id: StableId, position: Vec3) {
-    let entity = game.unit_entity(id);
-    *game.get_mut::<Position>(entity).unwrap() = Position::from(position);
-}
-
 #[test]
 fn a_shell_stands_at_a_point_of_its_curve_each_tick_and_hits_its_target_at_the_last() {
     // 120 m/s, 4 m a tick. From the shooter at the origin to the target's center at (8, 0, 0),

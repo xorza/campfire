@@ -1,6 +1,6 @@
 use crate::history_seed::{insert_confirmed_history, insert_confirmed_history_diff};
 use bevy_ecs::prelude::*;
-use bevy_replicon::shared::replication::diff::Diffable as RepliconDiffable;
+use bevy_replicon::shared::replication::diff::Diffable;
 use bevy_replicon::shared::replication::storage::ReplicationStorage;
 use campfire_net_core::NetTick;
 use campfire_net_replication::HistoryComponent;
@@ -40,7 +40,7 @@ impl<C: HistoryComponent> PendingDiffs<C> for WholeValues {
     }
 }
 
-impl<C: HistoryComponent + RepliconDiffable> PendingDiffs<C> for Diffs {
+impl<C: HistoryComponent + Diffable> PendingDiffs<C> for Diffs {
     fn pending(
         storage: Option<&ReplicationStorage>,
         entity: Entity,

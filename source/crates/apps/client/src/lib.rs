@@ -8,10 +8,10 @@ use std::sync::Arc;
 
 use bevy::app::App;
 use campfire_bots::{BotNames, BotScript};
-use campfire_common::{ErrorReport, ExitStatus};
+use campfire_common::ErrorReport;
 use campfire_console::GameRole;
-use campfire_host::{ConsoleStdio, KeyFile, OrderFile, Os, SessionSigner, exit_code};
-use campfire_logging::Logging;
+use campfire_host::{ConsoleStdio, KeyFile, KeyFileError, OrderFile, Os, SessionSigner, exit_code};
+use campfire_logging::{LogTap, Logging};
 use campfire_net::{ClientConsole, SimClientPlugin};
 use campfire_net_connection::Connect;
 use campfire_package::ModePackages;
@@ -23,6 +23,7 @@ use tracing::error;
 use crate::client_module::ClientEnd;
 use crate::command_line::{Args, CommandLine, ConsoleArg};
 use crate::connection::Connection;
+use crate::error::ClientLaunchError;
 use crate::link_watch::LinkWatchPlugin;
 
 mod action_names;
@@ -34,6 +35,7 @@ mod command_panel;
 mod connection;
 mod dock_click;
 mod engine_text;
+mod error;
 mod gather_click;
 mod hud;
 mod input_map;
@@ -60,6 +62,7 @@ mod test_app;
 mod ui_style;
 mod use_click;
 mod view;
+mod window_frame;
 
 /// What the terminal shows when `RUST_LOG` does not say: the renderer's validation layers report
 /// through `wgpu_hal`, loudly, in debug builds.
@@ -77,55 +80,39 @@ pub fn run() -> ExitCode {
         file: FILE_FILTER,
     }
     .start();
-    let args = match Logging::command_line::<CommandLine>(env::args_os()).map(Args::try_from) {
-        Ok(Ok(args)) => args,
-        Ok(Err(error)) => {
-            error!(error = %ErrorReport::of(&error), "the command line is refused");
-            return ExitCode::from(ExitStatus::Usage);
-        }
-        Err(status) => return ExitCode::from(status),
-    };
-    let packages = match load_mode(&args) {
-        Ok(packages) => Arc::new(packages),
-        Err(code) => return code,
-    };
-    let script = match args.bot.as_ref().map(OrderFile::read).transpose() {
-        Ok(script) => script,
+    match launch(&log.tap) {
+        Ok(code) => code,
         Err(error) => {
-            error!(error = %ErrorReport::of(&error), "the orders file does not read");
-            return ExitCode::from(ExitStatus::Failure);
+            if !matches!(error, ClientLaunchError::CommandLine(_)) {
+                error!(error = %ErrorReport::of(&error), "the client does not start");
+            }
+            ExitCode::from(error.status())
         }
-    };
-    let script = match script
+    }
+}
+
+/// Starts the client and runs it, its console's events taken from `tap`: the exit code of its
+/// end, or the refusal that ended its start.
+fn launch(tap: &LogTap) -> Result<ExitCode, ClientLaunchError> {
+    let line = Logging::command_line::<CommandLine>(env::args_os())
+        .map_err(ClientLaunchError::CommandLine)?;
+    let args = Args::try_from(line)?;
+    let packages = Arc::new(ModePackages::at(
+        &PackageDir::new(&args.mode),
+        args.map.as_ref(),
+    )?);
+    let script = args.bot.as_ref().map(OrderFile::read).transpose()?;
+    let script = script
         .map(|script| BotScript::new(&script, &BotNames::new(packages.load_books())))
-        .transpose()
-    {
-        Ok(script) => script,
-        Err(error) => {
-            error!(error = %ErrorReport::of(&error), "the orders name what the mode does not have");
-            return ExitCode::from(ExitStatus::Usage);
-        }
-    };
-    let main = match main_key(&args) {
-        Ok(signer) => Arc::new(signer),
-        Err(code) => return code,
-    };
-    let role = match args.role.resolve(&packages) {
-        Ok(role) => role,
-        Err(error) => {
-            error!(error = %ErrorReport::of(&error), "the mode has no such team");
-            return ExitCode::from(ExitStatus::Usage);
-        }
-    };
+        .transpose()?;
+    let main = Arc::new(main_key(&args)?);
+    let role = args.role.resolve(&packages)?;
     // Opened before the server, so its tool hears the client at once.
     let stdio = args
         .console
-        .map(|ConsoleArg::Stdio| ConsoleStdio::open(GameRole::Client, &log.tap));
+        .map(|ConsoleArg::Stdio| ConsoleStdio::open(GameRole::Client, tap));
     let seen = stdio.as_ref().map(ConsoleStdio::seen);
-    let mut connection = match Connection::open(&args, role, &packages, seen) {
-        Ok(connection) => connection,
-        Err(code) => return code,
-    };
+    let mut connection = Connection::open(&args, role, &packages, seen)?;
     let end = match script {
         Some(_) => ClientEnd::Bot,
         None => ClientEnd::Window {
@@ -150,10 +137,7 @@ pub fn run() -> ExitCode {
         data: connection.data(),
         bot: script,
     };
-    if let Err(error) = sim_client.check() {
-        error!(error = %ErrorReport::of(&error), "the mode does not run at the listing's rate");
-        return ExitCode::from(ExitStatus::Usage);
-    }
+    sim_client.check()?;
 
     let mut app = App::new();
     end.add(&mut app, &packages);
@@ -163,38 +147,22 @@ pub fn run() -> ExitCode {
         app.init_resource::<ClientConsole>();
     }
     let client = SimClientPlugin::spawn(app.world_mut());
-    if let Err(code) = connection.link(&mut app, client) {
-        return code;
-    }
+    connection.link(&mut app, client)?;
     app.world_mut().trigger(Connect { entity: client });
     let exit = app.run();
     // Dropped, a local server ends the session and publishes its log.
     drop(connection);
-    exit_code(exit)
-}
-
-/// The packages of the mode the arguments name; the exit code when they do not load.
-fn load_mode(args: &Args) -> Result<ModePackages, ExitCode> {
-    let mode = PackageDir::new(&args.mode);
-    let packages = ModePackages::at(&mode, args.map.as_ref()).map_err(|error| {
-        error!(mode = %args.mode.display(), error = %ErrorReport::of(&error), "the mode does not load");
-        ExitCode::from(ExitStatus::Failure)
-    })?;
-    Ok(packages)
+    Ok(exit_code(exit))
 }
 
 /// The signer of the player's main key: the key file's, made when missing, or a new one with no
-/// file; the exit code when the file does not read.
-fn main_key(args: &Args) -> Result<Signer, ExitCode> {
+/// file.
+fn main_key(args: &Args) -> Result<Signer, KeyFileError> {
     let entropy = Os::SYSTEM.entropy;
     let Some(path) = &args.key else {
         return Ok(Signer::new(entropy.keypair(), entropy));
     };
-    let file = SecretFile::at(path.clone());
-    KeyFile::read_or_create(&file, entropy).map_err(|error| {
-        error!(key = %file, error = %ErrorReport::of(&error), "the key file does not read");
-        ExitCode::from(ExitStatus::Failure)
-    })
+    KeyFile::read_or_create(&SecretFile::at(path.clone()), entropy)
 }
 
 #[cfg(feature = "internals")]

@@ -29,21 +29,6 @@ impl<T> Default for PagedVec<T> {
 }
 
 impl<T> PagedVec<T> {
-    /// A list of `len` places and no item, as one that forgot every item before `len`: a push
-    /// goes on at `len`.
-    pub(crate) fn starting_at(len: usize) -> Self {
-        let pages = (0..len.div_ceil(PAGE))
-            .map(|page| {
-                let forgotten = (len - page * PAGE).min(PAGE);
-                Page {
-                    forgotten,
-                    items: Vec::with_capacity(PAGE - forgotten),
-                }
-            })
-            .collect();
-        Self { pages, len }
-    }
-
     pub(crate) const fn len(&self) -> usize {
         self.len
     }
@@ -190,23 +175,5 @@ mod tests {
             (whole.len(), whole.get(10), whole.get(9)),
             (11, Some(&3), None)
         );
-        // Started at 4097, a list holds no item before it, and its pushes go on there: the
-        // second page has 4095 places left, so 4095 pushes fill it and the next starts a third.
-        let mut started = PagedVec::starting_at(4097);
-        assert_eq!(
-            (started.len(), started.get(4096), started.last()),
-            (4097, None, None)
-        );
-        for value in 4097..8193_u32 {
-            started.push(value);
-        }
-        assert_eq!(started.pages.len(), 3);
-        assert_eq!(
-            (started[4097], started[8191], started[8192]),
-            (4097, 8191, 8192)
-        );
-        assert!(!started.holds_all());
-        let empty = PagedVec::<u32>::starting_at(0);
-        assert_eq!((empty.len(), empty.pages.len()), (0, 0));
     }
 }

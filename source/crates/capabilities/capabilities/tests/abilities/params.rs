@@ -92,7 +92,9 @@ fn on_resolve(ctx, caster, target) {
         .parts(parts)
         .place(&mut game);
     Abilities::give(&mut game, caster, "boost");
-    let target = Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), ());
+    let target = Spawn::named(&game, "combatant", (5, 0, 0))
+        .team(Team::new(1))
+        .place(&mut game);
     Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
 
     // At rank 2 and level 3: 200 + 10 × 2 + 0.5 × 40 + 1.5 × (80 − 60) = 270, which the script

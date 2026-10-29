@@ -76,6 +76,14 @@ socket: its handshake, its trust, and how a server guards itself. The packet ses
   `max_incoming` does; and it sends at most 1,024 stateless resets each second, each an HMAC for a
   datagram any address may make up, as RFC 9000 §10.3 lets an endpoint limit them. Refused: the
   bounds of each address alone, which addresses an attacker spreads over all pass.
+- **A server bounds its live packet sessions.** `AdmissionSetup` also holds at most so many live
+  packet sessions and handshakes from every address, which the session sets at twice its player
+  slots and spectators, as each slot's link may stay while its player's next one opens; one past
+  them is refused after its Retry and before its handshake, as an address past its own bound is.
+  A full server then turns away an honest player until a link goes, as a server of
+  `sv_maxclients` does; that wait is the price of memory and handshakes that a flood from many
+  /48s cannot grow. Refused: the bounds of each address alone, under which links from a routed
+  /32's 65,536 /48s grow without end, each held for the app's 10 s answer window.
 
 ## Packet sessions
 
@@ -102,6 +110,12 @@ socket: its handshake, its trust, and how a server guards itself. The packet ses
   a drop of every early datagram, which delays the session's first messages by a resend.
 - **The socket stays on `quinn-udp`, with GSO and GRO.** A send joins the datagrams of one peer
   and one length; a read splits what GRO joined.
+- **An IPv6 socket is dual-stack.** The stack binds an IPv6 socket with `IPV6_V6ONLY` off, through
+  the platform's `DualStack`, so `[::]` takes IPv4 peers by their mapped addresses on every OS,
+  as RFC 3493 §5.3 defaults to and Go's `net.Listen` and GameNetworkingSockets bind a wildcard;
+  admission takes a mapped address as its IPv4 one. Refused: the OS's default, under which a
+  server on `[::]` takes IPv4 on Linux and macOS but not on Windows; IPv6 alone, under which a
+  host on `[::]` loses its IPv4 players.
 - **A wake sends one byte until a wait takes it.** The app wakes the IO thread's wait by a byte from
   one loopback datagram socket to another, which the poller watches, and sends it only while a flag
   says none is pending; the thread drains the byte, then clears the flag by an exchange that

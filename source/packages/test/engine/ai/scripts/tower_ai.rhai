@@ -3,7 +3,7 @@ fn on_think(ctx, tower) {
     let target = defend_hero(ctx, tower, range);
     if target == () {
         let current = tower.attack_target;
-        if current != () && current.is_alive && tower.reaches(current, range) {
+        if current != () && current.is_alive && tower.can_reach(current, range) {
             target = current;
         }
     }
@@ -21,7 +21,7 @@ fn on_think(ctx, tower) {
 fn defend_hero(ctx, tower, range) {
     for ally in ctx.find(tower, tower.position, range, "allies:avatar") {
         for attacker in ally.recent_attackers(tower.params.help_window_ms) {
-            if attacker.is_avatar && attacker.is_enemy_of(tower) && tower.reaches(attacker, range) {
+            if attacker.is_avatar && attacker.is_enemy_of(tower) && tower.can_reach(attacker, range) {
                 return attacker;
             }
         }

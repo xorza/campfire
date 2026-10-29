@@ -48,7 +48,7 @@ impl Golden {
     /// A record of a match of `packages` for `players` players.
     pub(crate) fn new(packages: &ModePackages, players: u32) -> Self {
         let data = packages.data().section_or_default::<ResourcesData>();
-        let names: Names<ResourceId> = data.0.iter().map(DeclaredName::as_str).collect();
+        let names: Names<ResourceId> = Names::unique(data.0.iter().map(DeclaredName::as_str));
         let resources = names.iter().map(|(resource, _)| resource).collect();
         Self {
             resources,

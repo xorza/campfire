@@ -7,9 +7,9 @@ use campfire_declarations::ById;
 use campfire_players::{Player, PlayerRows};
 use campfire_sim::StableId;
 use campfire_units::{Dead, Life, Owner};
-use campfire_values::{ModifierId, Rank, TagSet, UnitTags, UnitType};
+use campfire_values::{ModifierId, TagSet, UnitTags, UnitType};
 
-use crate::grants::{Grant, GrantFrom, Grants};
+use crate::grants::{GrantFrom, Grants};
 use crate::lifetime::Hold;
 use crate::modifiers::Modifiers;
 use crate::player_grants::Revisits;
@@ -40,8 +40,8 @@ impl UpgradeGrants {
     /// while it lives, and none of each other it holds by an upgrade. What a unit wants follows
     /// from its type, its owner, its tags, its death, its modifiers, its life, its player's
     /// modifiers and the book, so a run visits only the units of which one changed since its last,
-    /// unless the book changed, and of those only the units of a type with upgrades or that hold
-    /// an upgrade's modifier.
+    /// its life only for a type whose upgrades read it, unless the book changed, and of those only
+    /// the units of a type with upgrades or that hold an upgrade's modifier.
     pub(crate) fn want(
         book: Res<'_, ById<UnitType, TypeUpgrades>>,
         (players, changed_players): (
@@ -77,7 +77,8 @@ impl UpgradeGrants {
                 })
                 || tags.as_ref().is_some_and(DetectChanges::is_changed)
                 || modifiers.is_changed()
-                || life.as_ref().is_some_and(DetectChanges::is_changed)
+                || (life.as_ref().is_some_and(DetectChanges::is_changed)
+                    && upgrades.is_some_and(TypeUpgrades::reads_life))
                 || again.binary_search(&entity).is_ok();
             let held = modifiers.iter().filter(|carried| {
                 let instance = carried.instance;
@@ -111,22 +112,13 @@ impl UpgradeGrants {
                     }
                 }
             }
-            let released = held
-                .map(|carried| carried.instance.id)
-                .filter(|modifier| !wanted.contains(modifier));
-            let grant = |modifier, rank| Grant {
-                modifier,
-                from: GrantFrom::Nobody,
-                hold: Hold::Upgrade,
-                action: None,
-                rank,
-            };
-            let mut run = grants.of(entity, id);
-            wanted
-                .iter()
-                .map(|&modifier| grant(modifier, Some(Rank::FIRST)))
-                .chain(released.map(|modifier| grant(modifier, None)))
-                .for_each(|grant| run.push(grant));
+            wanted.sort_unstable();
+            grants.of(entity, id).hold_exactly(
+                Hold::Upgrade,
+                GrantFrom::Nobody,
+                &wanted,
+                Some(&modifiers),
+            );
         }
     }
 }

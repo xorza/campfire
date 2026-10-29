@@ -8,7 +8,7 @@ use campfire_sim::StableId;
 use campfire_values::{ActionId, ModifierId, Rank};
 
 use crate::lifetime::Hold;
-use crate::modifiers::Modifiers;
+use crate::modifiers::{Carried, Modifiers};
 
 /// The grants the stage's sources want, one run for each unit a source visited, in the order the
 /// sources pushed them, which `GrantPass` applies: each source keeps its own test of what changed,
@@ -147,6 +147,52 @@ impl Grants {
 }
 
 impl UnitRun<'_> {
+    /// Pushes the grants that make the unit hold exactly `wanted`, each from `from` by `hold` at
+    /// rank 1, of what it holds now, `modifiers`: an apply of each wanted one it does not hold so,
+    /// and a release of each it holds so and does not want. Every source of a hold of rank 1 diffs
+    /// alike, so a unit whose holds stand opens no run (04-capabilities/stats.md, Passives by one
+    /// pass).
+    pub fn hold_exactly(
+        &mut self,
+        hold: Hold,
+        from: GrantFrom,
+        wanted: &[ModifierId],
+        modifiers: Option<&Modifiers>,
+    ) {
+        let source = match from {
+            GrantFrom::Itself => Some(self.unit),
+            GrantFrom::Nobody => None,
+        };
+        let held = modifiers
+            .into_iter()
+            .flat_map(Modifiers::iter)
+            .filter(|carried| {
+                let instance = carried.instance;
+                instance.source == source && instance.lifetime.held_by(hold)
+            });
+        let grant = |modifier, rank| Grant {
+            modifier,
+            from,
+            hold,
+            action: None,
+            rank,
+        };
+        for carried in held.clone() {
+            let instance = carried.instance;
+            if !wanted.contains(&instance.id) {
+                self.push(grant(instance.id, None));
+            }
+        }
+        for &modifier in wanted {
+            let first = |carried: Carried<'_>| {
+                carried.instance.id == modifier && carried.instance.rank == Rank::FIRST
+            };
+            if !held.clone().any(first) {
+                self.push(grant(modifier, Some(Rank::FIRST)));
+            }
+        }
+    }
+
     /// Adds `grant` to the unit's run, which it opens first.
     pub fn push(&mut self, grant: Grant) {
         let grants = &mut *self.grants;

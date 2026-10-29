@@ -4,7 +4,7 @@ use campfire_common::DeclaredName;
 use derive_more::Display;
 
 use crate::zero_hour::error::NameError;
-use crate::zero_hour::format::ini::object_ini::IniObject;
+use crate::zero_hour::format::ini::object_ini::ini_object::IniObject;
 use crate::zero_hour::import_name::ImportName;
 
 /// The name of a unit type of the package, which keys each map of the stages' types: an object's
@@ -30,8 +30,7 @@ impl TypeName {
 
     /// The id of `kind` of it, `<kind>_<name>`, as an action or a gather names its type.
     pub(crate) fn id(&self, kind: &str) -> Result<DeclaredName, NameError> {
-        let id = format!("{kind}_{}", self.0);
-        DeclaredName::new(&id).ok_or(NameError::TooLong(id))
+        ImportName::of(self.0.as_str().as_bytes()).id(kind)
     }
 }
 

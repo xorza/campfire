@@ -82,10 +82,6 @@ const TABLE_ROWS: u32 = 100;
 /// The events of a read unless a call names a limit.
 const EVENTS: u32 = 50;
 
-/// The wall time of a run unless a call names one: under Claude Code's two minutes, after which
-/// it sends a call to the background.
-const RUN_WALL_SECONDS: u32 = 110;
-
 /// The tools, in the one order `tools/list` gives.
 fn tools() -> Vec<Tool> {
     ToolName::ALL.into_iter().map(tool_of).collect()
@@ -262,7 +258,7 @@ impl GameTools {
                 };
                 let ask = ConsoleAsk::Run(RunAsk {
                     to,
-                    wall_seconds: Some(params.wall_seconds.unwrap_or(RUN_WALL_SECONDS)),
+                    wall_seconds: params.wall_seconds,
                 });
                 Self::reply_text(&game.ask_until(ask, cancelled).await?)
             }

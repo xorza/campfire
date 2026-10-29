@@ -6,7 +6,7 @@
 # A hero that fells it takes 60 experience.
 experience = { gives = 60 }
 tags = ["creep"]
-params = { aggro_range = "6.0", help_range = "5.0", help_window_ms = 2000 }
+params = { aggro_range = "6.0", avatars_first = 0, help_range = "5.0", help_window_ms = 2000 }
 pools = ["health"]
 stats = { health = { base = 300 }, attack_damage = { base = 25 }, attack_speed = { base = "1.25" }, move_speed = { base = "3.75" } }
 combat = {}

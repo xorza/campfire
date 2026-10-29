@@ -101,7 +101,7 @@ impl<'a> UnitLife<'a> {
 }
 
 impl SimComponent for Life {
-    const NAME: &'static str = "stats.life";
+    const NAME: &'static str = "units.life";
     type Host = UnitEntity;
 
     // A life in a match whose types have none, as a mode that names no life pool gives none, has

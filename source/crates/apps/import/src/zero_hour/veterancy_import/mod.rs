@@ -16,7 +16,7 @@ use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::game_data_ini::{GameDataIni, VeterancyBonus};
 use crate::zero_hour::format::ini::object_ini::ini_experience::IniExperience;
 use crate::zero_hour::import_name::ImportName;
-use crate::zero_hour::import_names::TypedObject;
+use crate::zero_hour::import_names::NamedType;
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::type_name::TypeName;
 
@@ -79,12 +79,12 @@ impl VeterancyImport {
     /// An error for a bonus of `game_data` that is no number the engine holds.
     pub(crate) fn of<'n, 'r: 'n>(
         game_data: &GameDataIni,
-        types: impl Iterator<Item = TypedObject<'n, 'r>>,
+        types: impl Iterator<Item = NamedType<'n, 'r>>,
         names: &RulesNames,
     ) -> Result<Self, ZeroHourError> {
         let mut import = Self::default();
         let mut trained = BTreeMap::<TypeName, (Thresholds, Vec<StartData>)>::new();
-        for TypedObject {
+        for NamedType {
             name,
             object,
             imported,

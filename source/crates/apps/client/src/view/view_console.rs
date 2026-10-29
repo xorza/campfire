@@ -18,19 +18,19 @@ use bevy::time::{Real, Time};
 use bevy::transform::TransformSystems;
 use bevy::transform::components::GlobalTransform;
 use bevy::window::{PrimaryWindow, Window};
-use campfire_codec::{Base64, Png, RgbaImage};
+use campfire_codec::{Base64, Png};
 use campfire_common::StableNumber;
 use campfire_console::{
-    CameraAsk, ConsoleAnswer, ConsoleAsk, ConsoleRefusal, Reply, Request, RequestId, ShotRegion,
-    WindowShot,
+    CameraAsk, ConsoleAnswer, ConsoleRefusal, Reply, RequestId, ShotRegion, WindowShot,
 };
 use campfire_host::ReceivedTick;
-use campfire_net::ClientConsole;
+use campfire_net::{ClientConsole, ViewAsk, ViewRequest};
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
 
 use crate::view::camera_rig::CameraRig;
 use crate::view::drawing::Drawing;
 use crate::view::shot_frame::ShotFrame;
+use crate::window_frame;
 
 /// The client's view answers its console: a screenshot of its window, a rectangle of it or the
 /// box round units on the screen, scaled to Claude's bounds and carried as a PNG in base64, and
@@ -104,16 +104,15 @@ impl ViewConsolePlugin {
         mut shots: ResMut<'_, ViewShots>,
         mut reads: ViewReads<'_, '_>,
         mut commands: Commands<'_, '_>,
-        mut views: Local<'_, Vec<Request>>,
+        mut views: Local<'_, Vec<ViewRequest>>,
     ) {
         let now = reads.time.elapsed();
         let tick = (reads.received.get()).and_then(|next| next.get().checked_sub(1));
         console.take_views(&mut views);
         for request in views.drain(..) {
             let answer = match request.ask {
-                ConsoleAsk::Camera(ask) => Some(reads.camera(&ask)),
-                ConsoleAsk::Screenshot(ask) => match reads.region(&ask.region, shots.last.as_ref())
-                {
+                ViewAsk::Camera(ask) => Some(reads.camera(&ask)),
+                ViewAsk::Screenshot(ask) => match reads.region(&ask.region, shots.last.as_ref()) {
                     Ok(region) => {
                         let pending = PendingShot {
                             id: request.id,
@@ -132,7 +131,6 @@ impl ViewConsolePlugin {
                     }
                     Err(refusal) => Some(ConsoleAnswer::Refused(refusal)),
                 },
-                _ => unreachable!("the view takes the requests of the view alone"),
             };
             if let Some(answer) = answer {
                 console.answer(Reply {
@@ -165,8 +163,8 @@ impl ViewConsolePlugin {
             return;
         };
         shots.pending.remove(at);
-        let answer = match Self::rgba(frame) {
-            Some(frame) => {
+        let answer = match window_frame::rgba(frame) {
+            Ok(frame) => {
                 let size = UVec2::new(frame.width, frame.height);
                 match ShotFrame::of(shot.region, size) {
                     Some(cut) => {
@@ -184,23 +182,13 @@ impl ViewConsolePlugin {
                     None => ConsoleAnswer::Refused(ConsoleRefusal::OffScreen),
                 }
             }
-            None => ConsoleAnswer::Refused(ConsoleRefusal::NoFrame),
+            Err(_) => ConsoleAnswer::Refused(ConsoleRefusal::NoFrame),
         };
         console.answer(Reply {
             id: shot.id,
             tick: shot.tick,
             answer,
         });
-    }
-
-    /// The pixels of `frame` as 8-bit RGBA; none for a frame Bevy does not convert.
-    fn rgba(frame: &Image) -> Option<RgbaImage> {
-        let image = frame.clone().try_into_dynamic().ok()?.into_rgba8();
-        Some(RgbaImage {
-            width: image.width(),
-            height: image.height(),
-            pixels: image.into_raw(),
-        })
     }
 }
 

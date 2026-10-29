@@ -6,9 +6,9 @@ use campfire_common::PlayerSlot;
 use campfire_players::{Player, PlayerRows};
 use campfire_sim::{Removals, StableId};
 use campfire_units::{Dead, Owner};
-use campfire_values::{ModifierId, Rank, Relation, TagSet, UnitTags};
+use campfire_values::{ModifierId, Relation, TagSet, UnitTags};
 
-use crate::grants::{Grant, GrantFrom, Grants};
+use crate::grants::{GrantFrom, Grants};
 use crate::lifetime::Hold;
 use crate::modifier_book::ModifierBook;
 use crate::modifiers::Modifiers;
@@ -95,26 +95,13 @@ impl PlayerGrants {
                     affects.is_none_or(|filter| filter.selects(Relation::Friendly, tags))
                 }));
             }
-            let held = modifiers.iter().filter(|carried| {
-                let instance = carried.instance;
-                instance.source.is_none() && instance.lifetime.held_by(Hold::Player)
-            });
-            let released = held
-                .map(|carried| carried.instance.id)
-                .filter(|modifier| !wanted.contains(modifier));
-            let grant = |modifier, rank| Grant {
-                modifier,
-                from: GrantFrom::Nobody,
-                hold: Hold::Player,
-                action: None,
-                rank,
-            };
-            let mut run = grants.of(entity, id);
-            wanted
-                .iter()
-                .map(|&modifier| grant(modifier, Some(Rank::FIRST)))
-                .chain(released.map(|modifier| grant(modifier, None)))
-                .for_each(|grant| run.push(grant));
+            wanted.sort_unstable();
+            grants.of(entity, id).hold_exactly(
+                Hold::Player,
+                GrantFrom::Nobody,
+                &wanted,
+                Some(&modifiers),
+            );
         }
     }
 }

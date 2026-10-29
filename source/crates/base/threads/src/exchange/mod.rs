@@ -1,7 +1,9 @@
 use std::mem;
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError};
 
-use campfire_threads::{ThreadName, Worker, WorkerLock};
+use crate::thread_name::ThreadName;
+use crate::worker::Worker;
+use crate::worker_lock::WorkerLock;
 
 /// One job at a time on a worker: the caller fills a job and sends it, and the worker does it and
 /// gives it back with its answer, so the next job reuses its buffers and a steady state allocates

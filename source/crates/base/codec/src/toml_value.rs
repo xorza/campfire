@@ -23,6 +23,33 @@ impl TomlValue {
     }
 
     /// The value as a `T`.
+    /// Every string it holds, at any depth: each value of a table and each item of an array.
+    pub fn strings(&self) -> Vec<&str> {
+        let mut strings = Vec::new();
+        Self::strings_of(&self.0, &mut strings);
+        strings
+    }
+
+    fn strings_of<'a>(value: &'a toml::Value, into: &mut Vec<&'a str>) {
+        match value {
+            toml::Value::String(text) => into.push(text),
+            toml::Value::Array(items) => {
+                for item in items {
+                    Self::strings_of(item, into);
+                }
+            }
+            toml::Value::Table(table) => {
+                for value in table.values() {
+                    Self::strings_of(value, into);
+                }
+            }
+            toml::Value::Integer(_)
+            | toml::Value::Float(_)
+            | toml::Value::Boolean(_)
+            | toml::Value::Datetime(_) => {}
+        }
+    }
+
     pub fn read<T: DeserializeOwned>(self) -> Result<T, TomlError> {
         Ok(T::deserialize(self.0)?)
     }
@@ -30,5 +57,30 @@ impl TomlValue {
     /// The value as `seed` reads it, as a type whose read a registry picks.
     pub fn read_with<'de, S: DeserializeSeed<'de>>(self, seed: S) -> Result<S::Value, TomlError> {
         Ok(seed.deserialize(self.0)?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::*;
+
+    #[test]
+    fn a_value_gives_every_string_it_holds_at_any_depth() {
+        // A table of a string, a number, and an array of a string and a table of one.
+        #[derive(Serialize)]
+        struct Held<'a> {
+            a: &'a str,
+            n: i64,
+            list: (&'a str, BTreeMap<&'a str, &'a str>),
+        }
+        let inner = BTreeMap::from([("c", "deep")]);
+        let value = TomlValue::of(&Held {
+            a: "top",
+            n: 3,
+            list: ("item", inner),
+        });
+        assert_eq!(value.strings(), ["top", "item", "deep"]);
     }
 }

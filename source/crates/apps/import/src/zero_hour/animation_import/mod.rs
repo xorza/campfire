@@ -3,35 +3,21 @@ use std::collections::{BTreeMap, BTreeSet};
 use bevy_math::Vec3;
 use campfire_client_files::{AnimationExtras, HiddenFrames};
 use campfire_codec::Json;
-use campfire_common::EnumAll;
 use gltf_json::animation::{Channel, Interpolation, Property, Sampler, Target};
 use gltf_json::extensions::animation::Animation as AnimationExtensions;
 use gltf_json::validation::Checked;
 use gltf_json::{Accessor, Animation, Extras, Index, Node};
-use serde::{Deserialize, Serialize};
 
 use crate::gltf::glb_builder::GlbBuilder;
 use crate::pose::RigidPose;
 use crate::quaternion::Quaternion;
+use crate::zero_hour::animation_drop_cause::AnimationDropCause;
 use crate::zero_hour::axes;
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::w3d::hierarchy::{Hierarchy, Pivot};
 use crate::zero_hour::format::w3d::w3d_animation::{PivotChannels, W3dAnimation};
 use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::pivot_nodes::PivotNodes;
-
-/// Why the import drops an animation a look names.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, Serialize, Deserialize)]
-pub enum AnimationDropCause {
-    /// No file of the install holds it: its file, `<animation>.w3d` of its name
-    /// `<hierarchy>.<animation>`, is missing or holds no animation of its name.
-    Missing,
-    /// No file of the install holds the hierarchy it names.
-    NoHierarchy,
-    /// Its hierarchy has no pivot past its root, which `HTreeClass::Anim_Update` never moves, so
-    /// it moves nothing.
-    NoPivot,
-}
 
 /// What an animation's name gives: its glTF and its poses at its ends, or why the import drops
 /// it.

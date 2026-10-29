@@ -15,7 +15,7 @@ use campfire_protocol::{
     Delegation, InputRules, PlayerSlotPlan, PlayerSlotStart, SeedChain, SessionHeader, SessionLog,
     SessionPrivate, SessionTerms,
 };
-use campfire_runner::{CheckedTerms, HostChoices, SessionRules};
+use campfire_runner::{CheckedTerms, HostChoices, OfferedTerms, SessionRules};
 use campfire_values::TeamSet;
 use campfire_visibility::HostVisibility;
 use tracing::info;
@@ -109,9 +109,6 @@ impl AsRef<Offering> for Lobby {
 }
 
 impl Lobby {
-    /// The segments of a server's seed chain: the most checkpoints a session may take, less one.
-    const SEGMENTS: NonZeroU32 = NonZeroU32::new(1024).unwrap();
-
     /// A new session of a server, as `new` opens it, its files kept under `data`: every player_slot
     /// the mode has, its seed chain fresh from the server's entropy, at the mode's default rate,
     /// its inputs within `InputRules::LAN`. An error when it does not open or keeps no files.
@@ -123,7 +120,7 @@ impl Lobby {
         let tick_hz = manifest.tick_hz.default();
         let mut lobby = Self::new(LobbySetup {
             opening,
-            seed_chain: SeedChain::new(root, Self::SEGMENTS),
+            seed_chain: SeedChain::new(root, SeedChain::MAX_LEN),
             tick_hz,
             inputs: InputRules::LAN,
             player_slots,
@@ -195,7 +192,7 @@ impl Lobby {
             options,
             player_slots: player_slot_picks,
         };
-        let terms = session_rules
+        let OfferedTerms { terms, checked } = session_rules
             .terms(HostChoices {
                 server_key: server.signer.public_key(),
                 seed_commitment: seed_chain.commitment(),
@@ -215,7 +212,7 @@ impl Lobby {
             bots,
             server,
             joined: Vec::with_capacity(players),
-            checked: CheckedTerms { visibility, picks },
+            checked,
             files: None,
         })
     }

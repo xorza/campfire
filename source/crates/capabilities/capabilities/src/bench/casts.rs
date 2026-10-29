@@ -11,6 +11,7 @@ use campfire_measure::{Kind, Scale};
 use campfire_script::ScriptLimits;
 use campfire_sim::{Capability, SimWorld, StableId};
 use campfire_stats::Stats;
+use campfire_units::internals::Spawn;
 use campfire_units::{UnitTypeCore, Units};
 use campfire_values::{FilterData, PackageIndex, Team, TypeScope};
 use criterion::Criterion;
@@ -133,11 +134,15 @@ impl Casts {
         let mut targets = Vec::with_capacity(CASTERS);
         for nth in (0..).take(CASTERS) {
             let (x, z) = (8 * (nth % 10) - 40, 8 * (nth / 10) - 40);
-            let caster = Abilities::caster_at(&mut game, at(x, z), action, 1);
+            let caster = Spawn::named(&game, "caster", at(x, z))
+                .parts(Abilities::caster_parts(action, 1))
+                .place(&mut game);
             let mut middle = None;
             for square in 0..9 {
                 let position = at(x + 2 + square % 3, z - 1 + square / 3);
-                let enemy = Abilities::spawn_combatant(&mut game, position, Team::new(1), ());
+                let enemy = Spawn::named(&game, "combatant", position)
+                    .team(Team::new(1))
+                    .place(&mut game);
                 if square == 4 {
                     middle = Some((enemy, position));
                 }

@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_codec::TomlValue;
-use campfire_common::{DeclaredName, EnumAll};
+use campfire_common::DeclaredName;
 use campfire_stats::{UpgradeData, UpgradesData};
 use campfire_values::{Number, Stat};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::dropped::Losses;
@@ -13,11 +13,12 @@ use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::{
     HealthChange, IniUpgradeModule, UpgradeEffect,
 };
 use crate::zero_hour::import_name::ImportName;
-use crate::zero_hour::import_names::TypedObject;
+use crate::zero_hour::import_names::NamedType;
 use crate::zero_hour::portable_structure;
 use crate::zero_hour::production_import::ProductionImport;
 use crate::zero_hour::propaganda_import::PropagandaImport;
 use crate::zero_hour::type_name::TypeName;
+use crate::zero_hour::upgrade_drop_cause::UpgradeDropCause;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// Zero Hour's upgrades (04-capabilities/production.md, An upgrade is a modifier;
@@ -45,34 +46,6 @@ pub(crate) struct EffectModifier {
     tags: Vec<DeclaredName>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     stats: BTreeMap<Stat, Number>,
-}
-
-/// Why the import drops an upgrade module, or an object's sets.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, Serialize, Deserialize)]
-pub enum UpgradeDropCause {
-    /// A module of an effect other than an armor set, a weapon set, a weapon bonus, the most
-    /// life, a model condition or sub-objects, by its object's name and its class's.
-    Effect,
-    /// A `ModelConditionUpgrade` of no `ConditionFlag`, which sets none.
-    NoCondition,
-    /// A `MaxHealthUpgrade` of a `ChangeType` other than `ADD_CURRENT_HEALTH_TOO`, which the
-    /// engine's rising maximum does (04-capabilities/stats.md, A rising maximum raises the amount
-    /// by as much, and a falling one keeps it).
-    HealthChange,
-    /// A module of no trigger, or of one no file defines.
-    NoUpgrade,
-    /// A `MaxHealthUpgrade` whose `AddMaxHealth` is no whole number above 0.
-    BadNumber,
-    /// A module of a fired projectile's type, which holds its flight alone (09-zero-hour.md, The
-    /// import converts shells, splash, scatter, pitch, turrets and slow weapons).
-    Projectile,
-    /// The name of a trigger's or a conflict's modifier, or of the effect's, passes the bytes a
-    /// declared name holds.
-    LongName,
-    /// An object holds a weapon set or an armor set of a condition other than none or
-    /// `PLAYER_UPGRADE` alone, which it neither starts with nor takes by an upgrade, by the
-    /// object's name.
-    Set,
 }
 
 /// What a module's conversion reads: the rules, and the stats of the weapons' damage bonuses,
@@ -125,7 +98,7 @@ impl UpgradeImport {
     /// of an upgrade's or of a stage's of `combat`, as one table holds them.
     pub(crate) fn of<'n, 'r: 'n>(
         rules: &ZeroHourRules,
-        types: impl Iterator<Item = TypedObject<'n, 'r>>,
+        types: impl Iterator<Item = NamedType<'n, 'r>>,
         production: &ProductionImport,
         combat: &CombatImport,
     ) -> Result<Self, ZeroHourError> {
@@ -145,7 +118,7 @@ impl UpgradeImport {
         import
             .upgrades
             .extend(researched.filter_map(|action| action.researched()).cloned());
-        for TypedObject {
+        for NamedType {
             name,
             object,
             imported,

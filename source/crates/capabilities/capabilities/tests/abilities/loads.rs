@@ -241,8 +241,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
             .iter()
             .map(|&action| Order::one(caster, action))
             .collect();
-        let payload = Order::payload(&orders);
-        game.step_with(&[(PlayerSlot::new(slot), &payload)]);
+        game.step_orders(PlayerSlot::new(slot), &orders);
     };
     // Its rank, its points, and the shield its passive holds.
     let progress = |game: &Match| {

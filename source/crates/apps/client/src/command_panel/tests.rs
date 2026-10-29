@@ -605,7 +605,9 @@ fn a_research_is_done_as_its_player_or_its_unit_from_itself_holds_it() {
     assert!(!done(research(drill, ResearchHolder::Producer)));
     assert!(!done(Making::Train));
     // An upgrade of `drill` that `walls` holds back: the player's `walls` is held back, as its
-    // player holds `drill`; the player's `drill` is not, as no one holds `walls`.
+    // player holds `drill`, the trigger of the upgrade it withholds; the player's `drill` and the
+    // unit's, as the unit holds `walls`, which would withhold the upgrade `drill` buys; the
+    // unit's `walls` is not, as the unit holds no `drill` from itself.
     let upgrades = TypeUpgrades(Box::new([TypeUpgrade {
         triggers: Box::new([drill]),
         all: false,
@@ -617,7 +619,9 @@ fn a_research_is_done_as_its_player_or_its_unit_from_itself_holds_it() {
     let held_back =
         |making: Making| making.held_back(Some(&upgrades), |spec| done(Making::Research(spec)));
     assert!(held_back(research(walls, ResearchHolder::Player)));
-    assert!(!held_back(research(drill, ResearchHolder::Player)));
+    assert!(held_back(research(drill, ResearchHolder::Player)));
+    assert!(held_back(research(drill, ResearchHolder::Producer)));
+    assert!(!held_back(research(walls, ResearchHolder::Producer)));
     assert!(!held_back(Making::Train));
 }
 

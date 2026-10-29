@@ -20,12 +20,12 @@ use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::error::FloatError;
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::game_data_ini::GarrisonBonus;
-use crate::zero_hour::format::ini::object_ini::IniObject;
 use crate::zero_hour::format::ini::object_ini::ini_contain::{ContainClass, IniContain};
+use crate::zero_hour::format::ini::object_ini::ini_object::IniObject;
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::UpgradeEffect;
 use crate::zero_hour::format::ini::object_ini::object_kinds::{ObjectKind, ObjectKinds};
 use crate::zero_hour::game_time;
-use crate::zero_hour::import_names::TypedObject;
+use crate::zero_hour::import_names::NamedType;
 use crate::zero_hour::portable_structure;
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::supply_import::DOCK_RANGE;
@@ -69,11 +69,11 @@ impl ContainImport {
     /// garrison's bonus that is no number the engine holds.
     pub(crate) fn of<'n, 'r: 'n>(
         rules: &ZeroHourRules,
-        types: impl Iterator<Item = TypedObject<'n, 'r>>,
+        types: impl Iterator<Item = NamedType<'n, 'r>>,
         fire_points: &BTreeMap<DeclaredName, Vec<[f32; 2]>>,
     ) -> Result<Self, ZeroHourError> {
         let names = &rules.names;
-        let types: Vec<TypedObject<'n, 'r>> = types.collect();
+        let types: Vec<NamedType<'n, 'r>> = types.collect();
         let mut import = Self::default();
         let mut kinds = Vec::new();
         for typed in &types {

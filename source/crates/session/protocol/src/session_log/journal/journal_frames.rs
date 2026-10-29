@@ -1,4 +1,5 @@
 use campfire_common::{DomainHasher, HashDomain, Meaning, Value32};
+use std::ops::ControlFlow;
 
 use std::io::{self, BufReader, Read};
 
@@ -59,14 +60,15 @@ impl<'a> JournalFrames<'a> {
 
     /// Reads the whole frames of the journal `reader` gives, in order, one at a time, and gives
     /// each record to `visit`, as the iterator reads them from bytes in memory: the read stops at
-    /// the first frame that is short, too long, or whose hash fails. The memory it takes is one
+    /// the first frame that is short, too long, or whose hash fails, and at the record `visit`
+    /// breaks on, past which it reads nothing. The memory it takes is one
     /// record's and a buffer of `READ_BUFFER` bytes, so a frame's length and its record cost no
     /// read of their own. What it gives back is `whole`'s length: the bytes the tag and the
     /// whole frames take, the length to cut the journal to. An error for a reader that fails, and
     /// `NotJournal` for bytes that do not start with the journal's tag.
     pub fn stream(
         reader: impl Read,
-        visit: &mut dyn FnMut(&[u8]),
+        visit: &mut dyn FnMut(&[u8]) -> ControlFlow<()>,
     ) -> Result<u64, JournalStreamError> {
         let mut reader = BufReader::with_capacity(READ_BUFFER, reader);
         let mut tag = [0; Self::TAG.len()];
@@ -93,8 +95,10 @@ impl<'a> JournalFrames<'a> {
             if written != hash(body).as_bytes() {
                 return Ok(whole);
             }
-            visit(body);
             whole += len_of(LEN_BYTES + len + HASH_BYTES);
+            if visit(body).is_break() {
+                return Ok(whole);
+            }
         }
     }
 }

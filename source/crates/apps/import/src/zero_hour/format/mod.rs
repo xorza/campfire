@@ -6,6 +6,7 @@ pub(crate) mod byte_cursor;
 pub(crate) mod csf;
 pub(crate) mod error;
 pub(crate) mod game_float;
+pub(crate) mod game_frames;
 pub(crate) mod ini;
 pub(crate) mod look_conditions;
 pub(crate) mod map;

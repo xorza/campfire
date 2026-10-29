@@ -44,83 +44,52 @@ fn register_test_rollback(world: &mut World) {
         .register_rollback::<TestComponent>(prediction_history_id);
 }
 
-/// Rollback does not remove a predicted component
-/// when the rollback tick predates the first retained history entry.
-/// The history is then seeded with the current component value at the
-/// rollback tick, anchoring the replay/checksum base.
-#[test]
-fn rollback_before_the_history_keeps_the_predicted_component() {
-    let rollback_tick = NetTick(10);
+/// A world that rolls back to `rollback_tick`, with `TestComponent`'s rollback registered.
+fn rollback_world(rollback_tick: NetTick) -> World {
     let mut world = World::new();
     world.init_resource::<LocalTimeline>();
-    world.init_resource::<PredictionRegistry>();
     register_test_rollback(&mut world);
-
     world.insert_resource(PredictionSetup::default());
     world.insert_resource(Rollback(rollback_tick));
-
-    let mut history = PredictionHistory::<TestComponent>::default();
-    history.add(rollback_tick + 5, Some(TestComponent(1.0)));
-    let predicted = world.spawn((Predicted, TestComponent(1.0), history)).id();
-
     world
-        .run_system_once(RollbackPlugin::prepare_rollback::<TestComponent>)
-        .unwrap();
-
-    assert_eq!(
-        world.get::<TestComponent>(predicted),
-        Some(&TestComponent(1.0))
-    );
-    // No history sample existed at-or-before the rollback tick, so the
-    // history is seeded with the current component value.
-    assert_eq!(
-        world
-            .get::<PredictionHistory<TestComponent>>(predicted)
-            .unwrap()
-            .get_state_at_or_before(rollback_tick),
-        Some(&HistoryState::Updated(TestComponent(1.0)))
-    );
 }
 
-/// When the rollback tick predates the entity's confirmed history, the
-/// history seed is the oldest present confirmed sample — the nearest
-/// known data to the target — rather than the current live value. Live
-/// itself is still left in place.
+/// A rollback to tick 10, before the predicted history's first sample at 15, leaves the live
+/// component in place and seeds the history at the rollback tick: with the live value, 99, when
+/// no confirmed history exists, and with the oldest present confirmed sample, 12 of 12 and 14,
+/// the nearest known data, when one does.
 #[test]
-fn a_rollback_before_the_history_starts_from_its_oldest_confirmed_value() {
+fn a_rollback_before_the_history_keeps_the_component_and_seeds_its_history() {
     let rollback_tick = NetTick(10);
-    let mut world = World::new();
-    world.init_resource::<LocalTimeline>();
-    world.init_resource::<PredictionRegistry>();
-    register_test_rollback(&mut world);
-
-    world.insert_resource(PredictionSetup::default());
-    world.insert_resource(Rollback(rollback_tick));
-
-    let mut history = PredictionHistory::<TestComponent>::default();
-    history.add(NetTick(15), Some(TestComponent(99.0)));
     let mut confirmed = ConfirmedHistory::<TestComponent>::default();
     confirmed.insert_present(NetTick(12), TestComponent(12.0));
     confirmed.insert_present(NetTick(14), TestComponent(14.0));
-    let entity = world
-        .spawn((Predicted, TestComponent(99.0), history, confirmed))
-        .id();
+    for (confirmed, seed) in [(None, 99.0), (Some(confirmed), 12.0)] {
+        let mut world = rollback_world(rollback_tick);
+        let mut history = PredictionHistory::<TestComponent>::default();
+        history.add(NetTick(15), Some(TestComponent(99.0)));
+        let mut entity = world.spawn((Predicted, TestComponent(99.0), history));
+        if let Some(confirmed) = confirmed {
+            entity.insert(confirmed);
+        }
+        let entity = entity.id();
 
-    world
-        .run_system_once(RollbackPlugin::prepare_rollback::<TestComponent>)
-        .unwrap();
-
-    assert_eq!(
-        world.get::<TestComponent>(entity),
-        Some(&TestComponent(99.0))
-    );
-    assert_eq!(
         world
-            .get::<PredictionHistory<TestComponent>>(entity)
-            .unwrap()
-            .get_state_at_or_before(rollback_tick),
-        Some(&HistoryState::Updated(TestComponent(12.0)))
-    );
+            .run_system_once(RollbackPlugin::prepare_rollback::<TestComponent>)
+            .unwrap();
+
+        assert_eq!(
+            world.get::<TestComponent>(entity),
+            Some(&TestComponent(99.0))
+        );
+        assert_eq!(
+            world
+                .get::<PredictionHistory<TestComponent>>(entity)
+                .unwrap()
+                .get_state_at_or_before(rollback_tick),
+            Some(&HistoryState::Updated(TestComponent(seed)))
+        );
+    }
 }
 
 /// Rollback churn (two rollbacks in one window, the second deeper than
@@ -131,12 +100,7 @@ fn a_rollback_before_the_history_starts_from_its_oldest_confirmed_value() {
 /// the past and permanently diverge the replay.
 #[test]
 fn a_rollback_keeps_the_history_before_its_tick_for_a_deeper_one() {
-    let mut world = World::new();
-    world.init_resource::<LocalTimeline>();
-    world.init_resource::<PredictionRegistry>();
-    register_test_rollback(&mut world);
-
-    world.insert_resource(PredictionSetup::default());
+    let mut world = rollback_world(NetTick(12));
 
     let mut history = PredictionHistory::<TestComponent>::default();
     for tick in [8, 10, 12, 15] {
@@ -147,7 +111,6 @@ fn a_rollback_keeps_the_history_before_its_tick_for_a_deeper_one() {
     // First rollback to tick 12: entries at-or-before 12 are preserved,
     // strictly newer entries are discarded, and the component restores
     // to the floor sample at the target.
-    world.insert_resource(Rollback(NetTick(12)));
     world
         .run_system_once(RollbackPlugin::prepare_rollback::<TestComponent>)
         .unwrap();
@@ -1765,39 +1728,6 @@ fn a_rollback_applies_a_remote_removal() {
     assert!(
         stepper.client_world(0).get::<CompFull>(predicted).is_none(),
         "Remotely-removed component should be absent after rollback"
-    );
-}
-
-/// If a predicted component has no history sample at-or-before the rollback
-/// tick, rollback should not treat that absence as an authoritative removal.
-#[test]
-fn predicted_component_kept_when_no_history_sample_at_rollback_tick() {
-    let (mut stepper, predicted) = setup();
-
-    stepper.frame_step(3);
-    let tick = stepper.client_tick(0);
-
-    assert!(
-        stepper.client_world(0).get::<CompFull>(predicted).is_some(),
-        "precondition: component is present before the rollback"
-    );
-
-    {
-        let world = stepper.client_world_mut(0);
-        let mut history = world
-            .get_mut::<PredictionHistory<CompFull>>(predicted)
-            .expect("prediction history exists for predicted component");
-        history.clear();
-        history.add(tick + 5, Some(CompFull(1.0)));
-    }
-
-    let rollback_tick = tick - 2;
-    trigger_state_rollback(&mut stepper, rollback_tick);
-    stepper.frame_step(1);
-
-    assert!(
-        stepper.client_world(0).get::<CompFull>(predicted).is_some(),
-        "present predicted component should not be removed when no history sample exists at-or-before the rollback tick"
     );
 }
 

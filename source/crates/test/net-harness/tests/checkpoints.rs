@@ -5,11 +5,10 @@
 //! snapshot is not written ends the server.
 
 use std::num::{NonZeroU8, NonZeroU32};
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bevy_app::AppExit;
-use campfire_common::{ExitStatus, StateHash, Tick};
+use campfire_common::{ExitStatus, Tick};
 use campfire_host::internals::TickHashes;
 use campfire_host::{
     AbortError, CheckpointFailed, LogFilled, MatchBeginError, Publisher, SeedsRanOut, ServerDir,
@@ -21,10 +20,11 @@ use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Entropy, JournalFrames, Outcome, SeedChain, SessionLog, Signer};
-use campfire_runner::{Replay, Session, SessionWorld};
-use campfire_sim::StateRegistry;
+use campfire_runner::{Session, SessionWorld};
 use campfire_store::internals::TestDir;
 use campfire_store::{EntryKind, InputFile};
+
+use crate::{PlayedMatch, published_replay, snapshots};
 
 /// The chain of the scenario's sessions, of room for three checkpoints.
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::new(4).unwrap());
@@ -33,7 +33,7 @@ const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::new(4).unwrap(
 /// after 180 steps with both records logged; with the state hash after each tick the server ran.
 /// The second checkpoint's delta holds the changes from tick 130 on: the server sent those before
 /// it, 100 ticks after the first.
-fn checkpointed(test_dir: &TestDir) -> (InProcessMatch, Vec<StateHash>) {
+fn checkpointed(test_dir: &TestDir) -> PlayedMatch {
     let mut local = InProcessMatch::new(InProcessSetup::duo(LinkModel::perfect(), SEED_CHAIN));
     local.keep_data(test_dir.path("data"));
     local.start_match();
@@ -51,63 +51,31 @@ fn checkpointed(test_dir: &TestDir) -> (InProcessMatch, Vec<StateHash>) {
         }
         local.server_mut().world_mut().settle_checkpoint();
     }
-    assert_eq!(log(&local).checkpoints().count(), 2);
+    // The live log holds its latest checkpoint alone, as its journal holds the first.
+    assert_eq!(log(&local).checkpoints().count(), 1);
     let hashes = local
         .server()
         .world()
         .resource::<TickHashes>()
         .get()
         .to_vec();
-    (local, hashes)
+    PlayedMatch {
+        game: local,
+        hashes,
+    }
 }
 
 fn log(local: &InProcessMatch) -> &SessionLog {
     local.server().world().resource::<Session>().log()
 }
 
-/// The directory the session's snapshots go to.
-fn snapshots(test_dir: &TestDir, local: &InProcessMatch) -> PathBuf {
-    let id = log(local).session_id();
-    test_dir
-        .path("data/sessions")
-        .join(id.to_string())
-        .join("snapshots")
-}
-
-/// Ends the session aborted, publishes its log, and checks it as a verifier does with the
-/// snapshots in `snapshots`: each snapshot is the one its checkpoint fingerprints and restores to
-/// its state hash, and the replay from tick 0 meets each checkpoint's hash and the result.
-fn verifies(local: &mut InProcessMatch, snapshots: &Path) {
-    local.server_mut().world_mut().end_session().unwrap();
-    local.server_mut().world_mut().session_mut().close_journal();
-    let held = log(local);
-    let revealed = held.revealed_seeds().unwrap();
-    let last = revealed.seed(held.segment()).unwrap().clone();
-    let id = held.session_id();
-    let data = local.server().world().resource::<ServerDir>();
-    let file = SessionDir::publish(data, id, &last).unwrap();
-    let bytes = InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap();
-    let published = SessionLog::decode(&bytes).unwrap();
-    let mut replay = Replay::of(published, local.packages()).unwrap();
-    let records: Vec<_> = replay
-        .game()
-        .session()
-        .log()
-        .checkpoints()
-        .cloned()
-        .collect();
-    for record in &records {
-        let file = snapshots.join(record.snapshot.to_string());
-        let snapshot = InputFile::read(&file, StateRegistry::MAX_SNAPSHOT_LEN).unwrap();
-        assert_eq!(replay.check_snapshot(record, &snapshot), Ok(()));
-    }
-    assert_eq!(replay.run(), Ok(()));
-}
-
 #[test]
 fn a_restart_resumes_from_the_latest_checkpoint_and_its_log_verifies_with_its_snapshots() {
     let test_dir = TestDir::new();
-    let (mut local, before) = checkpointed(&test_dir);
+    let PlayedMatch {
+        game: mut local,
+        hashes: before,
+    } = checkpointed(&test_dir);
     let cut = local.next_tick(End::Server);
     local.restart_server();
     // The restore builds the match from the snapshot before tick 160, and replays from there.
@@ -119,7 +87,7 @@ fn a_restart_resumes_from_the_latest_checkpoint_and_its_log_verifies_with_its_sn
         local.step();
     }
     let snapshots = snapshots(&test_dir, &local);
-    verifies(&mut local, &snapshots);
+    assert_eq!(published_replay(&mut local, &snapshots).run(), Ok(()));
 }
 
 #[test]
@@ -127,7 +95,10 @@ fn an_abort_resumes_from_the_latest_checkpoint_as_a_restart_does() {
     // Stopped after its checkpoint before tick 160: the abort builds the match from that
     // snapshot, and its aborted result holds the state the server left.
     let test_dir = TestDir::new();
-    let (mut local, before) = checkpointed(&test_dir);
+    let PlayedMatch {
+        game: mut local,
+        hashes: before,
+    } = checkpointed(&test_dir);
     let cut = local.next_tick(End::Server);
     let snapshots = snapshots(&test_dir, &local);
     let latest = log(&local).checkpoints().last().unwrap().snapshot;
@@ -164,7 +135,10 @@ fn an_abort_resumes_from_the_latest_checkpoint_as_a_restart_does() {
 #[test]
 fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
     let test_dir = TestDir::new();
-    let (mut local, before) = checkpointed(&test_dir);
+    let PlayedMatch {
+        game: mut local,
+        hashes: before,
+    } = checkpointed(&test_dir);
     let second = log(&local).checkpoint_at(Tick::new(160)).unwrap().clone();
     let snapshots = snapshots(&test_dir, &local);
     let id = log(&local).session_id();
@@ -213,7 +187,7 @@ fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
         (second.state_hash, second.snapshot, &second.carry)
     );
     assert!(test_dir.exists(&file));
-    verifies(&mut local, &snapshots);
+    assert_eq!(published_replay(&mut local, &snapshots).run(), Ok(()));
 }
 
 #[test]

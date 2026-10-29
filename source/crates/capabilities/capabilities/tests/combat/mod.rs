@@ -1,9 +1,3 @@
-use crate::combatant;
-use campfire_declarations::internals::BookLoad;
-use campfire_declarations::{ById, Role};
-use campfire_units::internals::Spawn;
-use campfire_units::{BodyForm, BodyShape, Died, Layer, MapSpace, Teleported};
-use campfire_values::TagSet;
 use std::collections::BTreeMap;
 use std::num::{NonZeroI64, NonZeroU16, NonZeroU32};
 
@@ -26,6 +20,8 @@ use campfire_codec::Binary;
 use campfire_combat::internals::{Armed, Attack, TestWeapon};
 use campfire_combat::*;
 use campfire_common::{DeclaredName, PlayerSlot, SegmentSeed, Tick, Ticks};
+use campfire_declarations::internals::BookLoad;
+use campfire_declarations::{ById, Role};
 use campfire_geometry::Metric;
 use campfire_math::{Num, Rng, Vec3};
 use campfire_navigation::{FlightData, Navigation};
@@ -40,15 +36,20 @@ use campfire_stats::{
     Application, Ends, Lifetime, ModifierClocks, ModifierData, Modifiers, NewInstance, PoolBook,
     Pools, StatBook, StatRule, Stats, StatsSystems,
 };
+use campfire_units::internals::Spawn;
+use campfire_units::{BodyForm, BodyShape, Died, Layer, MapSpace, Teleported};
 use campfire_units::{
     Dead, Deaths, Fallen, Life, MapBook, Owner, PoolCost, PoolId, SpawnPoint, StatId, UnitTypeCore,
     Units, UnitsWorld,
 };
+use campfire_values::TagSet;
 use campfire_values::{
     ActionId, Allegiance, Block, DamageKind, FilterData, ModifierId, NameId, Names, PackageIndex,
     Rank, Relation, RelationSet, ResourceId, Stat, Team, TypeScope, UnitTags, UnitType,
     VisionShare,
 };
+
+use crate::combatant;
 
 /// 100 health, and 30 damage within 2 m, 2 ticks after the start of an attack every 5 ticks.
 const fn fighter() -> Armed {
@@ -530,7 +531,7 @@ fn a_preferred_weapon_comes_first_cooling_or_not_then_the_most_damage_its_armor_
     let wielder = wielder(&mut game, ActionSlots::new(slots), &[]);
     // Targets of no armor, and of armors that take a quarter of the second kind, none of the
     // first, and none of either.
-    let kinds: Names<DamageKind> = ["kinetic", "blast"].into_iter().collect();
+    let kinds: Names<DamageKind> = Names::unique(["kinetic", "blast"]);
     let armored = |game: &mut Match, shares: &[(&str, i64, i64)]| {
         let unit_type = Units::load_next_type(game, &UnitTypeCore::default());
         dummy().give(game, unit_type);
@@ -1360,7 +1361,7 @@ fn load_damage_stats(world: &mut World) {
         heal_scale: Some(heal),
         ..ModeCombatData::default()
     };
-    let pools = Names::<PoolId>::from([health.as_str()]);
+    let pools = Names::<PoolId>::unique([health.as_str()]);
     let life = combat.life_pool(&pools).unwrap();
     let bound = CombatBook::new(&combat, Match::TEST_RATE, |stat| {
         book.named(stat).ok_or_else(|| stat.clone())

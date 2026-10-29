@@ -1,6 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use bevy_math::{Quat, Vec3};
+
+use crate::quaternion::Quaternion;
+use crate::zero_hour::format::game_frames;
 use campfire_client_files::{
     ActionLook, AlphaKey, Blend, ClientUnit, ColorKey, EffectList, EffectSets, EffectsFile,
     EmissionVelocity, EmissionVolume, ListedSystem, ParticleSystem, SlaveSystem, Spread, TrackLook,
@@ -30,6 +33,7 @@ use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::model_writer::ImportedLooks;
 use crate::zero_hour::sound_drop_cause::SoundDropCause;
 use crate::zero_hour::sound_import::SoundImport;
+use crate::zero_hour::type_name::TypeName;
 
 /// The install's particle systems and effect lists as the engine's effects file (02-engine-core.md,
 /// Effects are a format of the engine; 09-zero-hour.md, The import hands the client consistent
@@ -54,12 +58,6 @@ pub(crate) struct EffectSources<'a, F> {
     pub(crate) cap: u32,
     pub(crate) texture: F,
 }
-
-/// The game's logic frame, in seconds, the step its systems count in (`LOGICFRAMES_PER_SECOND`).
-const STEP: f32 = 1.0 / 30.0;
-/// A millisecond in steps, as the game converts a nugget's delay
-/// (`ConvertDurationFromMsecsToFrames`).
-const STEPS_PER_MS: f32 = 30.0 / 1000.0;
 
 impl EffectsImport {
     /// The width of a track whose model names no tread bones, 1.4 cells of 10
@@ -188,7 +186,7 @@ impl EffectsImport {
             sounds: sounds.events().clone(),
             lists,
         };
-        let file = EffectsFile::new(STEP, sources.cap, sets)?;
+        let file = EffectsFile::new(game_frames::SECONDS, sources.cap, sets)?;
         Ok(Self {
             file,
             textures,
@@ -220,8 +218,9 @@ impl EffectsImport {
         } = looks;
         let mut losses = Losses::default();
         for object in objects.objects() {
-            let declared = ImportName::object(object).declared()?;
-            let Some(look) = looks.get_mut(&declared) else {
+            let name = TypeName::of(object)?;
+            let declared = name.declared();
+            let Some(look) = looks.get_mut(declared) else {
                 continue;
             };
             let phases = object.slow_death().map(|death| &death.phases);
@@ -275,17 +274,18 @@ impl EffectsImport {
                 {
                     match texture(track) {
                         Some(path) => {
-                            let width = track_widths.get(&declared).copied();
+                            let width = track_widths.get(declared).copied();
                             let width = width.unwrap_or(Self::TRACK_WIDTH);
-                            let width =
-                                game_float::to_num(width).map_err(|_| ZeroHourError::Track {
-                                    name: object.name.clone(),
-                                })?;
-                            tread.track = Some(TrackLook {
-                                texture: game_path::texture(&path)?,
-                                width,
-                            });
-                            self.textures.insert(path);
+                            match game_float::to_num(width) {
+                                Ok(width) => {
+                                    tread.track = Some(TrackLook {
+                                        texture: game_path::texture(&path)?,
+                                        width,
+                                    });
+                                    self.textures.insert(path);
+                                }
+                                Err(_) => losses.drop(name, EffectDropCause::Number),
+                            }
                         }
                         None => losses.drop(name, EffectDropCause::Texture),
                     }
@@ -430,11 +430,10 @@ impl EffectsImport {
         // The game's rotations, about its x, its y and its z in turn, each of a local frame, as
         // one rotation on the engine's axes: its y the engine's −z, its z the engine's y.
         let [x, y, z] = nugget.rotate;
-        let rotation =
-            Quat::from_rotation_x(x) * Quat::from_rotation_z(-y) * Quat::from_rotation_y(z);
+        let rotation = Quaternion::about_x(x) * Quaternion::about_z(-y) * Quaternion::about_y(z);
         let steps = |spread: Spread| Spread {
-            low: spread.low * STEPS_PER_MS,
-            high: spread.high * STEPS_PER_MS,
+            low: spread.low * game_frames::PER_MS,
+            high: spread.high * game_frames::PER_MS,
         };
         Some(ListedSystem {
             system: names[nugget.name.as_str()].clone(),
@@ -443,7 +442,7 @@ impl EffectsImport {
             radius: nugget.radius,
             height: nugget.height,
             delay: (nugget.delay.high >= 0.0).then(|| steps(nugget.delay)),
-            rotation,
+            rotation: Quat::from_array(rotation.to_array()),
             orient_to_object: nugget.orient_to_object,
             attach_to_object: nugget.attach_to_object,
             at_ground: nugget.at_ground,

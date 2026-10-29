@@ -58,29 +58,31 @@ impl<R: OrderRefs> Directive<R> {
 }
 
 impl Directive {
+    /// Each capability whose commands hold a directive, with the decoder of its directives.
+    const DECODERS: [(Capability, DirectiveDecoder); 4] = [
+        (OrdersDirective::CAPABILITY, Self::decode::<OrdersDirective>),
+        (
+            ProgressionDirective::CAPABILITY,
+            Self::decode::<ProgressionDirective>,
+        ),
+        (
+            ProductionDirective::CAPABILITY,
+            Self::decode::<ProductionDirective>,
+        ),
+        (ItemsDirective::CAPABILITY, Self::decode::<ItemsDirective>),
+    ];
+
     /// The decoder of `capability`'s directives, as its reader decodes the body of a command to
     /// it; none for a capability whose commands hold no directive.
     pub(crate) fn decoder(capability: Capability) -> Option<DirectiveDecoder> {
-        match capability {
-            Capability::Orders => Some(|body| OrdersDirective::decode(body).map(Self::Orders)),
-            Capability::Progression => {
-                Some(|body| ProgressionDirective::decode(body).map(Self::Progression))
-            }
-            Capability::Production => {
-                Some(|body| ProductionDirective::decode(body).map(Self::Production))
-            }
-            Capability::Items => Some(|body| ItemsDirective::decode(body).map(Self::Items)),
-            Capability::Combat
-            | Capability::Stats
-            | Capability::Abilities
-            | Capability::Projectiles
-            | Capability::Areas
-            | Capability::Navigation
-            | Capability::Vision
-            | Capability::Mode
-            | Capability::Interaction
-            | Capability::Airfields => None,
-        }
+        Self::DECODERS
+            .into_iter()
+            .find(|&(of, _)| of == capability)
+            .map(|(_, decoder)| decoder)
+    }
+
+    fn decode<D: CapabilityDirective + Into<Self>>(body: &[u8]) -> Option<Self> {
+        D::decode(body).map(Into::into)
     }
 
     /// The capability that owns it, to which its order is a command.

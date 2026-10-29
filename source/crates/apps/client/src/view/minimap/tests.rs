@@ -1,8 +1,10 @@
+use bevy::asset::AssetApp;
 use bevy::math::UVec2;
 use campfire_client_files::GroundQuad;
 use campfire_math::Num;
 
 use super::*;
+use crate::test_app;
 
 #[test]
 fn a_frame_places_its_cells_on_the_ground_and_a_point_in_its_cell() {
@@ -71,4 +73,68 @@ fn a_cell_takes_the_terrain_s_color_darkened_by_its_ground_below_the_highest() {
     let lit = [200, 100, 50];
     assert_eq!(ground.colors, [dark, dark, lit, lit]);
     assert_eq!(ground.frame.size, Vec2::new(20.0, 20.0));
+}
+
+#[test]
+fn the_minimap_writes_its_image_only_as_what_it_draws_changes() {
+    // A minimap of 2 × 2 cells of one color, no fog and no unit, its texels zeroed after each
+    // frame: a frame that changes nothing writes none, and a camera that moves, or a unit that
+    // dies or lives again, writes them all.
+    let mut app = test_app::view();
+    app.init_asset::<Image>();
+    app.add_systems(Update, MinimapView::draw);
+    let size = Extent3d {
+        width: 2,
+        height: 2,
+        depth_or_array_layers: 1,
+    };
+    let blank = Image::new_fill(
+        size,
+        TextureDimension::D2,
+        &[0; 4],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::MAIN_WORLD,
+    );
+    let image = app.world_mut().resource_mut::<Assets<Image>>().add(blank);
+    app.insert_resource(MinimapGround {
+        side: 2,
+        frame: Frame {
+            corner: Vec2::ZERO,
+            size: Vec2::splat(20.0),
+        },
+        colors: vec![[200, 100, 50]; 4],
+    });
+    app.insert_resource(MinimapView {
+        look: Minimap::default(),
+        image: image.clone(),
+        radar: Radar::None,
+        fog_cells: Vec::new(),
+        teams: Vec::new(),
+        shown: Vec::new(),
+    });
+    let camera = app
+        .world_mut()
+        .spawn((Camera3d::default(), GlobalTransform::default()))
+        .id();
+    app.world_mut().spawn((Visibility::Inherited, MinimapNode));
+    let written = |app: &mut App| {
+        app.update();
+        let mut images = app.world_mut().resource_mut::<Assets<Image>>();
+        let mut target = images.get_mut(&image).unwrap();
+        let texels = target.data.as_mut().unwrap();
+        let drawn = texels.clone();
+        texels.fill(0);
+        drawn
+    };
+    assert_eq!(written(&mut app), [200, 100, 50, 255].repeat(4));
+    assert_eq!(written(&mut app), [0; 16]);
+    app.world_mut()
+        .entity_mut(camera)
+        .insert(GlobalTransform::from_xyz(1.0, 0.0, 0.0));
+    assert_eq!(written(&mut app), [200, 100, 50, 255].repeat(4));
+    let unit = app.world_mut().spawn(Dead).id();
+    assert_eq!(written(&mut app), [200, 100, 50, 255].repeat(4));
+    assert_eq!(written(&mut app), [0; 16]);
+    app.world_mut().entity_mut(unit).remove::<Dead>();
+    assert_eq!(written(&mut app), [200, 100, 50, 255].repeat(4));
 }

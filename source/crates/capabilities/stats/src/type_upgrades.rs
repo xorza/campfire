@@ -54,23 +54,28 @@ impl TypeUpgrade {
 }
 
 impl TypeUpgrades {
-    /// The modifiers that hold an upgrade back from `modifier`: each conflict of an upgrade
-    /// `modifier` triggers, and each trigger of an upgrade that `modifier` conflicts with, so a
-    /// unit holds one of the upgrades its `ConflictsWith` makes exclusive, as Zero Hour's
-    /// `CommandSetUpgrade` shows no other once one is bought (riders-and-upgrades.md, A conflicting
-    /// upgrade is refused).
-    pub fn conflicting(&self, modifier: ModifierId) -> impl Iterator<Item = ModifierId> + '_ {
-        self.0.iter().flat_map(move |upgrade| {
-            let conflicts = upgrade
-                .triggers
-                .contains(&modifier)
-                .then_some(&*upgrade.conflicts);
-            let triggers = upgrade
-                .conflicts
-                .contains(&modifier)
-                .then_some(&*upgrade.triggers);
-            conflicts.into_iter().chain(triggers).flatten().copied()
-        })
+    /// Whether an upgrade reads its unit's life, as a `hurt` or an upgrade of a `below` does, so
+    /// a change of the unit's life alone changes what it wants.
+    pub fn reads_life(&self) -> bool {
+        self.0.iter().any(|upgrade| upgrade.below.is_some())
+    }
+
+    /// Each conflict of an upgrade `modifier` triggers: what withholds the upgrade it buys, which
+    /// a research of `modifier` is refused for, as Zero Hour's `CommandSetUpgrade` shows no other
+    /// once one is bought (riders-and-upgrades.md, A conflicting upgrade is refused).
+    pub fn withholding(&self, modifier: ModifierId) -> impl Iterator<Item = ModifierId> + '_ {
+        self.0
+            .iter()
+            .filter(move |upgrade| upgrade.triggers.contains(&modifier))
+            .flat_map(|upgrade| upgrade.conflicts.iter().copied())
+    }
+
+    /// Each trigger of an upgrade that `modifier` conflicts with: what `modifier` withholds.
+    pub fn withheld(&self, modifier: ModifierId) -> impl Iterator<Item = ModifierId> + '_ {
+        self.0
+            .iter()
+            .filter(move |upgrade| upgrade.conflicts.contains(&modifier))
+            .flat_map(|upgrade| upgrade.triggers.iter().copied())
     }
 
     /// The upgrades of each unit type that stands with some, or with a `hurt`, its last, of

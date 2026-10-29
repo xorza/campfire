@@ -1,4 +1,3 @@
-use crate::halves;
 use bevy_ecs::observer::On;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::ResMut;
@@ -14,6 +13,7 @@ use campfire_values::TeamSet;
 use campfire_vision::Vision;
 
 use super::*;
+use crate::halves;
 
 #[test]
 fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {

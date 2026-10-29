@@ -6,7 +6,7 @@ use campfire_visibility::Visibility;
 /// What a match is built of beside its books, which hold its capabilities: its tick rate and
 /// seed, its role, and its session's visibility.
 #[derive(Debug, Clone)]
-#[must_use = "a spec builds nothing until a match is built of it"]
+#[must_use = "a setup builds nothing until a match is built of it"]
 pub struct MatchSetup {
     pub(crate) seed: SegmentSeed,
     pub(crate) tick_rate: MatchRate,
@@ -22,9 +22,9 @@ pub struct MatchSetup {
 }
 
 impl MatchSetup {
-    /// A match at `rate`, drawing from `seed`, of `role`. A client's predicts: each of its sim's queries skips the units the
-    /// client holds as the server sent them, `Unpredicted`, unless it names them, as the marker's
-    /// filter is in place before any system's query is made.
+    /// A match at `rate`, drawing from `seed`, of `role`. A client's match predicts: each of its
+    /// sim's queries skips the units the client holds as the server sent them, `Unpredicted`,
+    /// unless it names them, as the marker's filter is in place before any system's query is made.
     pub const fn new(seed: SegmentSeed, rate: MatchRate, role: Role) -> Self {
         Self {
             seed,
@@ -39,12 +39,12 @@ impl MatchSetup {
     }
 
     /// The rate the match ticks at.
-    pub const fn rate(&self) -> MatchRate {
+    pub const fn tick_rate(&self) -> MatchRate {
         self.tick_rate
     }
 
     /// The match of a session of `visibility`, as its terms carry it; the default, of no mode or
-    /// host's setting, until the spec says otherwise.
+    /// host's setting, until the setup says otherwise.
     pub fn visibility(self, visibility: Visibility) -> Self {
         Self { visibility, ..self }
     }

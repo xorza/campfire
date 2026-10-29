@@ -26,14 +26,15 @@ use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId};
 use campfire_stats::{Hold, ModifierData, Modifiers, StatChange, StatOp, StatRule, Stats};
 use campfire_units::internals::Spawn;
 use campfire_units::{Dead, Life, Owner, SeenBy, UnitTypeCore, Units};
+use campfire_values::Names;
 use campfire_values::{
     ActionId, Block, ItemId, ModifierId, NameId, Number, PackageIndex, Ranked, ResourceId, Scalar,
     Share, Stat, Team, TeamSet, UnitType,
 };
 use campfire_visibility::{OutView, SettingValue};
 use campfire_vision::Vision;
-use serde::Deserialize;
-use serde::de::{IntoDeserializer, value};
+
+use crate::share;
 
 const POTION: u32 = 0;
 const FLASH: u32 = 1;
@@ -129,14 +130,13 @@ impl Carrier {
     }
 
     /// Runs a tick in which player 0 orders the carrier each of `actions`.
-    fn order<A: Into<Directive> + Copy>(self, game: &mut World, actions: &[A]) {
+    fn order<A: Into<Directive> + Copy>(self, game: &mut Match, actions: &[A]) {
         let unit = self.id;
         let orders: Vec<Order> = actions
             .iter()
             .map(|&action| Order::one(unit, action))
             .collect();
-        let payload = Order::payload(&orders);
-        game.step_with(&[(PlayerSlot::new(0), &payload)]);
+        game.step_orders(PlayerSlot::new(0), &orders);
     }
 
     /// The carrier's life.
@@ -189,7 +189,7 @@ fn stock(game: &mut Match, [drink, flash]: [ActionId; 2], might: ModifierId) -> 
             modifiers,
             action,
         };
-    let names = ["drink", "flash", "might"].into_iter().collect();
+    let names = Names::unique(["drink", "flash", "might"]);
     game.insert_resource(
         ItemBook::new(
             names,
@@ -208,11 +208,6 @@ fn stock(game: &mut Match, [drink, flash]: [ActionId; 2], might: ModifierId) -> 
         .add(resource, 1000)
         .unwrap();
     shop_type(game, sells, "allies", share("0.5"))
-}
-
-/// The share `text` gives, as data reads it.
-fn share(text: &str) -> Share {
-    Share::deserialize(IntoDeserializer::<value::Error>::into_deserializer(text)).unwrap()
 }
 
 /// A new shop type that sells `sells` for resource 0 to the units `buyers` selects within 5 m,
@@ -458,7 +453,7 @@ fn item_shop() -> ShopMatch {
         modifiers: Vec::new(),
         action: None,
     };
-    let names = ["boots", "blade", "potion", "ward"].into_iter().collect();
+    let names = Names::unique(["boots", "blade", "potion", "ward"]);
     let book = ItemBook::new(
         names,
         [

@@ -9,7 +9,7 @@ use campfire_store::internals::TestDir;
 use campfire_test_packages::TestMode;
 
 use super::*;
-use crate::view::package_source::samples::package;
+use crate::view::package_source::internals::package;
 
 #[test]
 fn a_package_gives_its_units_and_skips_a_file_that_does_not_read() {

@@ -76,7 +76,8 @@ impl PackageDir {
                 EntryKind::File => {
                     let package_path = self.package_path(&path)?;
                     if package_path.as_str() != FileIndex::PATH {
-                        let file = InputFile::stream(&path).map_err(IndexError::Read)?;
+                        let max = usize::try_from(FileIndex::MAX_FILE_LEN).unwrap_or(usize::MAX);
+                        let file = InputFile::stream(&path, max).map_err(IndexError::Read)?;
                         let hashed = walk.hash(file).map_err(|error| {
                             IndexError::Read(PathError {
                                 path: path.clone(),

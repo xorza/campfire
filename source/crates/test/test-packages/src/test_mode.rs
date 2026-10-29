@@ -24,44 +24,44 @@ pub enum TestMode {
     Features,
 }
 
+/// Where a test mode lies and plays: its tree within the workspace's `packages` directory, the
+/// mode and every package it depends on, its root within that tree, and the map the tests play
+/// it on.
+#[derive(Debug, Clone, Copy)]
+struct ModeSpec {
+    tree: &'static str,
+    root: &'static str,
+    map: &'static str,
+}
+
 impl TestMode {
+    const fn spec(self) -> ModeSpec {
+        let (tree, root, map) = match self {
+            Self::Lane => ("test/engine", "modes/lane", "lane"),
+            Self::Proving => ("test/engine", "modes/proving", "proving"),
+            Self::Moba3v3 => ("test/moba", "modes/3v3", "two_lanes"),
+            Self::Ruled => ("test/engine", "modes/ruled", "stand"),
+            Self::Skirmish => ("", "test/engine/modes/skirmish", "field"),
+            Self::Hooks => ("test/engine", "modes/hooks", "arena"),
+            Self::Features => ("test/engine", "modes/features", "square"),
+        };
+        ModeSpec { tree, root, map }
+    }
+
     /// The mode's tree within the workspace's `packages` directory: the mode, and every package
     /// it depends on.
     pub(crate) const fn tree(self) -> &'static str {
-        match self {
-            Self::Lane | Self::Proving | Self::Ruled | Self::Hooks | Self::Features => {
-                "test/engine"
-            }
-            Self::Moba3v3 => "test/moba",
-            Self::Skirmish => "",
-        }
+        self.spec().tree
     }
 
     /// The mode's root within its tree.
     pub const fn root(self) -> &'static str {
-        match self {
-            Self::Lane => "modes/lane",
-            Self::Proving => "modes/proving",
-            Self::Moba3v3 => "modes/3v3",
-            Self::Ruled => "modes/ruled",
-            Self::Skirmish => "test/engine/modes/skirmish",
-            Self::Hooks => "modes/hooks",
-            Self::Features => "modes/features",
-        }
+        self.spec().root
     }
 
     /// The map the tests play the mode on.
     pub fn map(self) -> MapName {
-        let name = match self {
-            Self::Lane => "lane",
-            Self::Proving => "proving",
-            Self::Moba3v3 => "two_lanes",
-            Self::Ruled => "stand",
-            Self::Skirmish => "field",
-            Self::Hooks => "arena",
-            Self::Features => "square",
-        };
-        MapName::parse(name).expect("a test map's name")
+        MapName::parse(self.spec().map).expect("a test map's name")
     }
 
     /// The mode's directory on disk.

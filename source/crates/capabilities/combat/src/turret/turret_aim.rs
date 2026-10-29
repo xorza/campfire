@@ -1,5 +1,6 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::query::Has;
 use bevy_ecs::system::Res;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
@@ -7,7 +8,7 @@ use campfire_declarations::ById;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{SimComponent, TimedKept, TimedProcess, TimedRuns};
 use campfire_states::{Replication, SentPredicted};
-use campfire_units::{Facing, TurnStep, UnitEntity};
+use campfire_units::{Dead, Facing, TurnStep, UnitEntity};
 use campfire_values::UnitType;
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
@@ -107,15 +108,17 @@ impl TurretAim {
 impl TimedProcess for TurretAim {
     const RUNS: TimedRuns = TimedRuns::EveryRole;
     const KEPT: TimedKept = TimedKept::BySetters;
-    type Parts = (&'static Self, &'static UnitType);
+    type Parts = (&'static Self, &'static UnitType, Has<Dead>);
     type Books = Res<'static, ById<UnitType, Turret>>;
 
+    /// A turret off its rest turns each tick, but a dead unit's, which holds still until it
+    /// lives again.
     fn due(
         turrets: &Res<'_, ById<UnitType, Turret>>,
-        (aim, unit_type): (&Self, &UnitType),
+        (aim, unit_type, dead): (&Self, &UnitType, bool),
     ) -> Option<Tick> {
         let turret = turrets.get(*unit_type)?;
-        (*aim != Self::rest(turret)).then_some(Tick::ZERO)
+        (!dead && *aim != Self::rest(turret)).then_some(Tick::ZERO)
     }
 }
 

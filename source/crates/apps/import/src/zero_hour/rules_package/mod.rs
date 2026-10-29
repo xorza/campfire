@@ -30,7 +30,9 @@ use crate::zero_hour::format::ini::ai_data_ini::AiRetaliation;
 use crate::zero_hour::format::ini::multiplayer_ini::MoneyChoices;
 use crate::zero_hour::import_team::ImportTeam;
 use crate::zero_hour::mover_import::MoverImport;
-use crate::zero_hour::production_import::{BaseSources, FactionBase, ProductionImport};
+use crate::zero_hour::production_import::ProductionImport;
+use crate::zero_hour::production_import::faction_base::BaseSources;
+use crate::zero_hour::production_import::faction_base::FactionBase;
 use crate::zero_hour::propaganda_import::PropagandaImport;
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::science_import::ScienceImport;
@@ -192,6 +194,293 @@ pub(crate) struct ModeImport<'a> {
     pub(crate) propaganda: &'a PropagandaImport,
 }
 
+impl ModeImport<'_> {
+    /// The imported package's mode data: what the install gives, over the rules package's fixed
+    /// data (03-game-scripting.md, Overrides by load order): its name and its teams' names, as its
+    /// manifest names the teams, the rules package's mode script, its params of what each faction
+    /// starts with and its choice of a faction, `start` (09-zero-hour.md, A skirmish starts with
+    /// the faction's start objects; 09-zero-hour.md, Each player picks a faction), each faction's
+    /// base and its choice of a start, standard or a base (09-zero-hour.md, A player slot picks its
+    /// start; 09-zero-hour.md, A base start), and the option of the money it starts with, of
+    /// `start_money`'s values (09-zero-hour.md, The import writes Zero Hour's money as an option);
+    /// the armors, the weapons, the modifiers of their stages and the stats of their damage bonuses
+    /// of `combat` (09-zero-hour.md), the trains, builds and researches of `production`
+    /// (04-capabilities/production.md), the modifiers of `upgrades`, each upgrade's and each
+    /// effect's (09-zero-hour.md, Zero Hour's upgrade flags are tags and stats), and those of the
+    /// hurts of `movers` (04-capabilities/stats.md, A hurt type may hold a modifier).
+    pub(crate) fn data(self) -> String {
+        let Self {
+            start,
+            production,
+            combat,
+            upgrades,
+            veterancy,
+            sciences,
+            contains,
+            start_money,
+            retaliation,
+            movers,
+            second_lives,
+            propaganda,
+        } = self;
+        debug_assert!(
+            combat.actions.keys().all(|name| {
+                !production.actions.contains_key(name)
+                    && !production.supply.gathers.contains_key(name)
+                    && !production.supply.hacks.contains_key(name)
+            }),
+            "a weapon, a train or build, a gather and a hack share no name, as one table holds them"
+        );
+        let declared = |name: &str| DeclaredName::new(name).expect("a name the import gives");
+        let text = |id: &str| TextId::new(id).expect("a message id the import gives");
+        let teams = ImportTeam::all()
+            .map(|team| {
+                let name = team.text_id();
+                (team.name(), TeamData { name })
+            })
+            .collect();
+        let param = |name: &str, faction: &FactionStart| {
+            declared(&format!("{name}_{}", faction.name.as_str()))
+        };
+        let list = |names: &[DeclaredName]| {
+            ModeParam::List(names.iter().cloned().map(ListEntry::Name).collect())
+        };
+        let params = start.factions.iter().flat_map(|faction| {
+            let perks = sciences
+                .intrinsic
+                .get(&faction.name)
+                .map_or(&[][..], Vec::as_slice);
+            let sources = BaseSources {
+                production,
+                combat,
+                contains,
+            };
+            let base = FactionBase::of(sources, faction, perks);
+            let fixed = [
+                (
+                    param("start_building", faction),
+                    ModeParam::Name(faction.building.clone()),
+                ),
+                (param("start_units", faction), list(&faction.units)),
+                (
+                    param("start_offset", faction),
+                    ModeParam::Value(Scalar::Decimal(faction.offset)),
+                ),
+                (param("base_buildings", faction), list(&base.buildings)),
+                (param("base_units", faction), list(&base.units)),
+                (param("army_units", faction), list(&base.army)),
+                (param("gatherers", faction), list(&base.gatherers)),
+                (param("drop_offs", faction), list(&base.drop_offs)),
+                (param("perks", faction), list(perks)),
+            ];
+            // Each skill set its own list, `skill_set_<n>_<faction>` from 1, as a param holds no
+            // list of lists, and their names in order (09-zero-hour.md, A bot buys its skill set).
+            let sets = sciences
+                .skill_sets
+                .get(&faction.name)
+                .map_or(&[][..], Vec::as_slice);
+            let set_name = |at: usize| param(&format!("skill_set_{}", at + 1), faction);
+            let named = (0..sets.len()).map(set_name).collect::<Vec<_>>();
+            let sets = sets
+                .iter()
+                .enumerate()
+                .map(move |(at, set)| (set_name(at), list(set)));
+            fixed
+                .into_iter()
+                .chain([(param("skill_sets", faction), list(&named))])
+                .chain(sets)
+        });
+        let base_count = (
+            declared("base_count"),
+            ModeParam::Value(Scalar::Int(BASE_COUNT)),
+        );
+        let params = params.chain([base_count]).collect();
+        let start_choice = ChoiceData {
+            name: text("choice-start"),
+            offers: Offers::Values,
+            unique: false,
+            count: NonZeroU8::MIN,
+            slot: None,
+            values: ["standard", "base"].map(declared).into(),
+        };
+        let faction = ChoiceData {
+            name: text("choice-faction"),
+            offers: Offers::Values,
+            unique: false,
+            count: NonZeroU8::MIN,
+            slot: None,
+            values: start
+                .factions
+                .iter()
+                .map(|faction| faction.name.clone())
+                .collect(),
+        };
+        let money = start_money
+            .values
+            .iter()
+            .map(|&value| Scalar::Int(i64::from(value)));
+        let money = OptionData::new(money.collect(), Scalar::Int(i64::from(start_money.default)))
+            .expect("the multiplayer settings' read checks that their choices make an option");
+        let rules = ScriptSource::Rules {
+            package: PackageName::new(RULES).expect("the rules package's name"),
+            path: PackagePath::parse("scripts/mode.rhai").expect("the rules' mode script's path"),
+        };
+        // Each player regards the neutral team as neutral, as `PlayerList::newGame` sets every
+        // player's relation to the neutral player (09-zero-hour.md, Players regard the
+        // neutral team as neutral).
+        let relations = ImportTeam::players().map(|player| RelationData {
+            teams: [player.name(), ImportTeam::Neutral.name()],
+            relation: Relation::Neutral,
+            vision: false,
+        });
+        let mut writer = SectionWriter::default();
+        writer.key(ScriptOrder::KEY, &ScriptOrder::one(rules));
+        writer.key(BotList::KEY, &bots());
+        writer.own::<ModeData>(&ModePatch {
+            name: Some(text("mode-name")),
+            teams: Some(teams),
+            relations: Some(relations.collect()),
+            params: Some(params),
+            options: Some(BTreeMap::from([(declared("start_money"), money)])),
+            choices: Some(BTreeMap::from([
+                (declared(FACTION), faction),
+                (declared("start"), start_choice),
+            ])),
+            ..ModePatch::default()
+        });
+        if let Some(retaliation) = retaliation {
+            writer.patch::<ModeRetaliationData>(retaliation);
+        }
+        if !combat.armors.is_empty() {
+            writer.patch::<ModeCombatData>(&ModeCombatPatch {
+                armors: Some(combat.armors.clone()),
+                ..ModeCombatPatch::default()
+            });
+        }
+        let weapons = combat
+            .actions
+            .iter()
+            .map(|(id, weapon)| (id, weapon.table()));
+        let trains = production
+            .actions
+            .iter()
+            .map(|(id, train)| (id, train.table()));
+        let gathers = production
+            .supply
+            .gathers
+            .iter()
+            .map(|(id, gather)| (id, gather.table()));
+        let hacks = production.supply.hacks.iter().map(|(id, hack)| {
+            (
+                id,
+                TomlValue::of(hack).read().expect("the keys write a table"),
+            )
+        });
+        let entries = contains.entry_tables();
+        let actions: BTreeMap<&DeclaredName, TomlTable> = weapons
+            .chain(trains)
+            .chain(gathers)
+            .chain(hacks)
+            .chain(entries)
+            .collect();
+        if !actions.is_empty() {
+            writer.value::<ActionsData>(TomlValue::of(&actions));
+        }
+        if !combat.bonuses.is_empty() || !production.power_stats.is_empty() {
+            let none = TomlTable::default();
+            let bonuses = combat.bonuses.keys().chain(&production.power_stats);
+            let stats: BTreeMap<_, _> = bonuses.map(|stat| (stat, &none)).collect();
+            writer.value::<ModeStatsData>(TomlValue::of(&stats));
+        }
+        let tracks: BTreeMap<_, _> = veterancy
+            .track
+            .iter()
+            .chain(&sciences.track)
+            .cloned()
+            .collect();
+        if !tracks.is_empty() {
+            writer.section(&ModeTracksData(tracks));
+        }
+        let shares: Vec<_> = veterancy
+            .share
+            .iter()
+            .chain(&sciences.share)
+            .cloned()
+            .collect();
+        if !shares.is_empty() {
+            writer.section(&ModeExperienceData(shares));
+        }
+        if !sciences.perks.is_empty() {
+            writer.section(&ModePerksData(sciences.perks.clone()));
+        }
+        let stages = combat
+            .modifiers
+            .iter()
+            .map(|(id, stage)| (id, stage.table()));
+        let nothing = TomlValue::from(TomlTable::default());
+        let researched = upgrades.upgrades.iter().map(|id| (id, nothing.clone()));
+        let effects = upgrades
+            .effects
+            .iter()
+            .map(|(id, effect)| (id, effect.table()));
+        let levels = veterancy
+            .modifiers
+            .iter()
+            .map(|(id, modifier)| (id, TomlValue::of(modifier)));
+        let perks = sciences.perks.values().map(|perk| {
+            let given = production.power_modifiers.get(&perk.modifier);
+            (
+                &perk.modifier,
+                given.map_or_else(|| nothing.clone(), TomlValue::of),
+            )
+        });
+        let garrisons = contains
+            .modifiers
+            .iter()
+            .map(|(id, modifier)| (id, TomlValue::of(modifier)));
+        let hurts = movers
+            .modifiers
+            .iter()
+            .map(|(id, modifier)| (id, TomlValue::of(modifier)));
+        let lives = second_lives
+            .modifiers
+            .iter()
+            .map(|(id, modifier)| (id, TomlValue::of(modifier)));
+        let towers = propaganda
+            .modifiers
+            .iter()
+            .map(|(id, modifier)| (id, TomlValue::of(modifier)));
+        let modifiers: BTreeMap<&DeclaredName, TomlValue> = stages
+            .chain(researched)
+            .chain(effects)
+            .chain(levels)
+            .chain(perks)
+            .chain(garrisons)
+            .chain(hurts)
+            .chain(lives)
+            .chain(towers)
+            .collect();
+        debug_assert_eq!(
+            modifiers.len(),
+            combat.modifiers.len()
+                + upgrades.upgrades.len()
+                + upgrades.effects.len()
+                + veterancy.modifiers.len()
+                + sciences.perks.len()
+                + contains.modifiers.len()
+                + movers.modifiers.len()
+                + second_lives.modifiers.len()
+                + propaganda.modifiers.len(),
+            "a stage's, an upgrade's, an effect's, a level's, a perk's, a garrison's, a hurt's, a \
+             second life's and a tower's modifiers share no name"
+        );
+        if !modifiers.is_empty() {
+            writer.value::<ModifiersData>(TomlValue::of(&modifiers));
+        }
+        Toml::write(&writer.into_table())
+    }
+}
+
 /// The mode's `[retaliation]` of `ai`'s values, its aggressors `names`' enemies on the ground, as
 /// `shouldRetaliateAgainstAggressor` refuses an airborne one (09-zero-hour.md, The import
 /// converts what the choice and the answer read); none when `AIData` gives none of them, and an
@@ -211,290 +500,6 @@ pub(crate) fn retaliation(
         radius: Some(num(radius)?),
         chase_ms: Some(u64::try_from(chase_ms).map_err(|_| ZeroHourError::Retaliation)?),
     }))
-}
-
-/// The imported package's mode data: what the install gives, over the rules package's fixed data
-/// (03-game-scripting.md, Overrides by load order): its name and its teams' names, as its manifest
-/// names the teams, the rules package's mode script, its params of what each faction starts with
-/// and its choice of a faction, `start` (09-zero-hour.md, A skirmish starts with the faction's
-/// start objects; 09-zero-hour.md, Each player picks a faction), each faction's base and its choice
-/// of a start, standard or a base (09-zero-hour.md, A player slot picks its start; 09-zero-hour.md,
-/// A base start), and the option of the money it starts with, of `start_money`'s values
-/// (09-zero-hour.md, The import writes Zero Hour's money as an option); the armors, the weapons,
-/// the modifiers of their stages and the stats of their damage bonuses of `combat`
-/// (09-zero-hour.md), the trains, builds and researches of `production`
-/// (04-capabilities/production.md), the modifiers of `upgrades`, each upgrade's and each effect's
-/// (09-zero-hour.md, Zero Hour's upgrade flags are tags and stats), and those of the hurts of
-/// `movers` (04-capabilities/stats.md, A hurt type may hold a modifier).
-pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
-    let ModeImport {
-        start,
-        production,
-        combat,
-        upgrades,
-        veterancy,
-        sciences,
-        contains,
-        start_money,
-        retaliation,
-        movers,
-        second_lives,
-        propaganda,
-    } = mode;
-    debug_assert!(
-        combat.actions.keys().all(|name| {
-            !production.actions.contains_key(name)
-                && !production.supply.gathers.contains_key(name)
-                && !production.supply.hacks.contains_key(name)
-        }),
-        "a weapon, a train or build, a gather and a hack share no name, as one table holds them"
-    );
-    let declared = |name: &str| DeclaredName::new(name).expect("a name the import gives");
-    let text = |id: &str| TextId::new(id).expect("a message id the import gives");
-    let teams = ImportTeam::all()
-        .map(|team| {
-            let name = team.text_id();
-            (team.name(), TeamData { name })
-        })
-        .collect();
-    let param =
-        |name: &str, faction: &FactionStart| declared(&format!("{name}_{}", faction.name.as_str()));
-    let list = |names: &[DeclaredName]| {
-        ModeParam::List(names.iter().cloned().map(ListEntry::Name).collect())
-    };
-    let params = start.factions.iter().flat_map(|faction| {
-        let perks = sciences
-            .intrinsic
-            .get(&faction.name)
-            .map_or(&[][..], Vec::as_slice);
-        let sources = BaseSources {
-            production,
-            combat,
-            contains,
-        };
-        let base = FactionBase::of(sources, faction, perks);
-        let fixed = [
-            (
-                param("start_building", faction),
-                ModeParam::Name(faction.building.clone()),
-            ),
-            (param("start_units", faction), list(&faction.units)),
-            (
-                param("start_offset", faction),
-                ModeParam::Value(Scalar::Decimal(faction.offset)),
-            ),
-            (param("base_buildings", faction), list(&base.buildings)),
-            (param("base_units", faction), list(&base.units)),
-            (param("army_units", faction), list(&base.army)),
-            (param("gatherers", faction), list(&base.gatherers)),
-            (param("drop_offs", faction), list(&base.drop_offs)),
-            (param("perks", faction), list(perks)),
-        ];
-        // Each skill set its own list, `skill_set_<n>_<faction>` from 1, as a param holds no list
-        // of lists, and their names in order (09-zero-hour.md, A bot buys its skill set).
-        let sets = sciences
-            .skill_sets
-            .get(&faction.name)
-            .map_or(&[][..], Vec::as_slice);
-        let set_name = |at: usize| param(&format!("skill_set_{}", at + 1), faction);
-        let named = (0..sets.len()).map(set_name).collect::<Vec<_>>();
-        let sets = sets
-            .iter()
-            .enumerate()
-            .map(move |(at, set)| (set_name(at), list(set)));
-        fixed
-            .into_iter()
-            .chain([(param("skill_sets", faction), list(&named))])
-            .chain(sets)
-    });
-    let base_count = (
-        declared("base_count"),
-        ModeParam::Value(Scalar::Int(BASE_COUNT)),
-    );
-    let params = params.chain([base_count]).collect();
-    let start_choice = ChoiceData {
-        name: text("choice-start"),
-        offers: Offers::Values,
-        unique: false,
-        count: NonZeroU8::MIN,
-        slot: None,
-        values: ["standard", "base"].map(declared).into(),
-    };
-    let faction = ChoiceData {
-        name: text("choice-faction"),
-        offers: Offers::Values,
-        unique: false,
-        count: NonZeroU8::MIN,
-        slot: None,
-        values: start
-            .factions
-            .iter()
-            .map(|faction| faction.name.clone())
-            .collect(),
-    };
-    let money = start_money
-        .values
-        .iter()
-        .map(|&value| Scalar::Int(i64::from(value)));
-    let money = OptionData::new(money.collect(), Scalar::Int(i64::from(start_money.default)))
-        .expect("the multiplayer settings' read checks that their choices make an option");
-    let rules = ScriptSource::Rules {
-        package: PackageName::new(RULES).expect("the rules package's name"),
-        path: PackagePath::parse("scripts/mode.rhai").expect("the rules' mode script's path"),
-    };
-    // Each player regards the neutral team as neutral, as `PlayerList::newGame` sets every
-    // player's relation to the neutral player (09-zero-hour.md, Players regard the
-    // neutral team as neutral).
-    let relations = ImportTeam::players().map(|player| RelationData {
-        teams: [player.name(), ImportTeam::Neutral.name()],
-        relation: Relation::Neutral,
-        vision: false,
-    });
-    let mut writer = SectionWriter::default();
-    writer.key(ScriptOrder::KEY, &ScriptOrder::one(rules));
-    writer.key(BotList::KEY, &bots());
-    writer.own::<ModeData>(&ModePatch {
-        name: Some(text("mode-name")),
-        teams: Some(teams),
-        relations: Some(relations.collect()),
-        params: Some(params),
-        options: Some(BTreeMap::from([(declared("start_money"), money)])),
-        choices: Some(BTreeMap::from([
-            (declared(FACTION), faction),
-            (declared("start"), start_choice),
-        ])),
-        ..ModePatch::default()
-    });
-    if let Some(retaliation) = retaliation {
-        writer.patch::<ModeRetaliationData>(retaliation);
-    }
-    if !combat.armors.is_empty() {
-        writer.patch::<ModeCombatData>(&ModeCombatPatch {
-            armors: Some(combat.armors.clone()),
-            ..ModeCombatPatch::default()
-        });
-    }
-    let weapons = combat
-        .actions
-        .iter()
-        .map(|(id, weapon)| (id, weapon.table()));
-    let trains = production
-        .actions
-        .iter()
-        .map(|(id, train)| (id, train.table()));
-    let gathers = production
-        .supply
-        .gathers
-        .iter()
-        .map(|(id, gather)| (id, gather.table()));
-    let hacks = production.supply.hacks.iter().map(|(id, hack)| {
-        (
-            id,
-            TomlValue::of(hack).read().expect("the keys write a table"),
-        )
-    });
-    let entries = contains.entry_tables();
-    let actions: BTreeMap<&DeclaredName, TomlTable> = weapons
-        .chain(trains)
-        .chain(gathers)
-        .chain(hacks)
-        .chain(entries)
-        .collect();
-    if !actions.is_empty() {
-        writer.value::<ActionsData>(TomlValue::of(&actions));
-    }
-    if !combat.bonuses.is_empty() || !production.power_stats.is_empty() {
-        let none = TomlTable::default();
-        let bonuses = combat.bonuses.keys().chain(&production.power_stats);
-        let stats: BTreeMap<_, _> = bonuses.map(|stat| (stat, &none)).collect();
-        writer.value::<ModeStatsData>(TomlValue::of(&stats));
-    }
-    let tracks: BTreeMap<_, _> = veterancy
-        .track
-        .iter()
-        .chain(&sciences.track)
-        .cloned()
-        .collect();
-    if !tracks.is_empty() {
-        writer.section(&ModeTracksData(tracks));
-    }
-    let shares: Vec<_> = veterancy
-        .share
-        .iter()
-        .chain(&sciences.share)
-        .cloned()
-        .collect();
-    if !shares.is_empty() {
-        writer.section(&ModeExperienceData(shares));
-    }
-    if !sciences.perks.is_empty() {
-        writer.section(&ModePerksData(sciences.perks.clone()));
-    }
-    let stages = combat
-        .modifiers
-        .iter()
-        .map(|(id, stage)| (id, stage.table()));
-    let nothing = TomlValue::from(TomlTable::default());
-    let researched = upgrades.upgrades.iter().map(|id| (id, nothing.clone()));
-    let effects = upgrades
-        .effects
-        .iter()
-        .map(|(id, effect)| (id, effect.table()));
-    let levels = veterancy
-        .modifiers
-        .iter()
-        .map(|(id, modifier)| (id, TomlValue::of(modifier)));
-    let perks = sciences.perks.values().map(|perk| {
-        let given = production.power_modifiers.get(&perk.modifier);
-        (
-            &perk.modifier,
-            given.map_or_else(|| nothing.clone(), TomlValue::of),
-        )
-    });
-    let garrisons = contains
-        .modifiers
-        .iter()
-        .map(|(id, modifier)| (id, TomlValue::of(modifier)));
-    let hurts = movers
-        .modifiers
-        .iter()
-        .map(|(id, modifier)| (id, TomlValue::of(modifier)));
-    let lives = second_lives
-        .modifiers
-        .iter()
-        .map(|(id, modifier)| (id, TomlValue::of(modifier)));
-    let towers = propaganda
-        .modifiers
-        .iter()
-        .map(|(id, modifier)| (id, TomlValue::of(modifier)));
-    let modifiers: BTreeMap<&DeclaredName, TomlValue> = stages
-        .chain(researched)
-        .chain(effects)
-        .chain(levels)
-        .chain(perks)
-        .chain(garrisons)
-        .chain(hurts)
-        .chain(lives)
-        .chain(towers)
-        .collect();
-    debug_assert_eq!(
-        modifiers.len(),
-        combat.modifiers.len()
-            + upgrades.upgrades.len()
-            + upgrades.effects.len()
-            + veterancy.modifiers.len()
-            + sciences.perks.len()
-            + contains.modifiers.len()
-            + movers.modifiers.len()
-            + second_lives.modifiers.len()
-            + propaganda.modifiers.len(),
-        "a stage's, an upgrade's, an effect's, a level's, a perk's, a garrison's, a hurt's, a \
-         second life's and a tower's modifiers share no name"
-    );
-    if !modifiers.is_empty() {
-        writer.value::<ModifiersData>(TomlValue::of(&modifiers));
-    }
-    Toml::write(&writer.into_table())
 }
 
 /// The imported package's text in its own language: the names its mode data gives, and each of

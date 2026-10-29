@@ -6,6 +6,7 @@ use campfire_host::{BotArg, ClientLayout, PlayerSlotBotArgError, ReportFile};
 use campfire_protocol::SessionId;
 use campfire_store::internals::TestDir;
 use campfire_test_packages::TestMode;
+use campfire_values::Team;
 use clap::error::ErrorKind;
 
 use super::*;

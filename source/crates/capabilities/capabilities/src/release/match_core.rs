@@ -2,8 +2,8 @@ use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::system::{Local, Res, ResMut};
 use campfire_common::EnumAll;
 use campfire_declarations::{
-    Declarations, InstallCx, MatchFacts, Module, ModuleSystems, NamedScripts, NamedTexts, SetPlace,
-    StateFields,
+    Declarations, InstallCx, MatchFacts, Module, ModuleSystems, NameSets, NamedScripts, NamedTexts,
+    SetPlace, StateFields,
 };
 use campfire_mode::MatchMode;
 use campfire_players::Select;
@@ -50,6 +50,7 @@ impl Module for MatchCore {
         d.fact::<NamedScripts>(|_| Ok(NamedScripts::default()));
         d.fact::<NamedTexts>(|_| Ok(NamedTexts::default()));
         d.fact::<StateFields>(|_| Ok(StateFields::default()));
+        d.fact::<NameSets>(|_| Ok(NameSets::default()));
         d.report::<UnreadCommands>();
     }
 

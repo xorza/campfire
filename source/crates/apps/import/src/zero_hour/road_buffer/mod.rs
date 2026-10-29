@@ -1,21 +1,22 @@
 use std::collections::BTreeMap;
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_6};
 
-use crate::zero_hour::dropped_roads::{DroppedRoads, RoadDropCause};
+use crate::zero_hour::dropped_roads::DroppedRoads;
 use crate::zero_hour::format::ini::roads_ini::{RoadId, RoadsIni};
 use crate::zero_hour::map_roads::{MapRoads, RoadSegment};
 use crate::zero_hour::road_buffer::buffer_road::{BufferRoad, PieceKind};
 use crate::zero_hour::road_decals::RoadDecals;
+use crate::zero_hour::road_drop_cause::RoadDropCause;
 use crate::zero_hour::road_mesh::{RoadGround, RoadMesh};
 use crate::zero_hour::road_pieces::RoadPieces;
 use crate::zero_hour::terrain_atlas::TexturePlace;
 
 /// A map's road pieces as `W3DRoadBuffer::loadRoads` builds them, in `f32` as the game computes
-/// them (09-zero-hour.md, A road is a decal the import meshes): its segments chained, each to one of its
-/// type that shares its point, flipped to run on, so a chain runs back along the list; the ends of
-/// a type at each point counted; a junction where three or four meet; a curve or a miter where
-/// the ends of two segments next in a chain meet alone; and an alpha join where an end alone of
-/// its type asks for one, its type stacked over the road it meets.
+/// them (09-zero-hour.md, A road is a decal the import meshes): its segments chained, each to one
+/// of its type that shares its point, flipped to run on, so a chain runs back along the list; the
+/// ends of a type at each point counted; a junction where three or four meet; a curve or a miter
+/// where the ends of two segments next in a chain meet alone; and an alpha join where an end alone
+/// of its type asks for one, its type stacked over the road it meets.
 #[derive(Debug)]
 pub(crate) struct RoadBuffer {
     roads: Vec<BufferRoad>,
@@ -385,7 +386,7 @@ impl RoadBuffer {
                 leaving.start.point,
             ]
         };
-        let steps = cos.acos() / FRAC_PI_6;
+        let steps = libm::acosf(cos) / FRAC_PI_6;
         if steps < LEAST_CURVE || leaving.start.angled {
             self.miter(out, into);
             return;

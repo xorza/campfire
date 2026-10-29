@@ -22,7 +22,7 @@ use crate::zero_hour::cliff_walls::CliffWalls;
 use crate::zero_hour::dropped_roads::DroppedRoads;
 use crate::zero_hour::error::MapError;
 use crate::zero_hour::format::ini::game_data_ini::TerrainDraw;
-use crate::zero_hour::format::ini::object_ini::PlacedAs;
+use crate::zero_hour::format::ini::object_ini::ini_object::PlacedAs;
 use crate::zero_hour::format::map::map_file::{MapHeights, ZeroHourMap};
 use crate::zero_hour::format::map::map_object::ObjectPlace;
 use crate::zero_hour::import_names::ImportNames;
@@ -255,7 +255,7 @@ impl MapImport {
                 };
                 // A variation stands as its parent's type at its place, of its own body
                 // (09-zero-hour.md, A chassis converts to the parent of its file).
-                let variation = rules.objects.variations().placed(template);
+                let variation = rules.variations.placed(template);
                 let of_type = variation.map_or(template, |placed| &rules.objects[placed.parent]);
                 let placed_type = names.unit_type(of_type, rules).map_err(typed)?;
                 let own;

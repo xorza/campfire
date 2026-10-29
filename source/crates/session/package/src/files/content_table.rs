@@ -15,9 +15,9 @@ impl ContentTable {
         defaults: &UnitDefaults,
     ) -> Result<PackageContent, E> {
         let readers = Release::sections();
-        let content = table.take_keys(PackageContent::keys(&readers));
+        let content = table.take_keys(PackageContent::keys(readers));
         content
-            .read_with(PackageContent::seed(&readers, defaults))
+            .read_with(PackageContent::seed(readers, defaults))
             .map_err(E::custom)
     }
 }

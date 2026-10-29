@@ -7,8 +7,9 @@ use campfire_actions::{ActionProgress, ActionTarget, InProgress};
 use campfire_common::PlayerSlot;
 use campfire_math::Vec3;
 use campfire_navigation::{Progress, Route};
+use campfire_production::{Activity, ActivityParts};
 use campfire_sim::{EntityIndex, MatchRate, Position, SimTick, StableId};
-use campfire_units::{AtWork, Destination, Life, Owner, UnitTypeBook};
+use campfire_units::{Destination, Life, Owner, UnitTypeBook};
 use campfire_values::{Names, Team, UnitType};
 
 pub(crate) mod error;
@@ -73,19 +74,6 @@ pub struct ProbePage {
 pub struct ProbeRows {
     pub selected: usize,
     pub shown: usize,
-}
-
-/// What a unit does, as a probe reads it: it fights while it holds an attack target or attacks,
-/// acts while another action is under way, works while its building goes on, walks while it has
-/// a destination, and else stands idle: a walker idle here is one steering takes as an idle
-/// friend.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Doing {
-    Idle,
-    Walking,
-    Working,
-    Fighting,
-    Acting,
 }
 
 /// The counts of one player slot's units by what they do, and of its walkers that are stuck.
@@ -224,7 +212,13 @@ impl MatchProbe {
     }
 
     /// Whether it prints the unit `id`, which does `doing`, a walker stuck when `walks_stuck`.
-    fn selects(&self, id: StableId, unit: &EntityRef<'_>, doing: Doing, walks_stuck: bool) -> bool {
+    fn selects(
+        &self,
+        id: StableId,
+        unit: &EntityRef<'_>,
+        doing: Activity,
+        walks_stuck: bool,
+    ) -> bool {
         match &self.units {
             ProbeUnits::All => true,
             &ProbeUnits::Owner(slot) => unit
@@ -239,36 +233,19 @@ impl MatchProbe {
 
     /// Whether a unit that does `doing`, stuck for `stuck` ticks, walks stuck: past
     /// `stuck_after`.
-    fn walks_stuck(doing: Doing, stuck: Option<u32>, stuck_after: u32) -> bool {
-        doing == Doing::Walking && stuck.is_some_and(|stuck| stuck >= stuck_after)
+    fn walks_stuck(doing: Activity, stuck: Option<u32>, stuck_after: u32) -> bool {
+        doing == Activity::Walking && stuck.is_some_and(|stuck| stuck >= stuck_after)
     }
 
-    fn doing(unit: &EntityRef<'_>) -> Doing {
-        let progress = unit.get::<ActionProgress>();
-        let underway = progress.and_then(ActionProgress::in_progress);
-        let attacks = progress.and_then(ActionProgress::attack_target).is_some()
-            || matches!(underway, Some(InProgress::Attack { .. }));
-        let walks = unit
-            .get::<Destination>()
-            .is_some_and(|destination| destination.get().is_some());
-        if attacks {
-            Doing::Fighting
-        } else if underway.is_some() {
-            Doing::Acting
-        } else if unit.get::<AtWork>().is_some_and(|at_work| at_work.get()) {
-            Doing::Working
-        } else if walks {
-            Doing::Walking
-        } else {
-            Doing::Idle
-        }
+    fn doing(unit: &EntityRef<'_>) -> Activity {
+        ActivityParts::of(unit).activity()
     }
 
     /// The cells of the unit `id`'s line.
     fn row(
         id: StableId,
         unit: &EntityRef<'_>,
-        doing: Doing,
+        doing: Activity,
         stuck: Option<u32>,
         names: Option<&Arc<Names<UnitType>>>,
     ) -> [String; COLUMNS.len()] {
@@ -313,7 +290,7 @@ impl MatchProbe {
     }
 
     /// What a unit does, with the action under way and its slot.
-    fn doing_text(doing: Doing, underway: Option<InProgress>) -> String {
+    fn doing_text(doing: Activity, underway: Option<InProgress>) -> String {
         let action = match underway {
             Some(InProgress::Attack { slot, .. }) => format!("attack {slot}"),
             Some(InProgress::Order { aim, .. }) => format!("order {}", aim.slot),
@@ -323,11 +300,11 @@ impl MatchProbe {
             None => String::new(),
         };
         let doing = match doing {
-            Doing::Idle => "idle",
-            Doing::Walking => "walk",
-            Doing::Working => "work",
-            Doing::Fighting => "fight",
-            Doing::Acting => "act",
+            Activity::Idle => "idle",
+            Activity::Walking => "walk",
+            Activity::Working => "work",
+            Activity::Fighting => "fight",
+            Activity::Acting => "act",
         };
         if action.is_empty() {
             doing.to_owned()
@@ -405,14 +382,14 @@ impl ProbeState {
     }
 
     /// Whether a unit that does `doing`, a walker stuck when `walks_stuck`, is in it.
-    fn is(self, doing: Doing, walks_stuck: bool) -> bool {
+    fn is(self, doing: Activity, walks_stuck: bool) -> bool {
         match self {
-            Self::Idle => doing == Doing::Idle,
-            Self::Walking => doing == Doing::Walking,
+            Self::Idle => doing == Activity::Idle,
+            Self::Walking => doing == Activity::Walking,
             Self::Stuck => walks_stuck,
-            Self::Working => doing == Doing::Working,
-            Self::Fighting => doing == Doing::Fighting,
-            Self::Acting => doing == Doing::Acting,
+            Self::Working => doing == Activity::Working,
+            Self::Fighting => doing == Activity::Fighting,
+            Self::Acting => doing == Activity::Acting,
         }
     }
 }
@@ -432,13 +409,13 @@ impl ProbePage {
 }
 
 impl Counts {
-    const fn count(&mut self, doing: Doing, stuck: bool) {
+    const fn count(&mut self, doing: Activity, stuck: bool) {
         let counted = match doing {
-            Doing::Idle => &mut self.idle,
-            Doing::Walking => &mut self.walking,
-            Doing::Working => &mut self.working,
-            Doing::Fighting => &mut self.fighting,
-            Doing::Acting => &mut self.acting,
+            Activity::Idle => &mut self.idle,
+            Activity::Walking => &mut self.walking,
+            Activity::Working => &mut self.working,
+            Activity::Fighting => &mut self.fighting,
+            Activity::Acting => &mut self.acting,
         };
         *counted += 1;
         if stuck {

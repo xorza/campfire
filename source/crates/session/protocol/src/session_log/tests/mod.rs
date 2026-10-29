@@ -1740,3 +1740,24 @@ impl SessionLog {
         self.revealed.as_ref()
     }
 }
+
+impl SessionLog {
+    /// Logs `record`, with the server key's `signature` over it, as the record of the oldest
+    /// checkpoint the log began and has none of yet, as many ticks after its boundary as it took:
+    /// it must start that segment, at its tick, and carry the log's own state there, which a
+    /// log file that starts at the checkpoint starts from. A refused record leaves the log
+    /// unchanged.
+    pub(crate) fn record_checkpoint(
+        &mut self,
+        record: Checkpoint,
+        signature: &Signature,
+        journal: Option<&mut Journal>,
+    ) -> Result<(), CheckpointError> {
+        let past = if journal.is_some() {
+            Past::InJournal
+        } else {
+            Past::InLog
+        };
+        self.record_checkpoint_in(record, signature, journal, past)
+    }
+}

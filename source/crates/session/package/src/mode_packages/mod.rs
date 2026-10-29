@@ -135,7 +135,7 @@ impl ModePackages {
             "a session's rate is within the manifest's range"
         );
         let engine_tags = Release::engine_tags();
-        Release::books(&self.book_input(rate, &engine_tags))
+        Release::books(&self.book_input(rate, engine_tags))
             .expect("the load built the books at the fastest rate")
     }
 
@@ -421,7 +421,7 @@ pub(crate) mod internals {
         pub fn tag_names(&self) -> Vec<String> {
             let engine_tags = Release::engine_tags();
             let rate = MatchRate::new(self.base.manifest.tick_hz.fastest());
-            let types = Release::unit_types(&self.book_input(rate, &engine_tags));
+            let types = Release::unit_types(&self.book_input(rate, engine_tags));
             let types = types.expect("the load declared every tag");
             let names = types.tags().names().texts().skip(engine_tags.len());
             names.map(str::to_owned).collect()

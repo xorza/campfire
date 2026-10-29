@@ -10,56 +10,50 @@ use campfire_codec::{TomlError, TomlValue};
 use campfire_combat::Combat;
 use campfire_common::DeclaredName;
 use campfire_declarations::{
-    BuiltBooks, CapabilitySet, Declarations, InstallFacts, KindVisitor, MatchFacts, ModuleVisitor,
-    Role, SectionReaders, UnitDefaults, UnitTypeData,
+    BookCx, BookError, BookSource, BuiltBooks, CapabilitySet, Declarations, Given, InstallFacts,
+    KindVisitor, MatchFacts, ModuleVisitor, Role, SectionReaders, UnitDefaults, UnitTypeData,
 };
 use campfire_deliveries::Deliveries;
 use campfire_interaction::Interaction;
 use campfire_items::Items;
-use campfire_mode::{Mode, ModeCore};
+use campfire_mode::{Mode, ModeCore, ModeInputs, ModeSetup, ModeTeams};
 use campfire_navigation::Navigation;
 use campfire_orders::Orders;
 use campfire_players::Players;
 use campfire_production::Production;
 use campfire_progression::Progression;
 use campfire_projectiles::Projectiles;
-use campfire_script::{ApiBuilder, Hook, ScriptApi, ScriptHost, ScriptId};
+use campfire_script::{ApiBuilder, Hook, ModeScripts, ScriptApi, ScriptHost, ScriptId};
 use campfire_sim::{Capability, SimWorld, SimWorldBuilder, StateRewritten, Unpredicted};
 use campfire_states::StateTypes;
-use campfire_stats::Stats;
-use campfire_units::Units;
-use campfire_values::{EngineTag, NameId};
+use campfire_stats::{MoveSpeedCap, Stats};
+use campfire_units::{UnitTypes, Units};
+use campfire_values::EngineTag;
 use campfire_vision::Vision;
 
 use crate::books::Books;
+use crate::books::book_cells::{BookCells, CellWalk};
+use crate::books::book_input::BookInput;
+use crate::books::load_names::LoadNames;
 use crate::books::units_seed::UnitsSeed;
 use crate::bot::bots::Bots;
 use crate::release::api_binder::ApiBinder;
-use crate::release::called_registries::CalledRegistries;
-use crate::release::capability_rows::CapabilityRows;
 use crate::release::declaring::{Declaring, Scripts};
-use crate::release::engine_tag_list::EngineTagList;
-use crate::release::error::CapabilityError;
-use crate::release::hook_list::HookList;
+use crate::release::error::{CapabilityError, CheckedBooksError};
 use crate::release::installing::{Installing, ModuleWalk};
 use crate::release::kinds_only::KindsOnly;
 use crate::release::match_core::MatchCore;
 use crate::release::match_kind::{MatchKind, ModeStart, PackageScript};
 use crate::release::match_setup::MatchSetup;
-use crate::release::section_list::SectionList;
+use crate::release::release_catalog::ReleaseCatalog;
 use crate::release::state_clear::StateClear;
 use crate::release::state_only::StateOnly;
 
 mod api_binder;
-mod book_build;
-mod called_registries;
-mod capability_rows;
 #[cfg(feature = "internals")]
 pub(crate) mod client_holds;
 mod declaring;
-mod engine_tag_list;
 pub(crate) mod error;
-mod hook_list;
 mod installer;
 mod installing;
 mod kinds_only;
@@ -68,12 +62,10 @@ mod match_core;
 pub(crate) mod match_kind;
 pub(crate) mod match_setup;
 #[cfg(feature = "internals")]
-mod module_sets;
-#[cfg(feature = "internals")]
 mod predicted_parts;
+mod release_catalog;
 #[cfg(feature = "internals")]
 mod resource_audit;
-mod section_list;
 mod stage_span_systems;
 mod state_clear;
 mod state_only;
@@ -91,10 +83,9 @@ impl Release {
     pub const LEAST_PAYLOAD_LEN: u32 = 256;
 
     /// Visits, with `v`, every module a match builds with, in the order they install: what the
-    /// match's build puts in itself, the core's and the mode's core, then each capability after
-    /// the ones it builds on. Each capability's
-    /// orders apply in this order too, the orders of `orders` last. The mode's scripted part
-    /// installs above them, once the scripts compile.
+    /// match's build puts in itself, the core's and the mode's core, then each capability after the
+    /// ones it builds on. Each capability's orders apply in this order too, the orders of `orders`
+    /// last. The mode's scripted part installs above them, once the scripts compile.
     fn modules<V: ModuleVisitor>(v: &mut V) {
         v.module::<MatchCore>();
         v.module::<Units>();
@@ -119,19 +110,9 @@ impl Release {
         v.scripted::<Mode>();
     }
 
-    /// The capabilities of the list, each with what it builds on.
-    fn rows() -> CapabilityRows {
-        let mut rows = CapabilityRows::default();
-        Self::modules(&mut rows);
-        rows
-    }
-
     /// Every capability the release runs.
     pub fn capabilities() -> CapabilitySet {
-        Self::rows()
-            .0
-            .iter()
-            .fold(CapabilitySet::CORE, |set, row| set.with(row.capability))
+        ReleaseCatalog::get().capabilities()
     }
 
     /// The set of a mode's `declared` capabilities; an error when one is `mode`, one is declared
@@ -148,9 +129,9 @@ impl Release {
             }
             set = set.with(capability);
         }
-        let rows = Self::rows();
+        let catalog = ReleaseCatalog::get();
         for capability in set.iter() {
-            let needs = rows.needs(capability);
+            let needs = catalog.needs(capability);
             let needs = needs.expect("every capability has a module of the release");
             if let Some(&needs) = needs.iter().find(|&&needs| !set.contains(needs)) {
                 return Err(CapabilityError::Needs { capability, needs });
@@ -161,35 +142,21 @@ impl Release {
 
     /// Every hook the release's modules declare, in the order they declare them: the hooks a
     /// match's scripts may define.
-    pub fn hooks() -> Vec<Hook> {
-        let mut list = HookList::default();
-        Self::declare(Self::capabilities(), &mut list);
-        list.0
+    pub fn hooks() -> &'static [Hook] {
+        ReleaseCatalog::get().hooks()
     }
 
     /// Every engine tag the release's modules declare, in the order of their numbers: the first
     /// tags of every match, whatever its capabilities, so a tag has one number in all.
-    pub fn engine_tags() -> Vec<EngineTag> {
-        let mut list = EngineTagList::default();
-        Self::declare(Self::capabilities(), &mut list);
-        for (at, tag) in list.0.iter().enumerate() {
-            assert_eq!(
-                tag.tag().index(),
-                at,
-                "{} takes its place among the engine tags",
-                tag.name()
-            );
-        }
-        list.0
+    pub fn engine_tags() -> &'static [EngineTag] {
+        ReleaseCatalog::get().engine_tags()
     }
 
     /// Every section the release's modules register, of every table, whatever a match's
     /// capabilities, so a table reads alike in every mode and the load refuses a section of a
     /// module its mode does not run.
-    pub fn sections() -> SectionReaders {
-        let mut list = SectionList::default();
-        Self::declare(Self::capabilities(), &mut list);
-        list.readers
+    pub fn sections() -> &'static SectionReaders {
+        ReleaseCatalog::get().sections()
     }
 
     /// The unit types of `units`, a table of them by name, `[units.<name>]`, each read as the
@@ -198,9 +165,8 @@ impl Release {
         units: TomlValue,
         defaults: &UnitDefaults,
     ) -> Result<BTreeMap<DeclaredName, UnitTypeData>, TomlError> {
-        let readers = Self::sections();
         units.read_with(UnitsSeed {
-            readers: &readers,
+            readers: Self::sections(),
             defaults,
         })
     }
@@ -223,14 +189,12 @@ impl Release {
     /// callbacks in: the mode's scripted part's only in a match that runs scripts, which
     /// installs it.
     fn called(set: CapabilitySet, role: &Role) -> Vec<TypeId> {
-        let mut called = CalledRegistries::default();
         let scripts = if role.scripts() {
             Scripts::Visited
         } else {
             Scripts::Skipped
         };
-        Self::modules(&mut Declaring::new(set, scripts, &mut called));
-        called.0
+        ReleaseCatalog::get().called(set, scripts)
     }
 
     /// Lists, into `types`, the state types of a match of `set`, as its install registers them.
@@ -248,13 +212,14 @@ impl Release {
         Self::declare(set, &mut ApiBinder(builder));
     }
 
-    /// Builds the match of `spec` in the world, a new world, of `books`, as `start` says: prepares
-    /// it for the sim, keeps its facts, puts in the declarations of each module of the list the
-    /// match runs, in order, its books among them, then adds the systems of each, so each install
-    /// reads every book; binds the script API of the match's modules into the script host the
-    /// core's install puts in, and the mode's names into the script view; then starts the match, as
-    /// `start` says, and builds its schedule once. A match that ended runs no stage. The world then
-    /// holds the match whole: its schedule, its state registry, and its facts.
+    /// Builds the match of `match_setup` in the world, a new world, of `books`, as `start` says:
+    /// prepares it for the sim, keeps its facts, puts in the declarations of each module of the
+    /// list the match runs, in order, its books among them, then adds the systems of each, so each
+    /// install reads every book; binds the script API of the match's modules into the script host
+    /// the core's install puts in, and the mode's names into the script view; loads the map's
+    /// pathing grid, but in a test's match of rules alone; then starts the match, as `start` says,
+    /// and builds its schedule once. A match that ended runs no stage. The world then holds the
+    /// match whole: its schedule, its state registry, and its facts.
     pub fn build(world: &mut World, match_setup: MatchSetup, books: Books, kind: MatchKind<'_>) {
         let role = match_setup.role;
         if matches!(role, Role::Client) {
@@ -277,11 +242,7 @@ impl Release {
             MatchKind::Mode(start) => Some(start.setup.scripts.clone()),
             MatchKind::Rules | MatchKind::Predicting => None,
         };
-        let install = InstallFacts {
-            called: Self::called(set, &facts.role),
-            facts: &facts,
-            mode_scripts: mode_scripts.as_ref(),
-        };
+        let install = Self::install_facts(&facts, mode_scripts.as_ref());
         let Books {
             mut built, inputs, ..
         } = books;
@@ -308,26 +269,18 @@ impl Release {
             return;
         }
         Self::install_systems(&mut sim, &install);
+        if !matches!(kind, MatchKind::Rules) {
+            Navigation::load_map(sim.fields().world);
+        }
         match kind {
-            MatchKind::Rules => {}
-            MatchKind::Predicting => {
-                Navigation::load_map(sim.fields().world);
-            }
+            MatchKind::Rules | MatchKind::Predicting => {}
             MatchKind::Mode(ModeStart { scripts, setup }) => {
                 assert!(
                     facts.role.scripts(),
                     "a match that starts its mode runs scripts"
                 );
                 Self::compile(sim.fields().world, scripts);
-                let mut none = BuiltBooks::default();
-                let fields = sim.fields();
-                Self::modules(&mut Installing::new(
-                    fields,
-                    &mut none,
-                    &install,
-                    ModuleWalk::Scripted,
-                ));
-                Mode::load(sim.fields().world, setup, inputs);
+                Self::load_mode(&mut sim, setup, inputs);
             }
         }
         #[cfg(feature = "internals")]
@@ -336,6 +289,34 @@ impl Release {
             return;
         }
         sim.build();
+    }
+
+    /// What each module's install reads of a match of `facts`, whose mode, if it starts one, runs
+    /// `mode_scripts`.
+    fn install_facts<'a>(
+        facts: &'a MatchFacts,
+        mode_scripts: Option<&'a ModeScripts>,
+    ) -> InstallFacts<'a> {
+        InstallFacts {
+            called: Self::called(facts.set, &facts.role),
+            facts,
+            mode_scripts,
+        }
+    }
+
+    /// Installs the mode's scripted part into the match, then loads the mode of `setup` with
+    /// what `inputs` takes from the books.
+    fn load_mode(sim: &mut SimWorldBuilder<'_>, setup: ModeSetup<'_>, inputs: ModeInputs) {
+        let facts = sim.fields().world.resource::<MatchFacts>().clone();
+        let install = Self::install_facts(&facts, Some(&setup.scripts));
+        let mut none = BuiltBooks::default();
+        Self::modules(&mut Installing::new(
+            sim.fields(),
+            &mut none,
+            &install,
+            ModuleWalk::Scripted,
+        ));
+        Mode::load(sim.fields().world, setup, inputs);
     }
 
     /// Adds the systems of each module the match runs, as the facts of its books decide; the
@@ -375,6 +356,87 @@ impl Release {
             );
         }
     }
+
+    /// The books of `input`, which the package load checked, each built by the module of the
+    /// match that declares it (02-engine-core.md, Books built by their modules); an error for what
+    /// the books cannot hold.
+    pub fn books(input: &BookInput<'_>) -> Result<Books, BookError> {
+        Self::with_cx(input, |mut cx| {
+            cx.build_all()?;
+            let inputs = ModeInputs::take(&mut cx)?;
+            Ok(Books {
+                built: cx.into_books(),
+                inputs,
+                set: input.set,
+            })
+        })
+    }
+
+    /// The unit types and the tags of `input`'s match, numbered as its books number them; an
+    /// error for a type its scope names already, or past the most types or tags a match holds.
+    pub fn unit_types(input: &BookInput<'_>) -> Result<UnitTypes, BookError> {
+        Self::with_cx(input, |mut cx| {
+            let types = cx.take_fact::<UnitTypes>()?;
+            Ok(types.expect("the core declares the unit types"))
+        })
+    }
+
+    /// Checks every rule of `input`'s data that a module of its match declares (02-engine-core.md,
+    /// A module checks the rules of its own data), runs `check` with the names its scripts may
+    /// name, as the package load checks them, then builds the books as `books` does, from the same
+    /// build, so the name tables and facts the rules built serve the books. An error for the first
+    /// rule the data breaks, a list of names its book refuses, `check`'s, or what the books
+    /// cannot hold.
+    pub fn checked_books<E>(
+        input: &BookInput<'_>,
+        check: impl FnOnce(&LoadNames) -> Result<(), E>,
+    ) -> Result<Books, CheckedBooksError<E>> {
+        Self::with_cx(input, |mut cx| {
+            cx.check_all()?;
+            let names = LoadNames::of(&mut cx)?;
+            check(&names).map_err(CheckedBooksError::Check)?;
+            cx.build_all()?;
+            let inputs = ModeInputs::take(&mut cx)?;
+            Ok(Books {
+                built: cx.into_books(),
+                inputs,
+                set: input.set,
+            })
+        })
+    }
+
+    /// What `run` gives of the build of `input`'s books, every book and fact of its match's
+    /// modules declared, none built yet.
+    fn with_cx<T>(input: &BookInput<'_>, run: impl FnOnce(BookCx<'_>) -> T) -> T {
+        let cap = MoveSpeedCap(input.max_move_speed.get());
+        let teams = ModeTeams(input.teams.to_vec());
+        let mut given = Given::default();
+        given.add(input.scripts);
+        given.add(input.script_uses);
+        given.add(&cap);
+        given.add(&teams);
+        given.add(input.data);
+        given.add(input.map);
+        if let Some(heights) = input.heights {
+            given.add(heights);
+        }
+        let source = BookSource {
+            tick_rate: input.tick_rate,
+            set: input.set,
+            engine_tags: input.engine_tags,
+            mode: &input.data.sections,
+            map: input.map.sections(),
+            packages: input.packages.clone(),
+            mode_scripts: input.mode_scripts.clone(),
+            given,
+        };
+        let mut cx = BookCx::new(source);
+        let walk = CellWalk::Match;
+        Self::declare(input.set, &mut BookCells { cx: &mut cx, walk });
+        let walk = CellWalk::Release;
+        Self::declare(Self::capabilities(), &mut BookCells { cx: &mut cx, walk });
+        run(cx)
+    }
 }
 
 #[cfg(feature = "internals")]
@@ -389,12 +451,12 @@ pub(crate) mod internals {
     use bevy_ecs::schedule::InternedSystemSet;
     use bevy_ecs::world::World;
     use campfire_declarations::{
-        BuiltBooks, CapabilitySet, InstallFacts, MatchFacts, Role, Sections, SourceKind,
-        SourcePackage,
+        CapabilitySet, MatchFacts, Role, Sections, SourceKind, SourcePackage,
     };
     use campfire_geometry::Bounds;
     use campfire_math::Num;
-    use campfire_mode::{MapData, Mode, ModeData, ModeInputs, ModeSetup};
+    use campfire_mode::{MapData, ModeData, ModeInputs, ModeSetup};
+    use campfire_navigation::Navigation;
     use campfire_script::{Hook, ScriptApi, ScriptHost, ScriptUses};
     use campfire_sim::MatchRate;
     use campfire_sim::internals::SimWorldInternals;
@@ -412,9 +474,8 @@ pub(crate) mod internals {
     use crate::books::book_input::BookInput;
     use crate::release::Release;
     use crate::release::client_holds::ClientHolds;
-    use crate::release::installing::{Installing, ModuleWalk};
     use crate::release::r#match::Match;
-    use crate::release::module_sets::ModuleSets;
+    use crate::release::release_catalog::ReleaseCatalog;
     use crate::release::resource_audit::DeclaredResources;
 
     /// The component types the lists declare, as state or as derived, by their ids.
@@ -469,9 +530,9 @@ pub(crate) mod internals {
                 teams: &[],
                 max_move_speed: Speed::new(Num::MAX).unwrap(),
                 set,
-                engine_tags: &Self::engine_tags(),
+                engine_tags: Self::engine_tags(),
                 packages: vec![mode],
-                scripts: &ScriptBook::new(Self::hooks()),
+                scripts: &ScriptBook::new(Self::hooks().iter().copied()),
                 script_uses: &ScriptUses::default(),
                 mode_scripts: Vec::new(),
                 tick_rate: rate,
@@ -499,12 +560,7 @@ pub(crate) mod internals {
                 Self::load_test_modifiers(world);
             }
             let facts = sim.world().resource::<MatchFacts>().clone();
-            let install = InstallFacts {
-                called: Self::called(facts.set, &facts.role),
-                facts: &facts,
-                mode_scripts: None,
-            };
-            Self::install_systems(&mut sim, &install);
+            Self::install_systems(&mut sim, &Self::install_facts(&facts, None));
             sim.build();
         }
 
@@ -513,27 +569,13 @@ pub(crate) mod internals {
         /// what `inputs` takes from the books: the tick's schedule opens again, and builds again.
         pub fn install_mode(world: &mut World, setup: ModeSetup<'_>, inputs: ModeInputs) {
             let open = SimWorldBuilder::is_open(world);
-            let facts = world.resource::<MatchFacts>().clone();
             assert!(
-                facts.role.scripts(),
+                world.resource::<MatchFacts>().role.scripts(),
                 "the mode installs into a match that runs scripts"
             );
+            Navigation::load_map(world);
             let mut sim = SimWorldBuilder::reopen(world);
-            let scripts = setup.scripts.clone();
-            let install = InstallFacts {
-                called: Self::called(facts.set, &facts.role),
-                facts: &facts,
-                mode_scripts: Some(&scripts),
-            };
-            let mut none = BuiltBooks::default();
-            let fields = sim.fields();
-            Self::modules(&mut Installing::new(
-                fields,
-                &mut none,
-                &install,
-                ModuleWalk::Scripted,
-            ));
-            Mode::load(sim.fields().world, setup, inputs);
+            Self::load_mode(&mut sim, setup, inputs);
             if open {
                 sim.leave_open(Self::finish_open);
             } else {
@@ -549,8 +591,8 @@ pub(crate) mod internals {
 
         /// The hook named `name` that a module of the release declares.
         pub fn hook(name: &str) -> Hook {
-            Self::hooks()
-                .into_iter()
+            *Self::hooks()
+                .iter()
                 .find(|hook| hook.name == name)
                 .expect("a module declares the hook")
         }
@@ -558,9 +600,7 @@ pub(crate) mod internals {
         /// Every system set the modules of `set` declare, in the order they declare them: the
         /// sets each game system of a match of `set` sits in.
         pub fn module_sets(set: CapabilitySet) -> Vec<InternedSystemSet> {
-            let mut sets = ModuleSets::default();
-            Self::declare(set, &mut sets);
-            sets.0
+            ReleaseCatalog::get().sets(set)
         }
 
         /// The names of the resources of `world`, a match of `set`, that no declaration names,

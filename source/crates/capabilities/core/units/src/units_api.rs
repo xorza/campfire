@@ -44,7 +44,7 @@ impl UnitsApi {
             MemberDecl::method(ApiHolder::of::<Vec3>(), name, signature, description)
         };
         let within = vector(
-            "within",
+            "is_within",
             &[&["position", "radius"]],
             "whether `position` is within `radius` in the map's metric, exactly: the reach rule between two points, which have no bodies",
         );
