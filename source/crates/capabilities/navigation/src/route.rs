@@ -39,6 +39,19 @@ pub struct Route {
     waypoints: Vec<Vec3>,
     /// Whether the last waypoint is the goal, not the nearest place to it the walker reaches.
     reached: bool,
+    /// Whether the planned route goes through a cell a unit of the walker's team stands in.
+    through: bool,
+}
+
+/// What the planner found of a route beside its waypoints: whether its last waypoint is the goal,
+/// and whether it goes through a cell a unit of its walker's team stands in, so the walker may
+/// move such a unit aside whatever its gait, as Zero Hour's path that crosses a cell an ally holds
+/// is blocked by an ally (entries-and-blocking.md, A walker that steps moves no unit that drives
+/// aside).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RouteFound {
+    pub(crate) reached: bool,
+    pub(crate) through: bool,
 }
 
 /// Where a walker is along its route: the next waypoint, first among those left, and where the
@@ -162,9 +175,15 @@ impl Route {
         }
     }
 
-    /// Takes the planner's answer to its ask: `waypoints`, the last the goal when `reached`, from
-    /// the walker's place `from`.
-    fn answer(&mut self, cursor: &mut RouteCursor, from: Vec3, waypoints: &[Vec3], reached: bool) {
+    /// Takes the planner's answer to its ask: `waypoints`, as `found`, from the walker's place
+    /// `from`.
+    fn answer(
+        &mut self,
+        cursor: &mut RouteCursor,
+        from: Vec3,
+        waypoints: &[Vec3],
+        found: RouteFound,
+    ) {
         let goal = self
             .goal
             .as_mut()
@@ -172,7 +191,8 @@ impl Route {
         goal.asked = None;
         self.waypoints.clear();
         self.waypoints.extend_from_slice(waypoints);
-        self.reached = reached;
+        self.reached = found.reached;
+        self.through = found.through;
         *cursor = RouteCursor {
             next: 0,
             from: Some(from),
@@ -195,6 +215,7 @@ impl Route {
         self.goal = None;
         self.waypoints.clear();
         self.reached = false;
+        self.through = false;
         *cursor = RouteCursor::default();
     }
 
@@ -239,6 +260,11 @@ impl<'a> RouteRef<'a> {
     /// The waypoints the walker has yet to reach, the next first.
     pub fn ahead(self) -> &'a [Vec3] {
         &self.route.waypoints[self.cursor.next as usize..]
+    }
+
+    /// Whether the planned route goes through a cell a unit of the walker's team stands in.
+    pub(crate) const fn is_through(self) -> bool {
+        self.route.through
     }
 
     /// The legs of the route the walker has yet to walk, from where the leg to the next waypoint
@@ -404,9 +430,8 @@ impl RouteMutItem<'_, '_> {
     }
 
     /// See `Route::answer`.
-    pub(crate) fn answer(&mut self, from: Vec3, waypoints: &[Vec3], reached: bool) {
-        self.route
-            .answer(&mut self.cursor, from, waypoints, reached);
+    pub(crate) fn answer(&mut self, from: Vec3, waypoints: &[Vec3], found: RouteFound) {
+        self.route.answer(&mut self.cursor, from, waypoints, found);
         self.report();
     }
 
@@ -522,7 +547,7 @@ pub(crate) mod internals {
     use campfire_units::WalkGoal;
 
     use crate::progress::Progress;
-    use crate::route::{Route, RouteAsk, RouteCursor, RouteRef};
+    use crate::route::{Route, RouteAsk, RouteCursor, RouteFound, RouteRef};
 
     /// A route a test holds, with its cursor, to insert on a walker.
     #[derive(Debug, Clone)]
@@ -543,8 +568,11 @@ pub(crate) mod internals {
                 party: None,
             };
             route.ask(ask, &mut Progress::default());
-            let reached = waypoints.last() == Some(&goal);
-            route.answer(&mut cursor, from, waypoints, reached);
+            let found = RouteFound {
+                reached: waypoints.last() == Some(&goal),
+                through: false,
+            };
+            route.answer(&mut cursor, from, waypoints, found);
             Self { route, cursor }
         }
 
@@ -598,7 +626,10 @@ mod tests {
             &mut cursor,
             at(0, 0),
             &[at(0, 0), at(4, 0), at(4, -3)],
-            true,
+            RouteFound {
+                reached: true,
+                through: false,
+            },
         );
         assert_eq!(degrees(&route, &cursor), Some(Num::ZERO));
         let leg = |from, to| Segment::new(from, to);
@@ -644,7 +675,10 @@ mod tests {
             &mut cursor,
             Vec3::from((0, 0, 0)),
             &[Vec3::from((1, 0, 0))],
-            true,
+            RouteFound {
+                reached: true,
+                through: false,
+            },
         );
         let mut world = World::new();
         let entity = world.spawn(route).id();

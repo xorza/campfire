@@ -121,6 +121,15 @@ impl DrawShow {
         &self.models
     }
 
+    /// Its model at the place `place` among the models of the state it shows; none during a
+    /// transition, whose models are its own.
+    pub(crate) fn state_model(&self, place: u8) -> Option<Entity> {
+        match self.showing {
+            Some(Showing::State(_)) => self.models.get(usize::from(place)).copied(),
+            Some(Showing::Transition(_)) | None => None,
+        }
+    }
+
     /// Shows and hides again the nodes of each model of what it shows of `draw` whose upgrades
     /// test a condition of `changed`, the tested conditions its unit came to hold or no longer
     /// holds, or that shows the rounds of a clip when `lacked` says what its clips lack changed,

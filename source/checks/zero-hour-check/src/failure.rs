@@ -10,10 +10,10 @@ use derive_more::Display;
 use crate::decal_ground::DecalGround;
 use crate::pins::{
     BotBase, BotMatchEnd, CombatSteps, ContainedCounts, DefenseTicks, DrivenCounts, EffectCounts,
-    FactorySteps, FightSteps, Fingerprints, FoughtCounts, GarrisonSteps, HelicopterSteps, JetTicks,
-    LookCounts, MapCounts, MissileTicks, PanelCounts, ProducedCounts, ProductionSteps, RangerLook,
-    RoadCounts, SaleSteps, ScienceSteps, SoundCounts, SuppliedCounts, SupplySteps, TerrainDrawn,
-    TransportSteps, UpgradeSteps, UpgradedCounts,
+    EntrySteps, FactorySteps, FightSteps, Fingerprints, FoughtCounts, GarrisonSteps,
+    HelicopterSteps, JetTicks, LookCounts, MapCounts, MissileTicks, PanelCounts, ProducedCounts,
+    ProductionSteps, RangerLook, RoadCounts, SaleSteps, ScienceSteps, SoundCounts, SuppliedCounts,
+    SupplySteps, TerrainDrawn, TransportSteps, UpgradeSteps, UpgradedCounts,
 };
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
@@ -201,6 +201,9 @@ pub(crate) enum CheckFailure {
     /// The transport play's ticks, shot, fall or flight differ from the expected.
     #[display("it played transports as {_0}")]
     Transport(Box<Differs<TransportSteps>>),
+    /// The entry play's ticks, riders or places differ from the expected.
+    #[display("it played the entries as {_0}")]
+    Entry(Box<Differs<EntrySteps>>),
     /// The map holds no free building whose riders leave it before it dies.
     #[display("the map holds no free building whose riders leave it before it dies")]
     NoGarrison,

@@ -18,6 +18,7 @@ use crate::zero_hour::airfield_bones::{AirfieldBones, PlaceBones};
 use crate::zero_hour::animation_drop_cause::AnimationDropCause;
 use crate::zero_hour::animation_import::AnimationEnds;
 use crate::zero_hour::barrel_recoil::BarrelRecoil;
+use crate::zero_hour::carried_look::CarriedLook;
 use crate::zero_hour::draw_sets::DrawSets;
 use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::error::{ModelError, NameClash, NameError, ZeroHourError};
@@ -239,9 +240,10 @@ impl ModelWriter<'_> {
             let Some(mut own) = own else {
                 continue;
             };
+            let carried = self.carried_models(rules, object)?;
             if let Some(first) = own.first_mut() {
-                for carried in self.carried_models(rules, object)? {
-                    first.add_model(&carried);
+                for (model, _) in &carried {
+                    first.add_model(model);
                 }
             }
             let mut unit_look = ClientUnit::new(own);
@@ -316,6 +318,10 @@ impl ModelWriter<'_> {
             if let Some(points) = garrisoned {
                 additions.type_mut(&type_name).fire_points = points;
             }
+            if !carried.is_empty() {
+                additions.type_mut(&type_name).carried =
+                    carried.into_iter().map(|(_, look)| look).collect();
+            }
             units.insert(declared, unit_look);
         }
         Ok(ImportedLooks {
@@ -329,16 +335,19 @@ impl ModelWriter<'_> {
     }
 
     /// The models of the portable structures the upgrades of `object` make inside it, of `rules`,
-    /// each the default model of a structure's draw of a bone of its container
+    /// each the model of the default state of a structure's draw of a bone of its container
     /// (`AttachToBoneInContainer`), drawn at that bone of its carrier's model, at the structure's
     /// scale, hidden from its root down but while its carrier holds its upgrade's tag, as the
-    /// structure stands on its carrier while it lives (riders-and-upgrades.md, A model may be drawn
-    /// at another's bone); none of a model the package lacks.
+    /// structure stands on its carrier while it lives, and hiding what that state hides, its
+    /// barrels' flashes among it (riders-and-upgrades.md, A model may be drawn at another's bone);
+    /// each with what of its look waits for the slots its structure's weapons take
+    /// (riders-and-upgrades.md, A carried model's barrels are its carrier's). None of a model the
+    /// package lacks.
     fn carried_models(
         &mut self,
         rules: &ZeroHourRules,
         object: &IniObject,
-    ) -> Result<Vec<ClientModel>, ZeroHourError> {
+    ) -> Result<Vec<(ClientModel, CarriedLook)>, ZeroHourError> {
         let mut models = Vec::new();
         for module in object.upgrades() {
             let Some(structure) = portable_structure::structure(rules, module) else {
@@ -348,34 +357,53 @@ impl ModelWriter<'_> {
                 continue;
             };
             let draws = structure.draws();
-            let drawn = draws.iter().find_map(|draw| {
-                let bone = draw.container_bone.as_ref()?;
-                Some((bone.clone(), draw.model.clone()?))
-            });
-            let Some((bone, model)) = drawn else {
+            let Some(draw) = draws.iter().find(|draw| draw.container_bone.is_some()) else {
                 continue;
             };
-            let WrittenModel::Nodes { nodes, .. } = self.model(&model)? else {
+            let default = draw
+                .states()
+                .next()
+                .expect("a module has its default state");
+            let Some(model) = default.drawn.model else {
+                continue;
+            };
+            let WrittenModel::Nodes { nodes, .. } = self.model(model)? else {
                 continue;
             };
             let Some(root) = nodes.pivots.first().map(|pivot| pivot.name.clone()) else {
                 continue;
             };
+            let module = ModuleModels {
+                scale: structure.scale(),
+                upgrades: &[],
+                rounds_shown: draw.rounds_shown,
+                recoil: BarrelRecoil::of(draw.recoil),
+            };
+            let LookModels {
+                models: looked,
+                fire_bones,
+                ..
+            } = self.look_models([default.drawn], module)?;
+            let [mut carried] = <[ClientModel; 1]>::try_from(looked)
+                .expect("a state's one model the package holds");
             let test = ConditionTest::Tag { tag: tag.clone() };
             self.conditions.entry(tag.clone()).or_insert(test);
-            models.push(ClientModel {
-                model: game_path::model(&model)?,
-                scale: structure.scale(),
-                hide: vec![root.clone()],
-                top: None,
-                upgrades: vec![NodeUpgrade {
-                    condition: tag,
-                    show: vec![root],
-                    hide: Vec::new(),
-                }],
-                rounds: Vec::new(),
-                bone: Some(bone),
-            });
+            carried.hide.retain(|node| *node != root);
+            carried.hide.insert(0, root.clone());
+            carried.top = None;
+            carried.upgrades = vec![NodeUpgrade {
+                condition: tag,
+                show: vec![root],
+                hide: Vec::new(),
+            }];
+            carried.bone.clone_from(&draw.container_bone);
+            let look = CarriedLook::new(
+                ImportName::latin(&structure.name).declared()?,
+                carried.model.clone(),
+                fire_bones,
+                std::mem::take(&mut carried.rounds),
+            );
+            models.push((carried, look));
         }
         Ok(models)
     }
@@ -883,13 +911,19 @@ impl ModelWriter<'_> {
             match self.model(model)? {
                 WrittenModel::Nodes { nodes, bounds } => {
                     // A slot's fire effect plays at its barrels of the first model that holds any.
+                    let place =
+                        u8::try_from(looked.models.len()).expect("a state's models fit a u8");
                     for (slot, bones) in (0_u8..).zip(&look.weapons) {
                         if looked.fire_bones.iter().any(|bone| bone.slot == slot) {
                             continue;
                         }
                         let barrels = nodes.fire_barrels(bones, recoil);
                         if !barrels.is_empty() {
-                            looked.fire_bones.push(FireBone { slot, barrels });
+                            looked.fire_bones.push(FireBone {
+                                slot,
+                                model: place,
+                                barrels,
+                            });
                         }
                     }
                     let hide = nodes.hidden(look);

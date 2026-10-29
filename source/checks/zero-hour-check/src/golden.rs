@@ -10,9 +10,10 @@ use serde::{Deserialize, Serialize};
 use crate::error::CheckError;
 use crate::pins::{
     BotBase, BotMatchEnd, CombatTicks, ContainedCounts, DefenseTicks, DrivenCounts, EffectCounts,
-    Fingerprints, FoughtCounts, GarrisonTicks, HelicopterTicks, JetTicks, LookCounts, MapCounts,
-    MissileTicks, PanelCounts, ProducedCounts, RangerLook, RoadCounts, ScienceSteps, SkirmishTicks,
-    SoundCounts, SuppliedCounts, SupplyTicks, TerrainCounts, TransportTicks, UpgradedCounts,
+    EntryTicks, Fingerprints, FoughtCounts, GarrisonTicks, HelicopterTicks, JetTicks, LookCounts,
+    MapCounts, MissileTicks, PanelCounts, ProducedCounts, RangerLook, RoadCounts, ScienceSteps,
+    SkirmishTicks, SoundCounts, SuppliedCounts, SupplyTicks, TerrainCounts, TransportTicks,
+    UpgradedCounts,
 };
 
 /// What the check measured of the known version and this importer, each a value no closed form
@@ -21,7 +22,7 @@ use crate::pins::{
 /// and movers; the plays'
 /// ticks, the supply play's deliveries, the helicopter play's climb, load and fall, the jet play's
 /// sortie, the science play's Paladin, the combat play's hits and returns, the transport play's
-/// boardings, shot, fall and flight, the garrison play's garrison, hit and leave, the defense plays' hits and kills and the missile play's
+/// boardings, shot, fall and flight, the entry play's boardings, the garrison play's garrison, hit and leave, the defense plays' hits and kills and the missile play's
 /// shot, hit and kill among them;
 /// the bot's base; and how the base play's and the attack play's matches stood. A run pins them,
 /// and a run that blesses writes them again (09-zero-hour.md, The check's measures are a golden
@@ -53,6 +54,7 @@ pub(crate) struct Golden {
     pub(crate) science: ScienceSteps,
     pub(crate) combat: CombatTicks,
     pub(crate) transport: TransportTicks,
+    pub(crate) entry: EntryTicks,
     pub(crate) garrison: GarrisonTicks,
     pub(crate) defense: DefenseTicks,
     pub(crate) patriot: DefenseTicks,
@@ -90,6 +92,7 @@ pub(crate) struct Measured {
     pub(crate) science: Option<ScienceSteps>,
     pub(crate) combat: Option<CombatTicks>,
     pub(crate) transport: Option<TransportTicks>,
+    pub(crate) entry: Option<EntryTicks>,
     pub(crate) garrison: Option<GarrisonTicks>,
     pub(crate) defense: Option<DefenseTicks>,
     pub(crate) patriot: Option<DefenseTicks>,
@@ -165,6 +168,7 @@ impl Measured {
             science: self.science?,
             combat: self.combat?,
             transport: self.transport?,
+            entry: self.entry?,
             garrison: self.garrison?,
             defense: self.defense?,
             patriot: self.patriot?,

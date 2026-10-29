@@ -25,7 +25,7 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
                 { model = "client/models/avhumflag.glb", top = 3.25 },
                 { model = "client/models/avhumfx.glb" },
             ] },
-            { sets = [["damaged"], ["damaged", "night"], { names = ["damaged"], untested = 2 }], models = [{ model = "client/models/avhummer_d.glb" }], fire_bones = [{ slot = 0, barrels = [{ bone = "MuzzleFX01", flash = { node = "avhummer_d.muzzlefx01", ms = 100 } }, {}] }] },
+            { sets = [["damaged"], ["damaged", "night"], { names = ["damaged"], untested = 2 }], models = [{ model = "client/models/avhummer_d.glb" }], fire_bones = [{ slot = 0, model = 0, barrels = [{ bone = "MuzzleFX01", flash = { node = "avhummer_d.muzzlefx01", ms = 100 } }, {}] }] },
         ] }]
         death = { start = ["fx_humvee_death"], end = ["fx_humvee_blast"] }
 
@@ -93,6 +93,7 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
         states[1].fire_bones,
         [FireBone {
             slot: 0,
+            model: 0,
             barrels: vec![
                 FireBarrel {
                     bone: Some("MuzzleFX01".to_owned()),

@@ -2,6 +2,9 @@ use campfire_actions::ActionKeys;
 use campfire_actions::ActionRange;
 use campfire_actions::RangeField;
 use campfire_actions::Targeting;
+use campfire_client_files::{
+    ClientModel, ClipRounds, FireBarrel, FireBone, LookDraw, LookVariation, ModelScale,
+};
 use campfire_combat::AttackData;
 use campfire_combat::BonusData;
 use campfire_combat::ClipData;
@@ -19,12 +22,14 @@ use campfire_combat::{BarrelData, UnitOffset};
 use campfire_math::Num;
 use campfire_projectiles::{CruiseData, ProjectileHits, SteerData};
 use campfire_values::FilterData;
+use campfire_values::PackagePath;
 use campfire_values::Ranked;
 use campfire_values::RelationSet;
 use campfire_values::Scalar;
 use campfire_values::Speed;
 
 use super::*;
+use crate::zero_hour::carried_look::CarriedLook;
 use crate::zero_hour::error::{NameClash, NameError};
 use crate::zero_hour::format::ini::armor_ini::samples::ARMORS;
 use crate::zero_hour::format::ini::locomotor_ini::samples;
@@ -941,7 +946,9 @@ fn garrison_range() -> BonusData {
 fn a_portable_structures_weapons_arm_its_carrier_by_its_upgrades_tag_past_its_own_slots() {
     // A carrier of a cannon whose upgrade makes a turret of flak and missiles inside it, as the
     // Overlord's makes its Gattling cannon (riders-and-upgrades.md, A portable structure is a
-    // part of its carrier).
+    // part of its carrier). The turret's model, drawn at a bone, holds the barrels of its own two
+    // slots and the rounds of its first; a second structure's, which no weapon of the carrier's
+    // is, holds one barrel (riders-and-upgrades.md, A carried model's barrels are its carrier's).
     let objects = "Object Carrier
   WeaponSet
     Conditions = None
@@ -975,12 +982,40 @@ End
     let mut names = ImportNames::default();
     let carrier = rules.objects.object(b"Carrier").unwrap();
     names.unit_type(carrier, &rules).unwrap();
+    let declared = |name: &str| DeclaredName::new(name).unwrap();
+    let path = |name: &str| PackagePath::parse(&format!("client/models/{name}.glb")).unwrap();
+    let barrel = |bone: &str| FireBarrel {
+        bone: Some(bone.to_owned()),
+        flash: None,
+    };
+    let bones = |slot: u8, model: u8, bone: &str| FireBone {
+        slot,
+        model,
+        barrels: vec![barrel(bone)],
+    };
+    let rounds = |slot: u8| ClipRounds {
+        slot,
+        rounds: vec![vec!["round01".to_owned()]],
+    };
     let mut additions = Additions::default();
+    additions.type_mut(&TypeName::named("carrier")).carried = vec![
+        CarriedLook::new(
+            declared("turret"),
+            path("turret"),
+            vec![bones(0, 0, "flak"), bones(1, 0, "missiles")],
+            vec![rounds(0)],
+        ),
+        CarriedLook::new(
+            declared("tower"),
+            path("tower"),
+            vec![bones(0, 0, "horn")],
+            Vec::new(),
+        ),
+    ];
     let mut names = names.into_production().into_projectiles();
     let import = CombatImport::of(&rules, &mut names, &mut additions).unwrap();
     // Its own cannon in its first slot, then the turret's two in the slots of a second set, each
     // named for the turret and armed while it holds the upgrade's tag.
-    let declared = |name: &str| DeclaredName::new(name).unwrap();
     let slots = &additions
         .get(&TypeName::named("carrier"))
         .unwrap()
@@ -1013,6 +1048,51 @@ End
         when("weapon_missiles_turret"),
         Some("all:upgrade_turret_created".to_owned())
     );
+    // A look of the carrier's own model, then the turret's and the tower's at a bone, and a
+    // variation of the turret's alone: the turret's barrels and rounds go to slots 3 and 4, of the
+    // turret's model's place in each, 1 and 0; the tower's, of no slot, nowhere.
+    let model = |name: &str, bone: Option<&str>| ClientModel {
+        model: path(name),
+        scale: ModelScale::ONE,
+        hide: Vec::new(),
+        top: None,
+        upgrades: Vec::new(),
+        rounds: Vec::new(),
+        bone: bone.map(str::to_owned),
+    };
+    let models = [
+        model("carrier", None),
+        model("turret", Some("firepoint01")),
+        model("tower", Some("firepoint01")),
+    ];
+    let mut look = ClientUnit::new(vec![LookDraw::still(models.to_vec())]);
+    look.variations = vec![LookVariation {
+        draws: vec![LookDraw::still(vec![models[1].clone()])],
+        turret: None,
+        turret_pitch: None,
+    }];
+    let mut looks = BTreeMap::from([(declared("carrier"), look)]);
+    import.complete_looks(&additions, &mut looks);
+    let look = &looks[&declared("carrier")];
+    let carried = |draw: &LookDraw, place: u8| {
+        let state = &draw.states()[0];
+        let shown = &state.models[usize::from(place)].rounds;
+        assert_eq!(*shown, [rounds(3)]);
+        assert_eq!(
+            state.fire_bones,
+            [bones(3, place, "flak"), bones(4, place, "missiles")]
+        );
+        assert_eq!(
+            state
+                .models
+                .iter()
+                .filter(|model| !model.rounds.is_empty())
+                .count(),
+            1
+        );
+    };
+    carried(&look.draws[0], 1);
+    carried(&look.variations[0].draws[0], 0);
 }
 
 #[test]

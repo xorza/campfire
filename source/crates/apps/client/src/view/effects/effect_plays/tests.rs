@@ -69,7 +69,7 @@ fn a_type_plays_the_death_end_and_trail_its_look_names_of_those_the_book_holds()
         [units.tank]
         draws = [{ states = [
             { sets = [[]], models = [] },
-            { sets = [["damaged"]], models = [], fire_bones = [{ slot = 1, barrels = [{ bone = "MuzzleFX01" }] }] },
+            { sets = [["damaged"]], models = [], fire_bones = [{ slot = 1, model = 0, barrels = [{ bone = "MuzzleFX01" }] }] },
         ] }]
         death = { start = ["fizzle"] }
         tread = { systems = ["smoke", "dirt"], track = { texture = "client/tracks/tank.ktx2", width = "14.5" } }

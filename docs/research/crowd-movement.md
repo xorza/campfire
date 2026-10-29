@@ -243,14 +243,34 @@ line from its start to its goal, read each tick.
 
 ## The Zero Hour check with entries and blocking, measured, 2026-10-29
 
-The check's plays on the import of 29 October 2026, run three times: as the golden holds them,
-before the walk into a unit; with the walk into a unit alone; and with the brake in place of the
-push.
+The check's plays on the import of 29 October 2026, run four times: as the golden holds them,
+before the walk into a unit; with the walk into a unit alone; with the brake in place of the
+push; and with the gait's rule, a soldier that moves no vehicle aside but on a route through its
+team's units or once stuck, and a mover braked to a stop counted stuck, on the import of
+30 October 2026, which hides a carried model's flashes.
 
-| Play | Golden | Walk into a unit | And the brake |
-| --- | --- | --- | --- |
-| Bases: ended, stalls | tick 13,906, 531 | tick 11,407, 512 | tick 9,607, 208 |
-| Attack: ended, stalls | tick 14,101, 101 | tick 14,101, 101 | tick 13,947, 79 |
-| Transports: boarded, fired, fell | 884, 10, 128 | 866, 24, 89 | 866, 24, 89 |
-| Garrison: garrisoned, outranged | 824, 1,351 | 824, 1,351 | 975, 1,320 |
-| Fight: shot, hit, fight | 905, 915, 2,621 | 905, 915, 2,621 | 913, 923, 2,637 |
+| Play | Golden | Walk into a unit | And the brake | And the gait |
+| --- | --- | --- | --- | --- |
+| Bases: ended, stalls | tick 13,906, 531 | tick 11,407, 512 | tick 9,607, 208 | tick 9,681, 737 |
+| Attack: ended, stalls | tick 14,101, 101 | tick 14,101, 101 | tick 13,947, 79 | tick 14,272, 69 |
+| Transports: boarded, fired, fell | 884, 10, 128 | 866, 24, 89 | 866, 24, 89 | 866, 24, 89 |
+| Garrison: garrisoned, outranged | 824, 1,351 | 824, 1,351 | 975, 1,320 | 985, 1,310 |
+| Fight: shot, hit, fight | 905, 915, 2,621 | 905, 915, 2,621 | 913, 923, 2,637 | 946, 956, 2,662 |
+
+- **The gait's rule, by its exceptions, 30 October 2026.** A soldier that never moves a vehicle:
+  the transport, combat and garrison plays never end, the bases play ends in tick 13,671 with
+  1,611 stalls. With the stuck exception alone: every play ends, the bases play in tick 10,352
+  with 860 stalls, the attack play in 14,040 with 82, the garrison in 909. With the route's
+  exception alone: the combat and garrison plays never end, the bases play ends in tick 9,953
+  with 734 stalls. With both: the table's last column.
+- **The entry play, 30 October 2026.** China's two Troop Crawlers let their 16 Red Guards out in
+  57 ticks; the first crawler's 8 walk back into it in 60, the crawler standing where it stood;
+  then the second's 8 into a Helix, which flies 245 m to a place it lands on and takes 5, the
+  other 3 refused, in 837; the 3 into the Overlord's bunker once bought in 75, the Overlord
+  standing still. Before the gait's rule, an Overlord and the second crawler were moved aside by
+  the Red Guards that walked past them; with neither exception, a Red Guard stood braked to a stop
+  behind the second crawler, which the Helix had moved, for the rest of the play, as a mover
+  braked to a stop counted no stuck tick.
+- **The garrison's slower Rebel.** Of the two Rebels, the one that starts among the base's units
+  walks east 90 m round them before it turns for the building, and arrives in tick 985 against
+  the other's 750; the golden's 824 was measured before the brake, with no probe of its way.

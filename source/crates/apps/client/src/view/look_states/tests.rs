@@ -193,13 +193,14 @@ fn a_units_draw_takes_the_state_of_its_life_keeping_a_model_of_the_same_scene() 
 }
 
 /// A tank of keyed states: at rest, a loop; damaged, its clip once, which a turn between the two
-/// precedes; really damaged, a wreck that lets the damaged state finish its clip first.
+/// precedes; really damaged, a wreck that lets the damaged state finish its clip first, and a gun
+/// at its bone. Its first slot fires from the tank's muzzle, and then from the gun's.
 const KEYED: &str = r#"
     [units.tank]
     draws = [{ states = [
-        { sets = [[]], models = [{ model = "tank.glb" }], key = "rest", animation = { clips = [{ animation = "rest.glb" }], mode = "loop" } },
-        { sets = [["damaged"]], models = [{ model = "tank.glb" }], key = "hurt", animation = { clips = [{ animation = "hurt.glb" }], mode = "once" } },
-        { sets = [["really"]], models = [{ model = "wreck.glb" }], waits_for = "hurt" },
+        { sets = [[]], models = [{ model = "tank.glb" }], key = "rest", animation = { clips = [{ animation = "rest.glb" }], mode = "loop" }, fire_bones = [{ slot = 0, model = 0, barrels = [{ bone = "muzzle" }] }] },
+        { sets = [["damaged"]], models = [{ model = "tank.glb" }], key = "hurt", animation = { clips = [{ animation = "hurt.glb" }], mode = "once" }, fire_bones = [{ slot = 0, model = 0, barrels = [{ bone = "muzzle" }] }] },
+        { sets = [["really"]], models = [{ model = "wreck.glb" }, { model = "gun.glb", bone = "turret" }], waits_for = "hurt", fire_bones = [{ slot = 0, model = 1, barrels = [{ bone = "muzzle" }] }] },
     ], transitions = [
         { from = "rest", to = "hurt", models = [{ model = "turn.glb" }], animation = { clips = [{ animation = "turn.glb" }], mode = "once" } },
     ] }]
@@ -222,6 +223,19 @@ fn a_draw_shows_the_transition_between_two_keys_and_lets_a_state_finish_its_clip
     let show = |app: &App| app.world().get::<LookStates>(root).unwrap().draws[0].clone();
     let at = |app: &App| (show(app).showing(), show(app).pending());
     assert_eq!(at(&app), (Some(Showing::State(0)), None));
+    // The first slot's barrels are of the model at their place among the shown state's models,
+    // none during a transition, whose models are its own (riders-and-upgrades.md, A carried
+    // model's barrels are its carrier's).
+    let fires_under = |app: &App| {
+        let states = app.world().get::<LookStates>(root).unwrap();
+        let barrels = states
+            .barrels(app.world().resource::<UnitLooks>(), 0)
+            .unwrap();
+        assert_eq!(barrels.barrels[0].bone.as_deref(), Some("muzzle"));
+        barrels.model
+    };
+    let child = |app: &App, at: usize| app.world().get::<Children>(root).unwrap()[at];
+    assert_eq!(fires_under(&app), Some(child(&app, 0)));
     // Damaged: the turn from rest to hurt shows first, its model to replace the tank's, the
     // damaged state next; the turn's clip stands at its first frame.
     let hurt = |app: &mut App, by: i64| {
@@ -232,6 +246,7 @@ fn a_draw_shows_the_transition_between_two_keys_and_lets_a_state_finish_its_clip
     step(&mut app, 0);
     assert_eq!(at(&app), (Some(Showing::Transition(0)), Some(1)));
     assert_eq!(show(&app).playing(), Some((0, Some(0.0))));
+    assert_eq!(fires_under(&app), None);
     assert_eq!(
         models(app.world(), root),
         [
@@ -258,10 +273,16 @@ fn a_draw_shows_the_transition_between_two_keys_and_lets_a_state_finish_its_clip
     assert_eq!(show(&app).playing(), Some((0, Some(3.0))));
     step(&mut app, 0);
     assert_eq!(at(&app), (Some(Showing::State(2)), None));
+    let shown = models(app.world(), root);
     assert_eq!(
-        models(app.world(), root).last(),
-        Some(&("wreck.glb".to_owned(), true))
+        shown[shown.len() - 2..],
+        [
+            ("wreck.glb".to_owned(), true),
+            ("gun.glb".to_owned(), false)
+        ]
     );
+    assert_eq!(fires_under(&app), Some(show(&app).models()[1]));
+    assert_eq!(show(&app).models()[1], child(&app, shown.len() - 1));
 }
 
 #[test]

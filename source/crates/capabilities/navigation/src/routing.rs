@@ -229,10 +229,10 @@ impl Routing {
                 crowd: crowd.as_deref(),
                 planner,
             });
-        asks.plan(search, &mut |member, waypoints, reached| {
+        asks.plan(search, &mut |member, waypoints, found| {
             let units = units.get_mut(member.entity);
             let (.., mut route, _, _, _) = units.expect("a unit read this tick");
-            route.answer(member.position, waypoints, reached);
+            route.answer(member.position, waypoints, found);
             index.forget(member.entity);
         });
     }

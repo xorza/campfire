@@ -9,6 +9,7 @@ use campfire_values::Team;
 
 use crate::aside_depth::AsideDepth;
 use crate::body_index::{BodyIndex, IndexedBody};
+use crate::gait::Gait;
 use crate::moves::Moves;
 use crate::pathing_grid::PathingGrid;
 use crate::route_planner::{RoutePlanner, Short, Walkable, Window};
@@ -49,15 +50,18 @@ pub(crate) struct Steering {
     moves: Moves,
 }
 
-/// A walker that may steer this tick: its unit, where it stands, its team, if any, its step, its
-/// kind, whether walkers keep it back, whether it gathers, which passes through the others that
-/// do, its route's goal, the unit its walk goes into, if any, which it passes through, and how
-/// deep its walk is in a chain of steps aside.
+/// A walker that may steer this tick: its unit, where it stands, its team, if any, its gait and
+/// whether its route goes through its team's units, which say which idle friends it moves aside,
+/// its step, its kind, whether walkers keep it back, whether it gathers, which passes through the
+/// others that do, its route's goal, the unit its walk goes into, if any, which it passes through,
+/// and how deep its walk is in a chain of steps aside.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Steered {
     pub id: StableId,
     pub position: Vec3,
     pub(crate) team: Option<Team>,
+    pub(crate) gait: Gait,
+    pub(crate) through: bool,
     pub(crate) step: Num,
     pub(crate) walker: Walker,
     pub(crate) stuck: bool,
@@ -67,24 +71,35 @@ pub(crate) struct Steered {
     pub(crate) depth: AsideDepth,
 }
 
-/// A unit that stands idle, of a team: its stable id, its team and the goal it arrived at, if
-/// any.
+/// A unit that stands idle, of a team: its stable id, its team, its gait and the goal it arrived
+/// at, if any.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Idle {
     id: StableId,
     team: Team,
+    gait: Gait,
     arrived: Option<Vec3>,
 }
 
-/// A body of this tick as steering reads it: the unit's body where it stands, its team, whether
-/// the unit walks this tick, whether it is in a gather loop, the goal it arrived at, and whether
-/// it stands idle: a unit that walks by a destination, with none, nothing under way, no target
-/// and no work that holds
-/// it, which a destination may move aside.
+/// A unit that would move an idle friend aside: its team, if any, its gait, and whether its team's
+/// units block its way, as its route goes through them or it is stuck, so it may move one its gait
+/// may not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct MovedBy {
+    pub(crate) team: Option<Team>,
+    pub(crate) gait: Gait,
+    pub(crate) blocked: bool,
+}
+
+/// A body of this tick as steering reads it: the unit's body where it stands, its team, its gait,
+/// whether the unit walks this tick, whether it is in a gather loop, the goal it arrived at, and
+/// whether it stands idle: a unit that walks by a destination, with none, nothing under way, no
+/// target and no work that holds it, which a destination may move aside.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TickBody {
     pub(crate) body: IndexedBody,
     pub(crate) team: Option<Team>,
+    pub(crate) gait: Gait,
     pub(crate) walks: bool,
     pub(crate) gathers: bool,
     pub(crate) idle: bool,
@@ -104,12 +119,12 @@ pub(crate) struct Aside {
 }
 
 /// What a unit that steps aside makes of the idle friends near it: places it may pass through
-/// and end on, as each steps aside in turn for its walk, of `team`, which the mode lets it move;
-/// or blockers, as its walk is too deep to move them (04-capabilities/navigation.md, A friend
-/// yields through the friends that yield).
+/// and end on, as each it may move steps aside in turn for its walk; or blockers, as its walk is
+/// too deep to move them (04-capabilities/navigation.md, A friend yields through the friends that
+/// yield).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Friends {
-    Pass { team: Option<Team> },
+    Pass(MovedBy),
     Block,
 }
 
@@ -161,6 +176,7 @@ impl Steering {
         for TickBody {
             body,
             team,
+            gait,
             walks,
             gathers,
             idle,
@@ -184,6 +200,7 @@ impl Steering {
                 self.idle.push(Idle {
                     id: body.id,
                     team,
+                    gait,
                     arrived,
                 });
             }
@@ -276,7 +293,7 @@ impl Steering {
             let clear = walker.radius + body.shape.bound();
             // One that arrived at the walker's goal is of the crowd there, which the walker
             // stops against (04-capabilities/navigation.md, A crowded goal ends the walk).
-            let moved = movable(idle, self.moves, steered.team, body.id)
+            let moved = movable(idle, self.moves, steered.moved_by(), body.id)
                 .is_some_and(|idle| idle.arrived != Some(steered.goal));
             if !moved {
                 return;
@@ -412,7 +429,7 @@ impl Steering {
         let (idle, moves) = (&self.idle, self.moves);
         let blocks = |body: &IndexedBody| {
             into != Some(body.id)
-                && !(passes && movable(idle, moves, steered.team, body.id).is_some())
+                && !(passes && movable(idle, moves, steered.moved_by(), body.id).is_some())
         };
         let reach = Self::reach(grid);
         let look = at.step_toward(ahead[0], reach);
@@ -502,7 +519,7 @@ impl Steering {
         let window = Self::cells(grid, Self::YIELD_WINDOW);
         let near = window + grid.cell() / 2 + body.shape.bound();
         let passes = |other: &IndexedBody| match friends {
-            Friends::Pass { team } => movable(&self.idle, self.moves, team, other.id).is_some(),
+            Friends::Pass(by) => movable(&self.idle, self.moves, by, other.id).is_some(),
             Friends::Block => false,
         };
         blockers.clear();
@@ -519,10 +536,25 @@ impl Steering {
     }
 }
 
-/// The idle unit `id` of `idle`, if a walker of `team` may move it, as `moves` says.
-fn movable(idle: &[Idle], moves: Moves, team: Option<Team>, id: StableId) -> Option<Idle> {
+impl Steered {
+    /// It, as a unit that would move an idle friend aside.
+    pub(crate) const fn moved_by(self) -> MovedBy {
+        MovedBy {
+            team: self.team,
+            gait: self.gait,
+            blocked: self.through || self.stuck,
+        }
+    }
+}
+
+/// The idle unit `id` of `idle`, if a walker `by` may move it, as `moves` says of its team, and its
+/// gait of the unit's but when its route goes through its team's units or it is stuck
+/// (entries-and-blocking.md, A walker that steps moves no unit that drives aside).
+fn movable(idle: &[Idle], moves: Moves, by: MovedBy, id: StableId) -> Option<Idle> {
     let at = idle.binary_search_by_key(&id, |idle| idle.id).ok()?;
-    Some(idle[at]).filter(|idle| moves.may_move(team, Some(idle.team)))
+    Some(idle[at]).filter(|idle| {
+        moves.may_move(by.team, Some(idle.team)) && (by.blocked || by.gait.moves(idle.gait))
+    })
 }
 
 #[cfg(feature = "internals")]

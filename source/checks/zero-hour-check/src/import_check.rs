@@ -34,6 +34,7 @@ use crate::base_play::BasePlay;
 use crate::combat_play::CombatPlay;
 use crate::decal_ground::DecalGround;
 use crate::defense_play::DefensePlay;
+use crate::entry_play::EntryPlay;
 use crate::error::CheckError;
 use crate::failure::{CheckFailure, Differs};
 use crate::garrison_play::GarrisonPlay;
@@ -43,7 +44,7 @@ use crate::jet_play::JetPlay;
 use crate::match_play::PlayTools;
 use crate::missile_play::MissilePlay;
 use crate::pins::{
-    CombatSteps, ContainedCounts, DrivenCounts, EffectCounts, FactorySteps, FightSteps,
+    CombatSteps, ContainedCounts, DrivenCounts, EffectCounts, EntrySteps, FactorySteps, FightSteps,
     Fingerprints, FoughtCounts, GarrisonSteps, HZ, HelicopterSteps, LookCounts, MapCounts,
     PanelCounts, ProducedCounts, ProductionSteps, RangerLook, RoadCounts, SaleSteps, SkirmishTicks,
     SoundCounts, SuppliedCounts, SupplySteps, TerrainCounts, TerrainDrawn, TransportSteps,
@@ -919,6 +920,22 @@ impl ImportCheck<'_> {
                 "player 1's Chinook flew a Ranger and a Crusader across the map, its Ranger and \
                  Missile Defender fired from a Humvee, and its Crusaders destroyed a Troop Crawler \
                  whose Red Guards left it hurt"
+            );
+        }
+        if let Some((played, tools)) = self.played(Play::Entry, rate)?
+            && let Some(entry) = EntryPlay::run(played, rate, tools, &mut self.failures)
+        {
+            let ticks = entry.ticks;
+            let expected = EntrySteps::expected(self.pinned(|golden| golden.entry, ticks));
+            self.failures
+                .extend(Differs::of(entry, expected).map(CheckFailure::Entry));
+            self.measured.entry = Some(ticks);
+            info!(
+                ticks = ?entry.ticks,
+                riders = ?entry.riders,
+                still = ?entry.still,
+                "player 2's Red Guards left their Troop Crawlers and walked into one, a Helix and \
+                 an Overlord's bunker"
             );
         }
         if let Some((played, tools)) = self.played(Play::Garrison, rate)?

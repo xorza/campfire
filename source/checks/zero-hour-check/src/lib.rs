@@ -36,6 +36,7 @@ mod combat_play;
 mod command_line;
 mod decal_ground;
 mod defense_play;
+mod entry_play;
 mod error;
 mod failure;
 mod garrison_play;

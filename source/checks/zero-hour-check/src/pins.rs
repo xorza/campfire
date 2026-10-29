@@ -400,6 +400,9 @@ const CHINOOK_LOAD: i64 = 8 * 75;
 /// The riders a Troop Crawler comes with, its `InitialPayload` of 8 Red Guards.
 const CRAWLER_LOAD: usize = 8;
 
+/// The places of a Helix of Red Guards, one each.
+const HELIX_PLACES: usize = 5;
+
 /// The helicopter play's steps: its ticks, and what the Chinook's first load paid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct HelicopterSteps {
@@ -477,6 +480,30 @@ pub(crate) struct TransportTicks {
     pub(crate) fired: u64,
     pub(crate) fell: u64,
     pub(crate) evacuated: u64,
+}
+
+/// The entry play's steps (entries-and-blocking.md, A walk may go into a unit;
+/// entries-and-blocking.md, A walker passes through the unit it walks into): its ticks; how many
+/// ride the Troop Crawler, the Helix and the Overlord's bunker once each boarding ends; and whether
+/// the crawler and the Overlord stood, as their boardings ended, where they stood as their riders
+/// were ordered in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct EntrySteps {
+    pub(crate) ticks: EntryTicks,
+    pub(crate) riders: [usize; 3],
+    pub(crate) still: [bool; 2],
+}
+
+/// The ticks of the entry play's steps no closed form gives, each from its order: the crawlers'
+/// evacuation, the first crawler's boarding, the Helix's, and the bunker's, from the order once
+/// bought.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct EntryTicks {
+    pub(crate) out: u64,
+    pub(crate) crawler: u64,
+    pub(crate) helix: u64,
+    pub(crate) bunker: u64,
 }
 
 /// The garrison play's steps (04-capabilities/interaction.md, A free building takes its riders'
@@ -868,6 +895,19 @@ impl TransportSteps {
             out: CRAWLER_LOAD,
             hurt: true,
             near: true,
+        }
+    }
+}
+
+impl EntrySteps {
+    /// The steps of `ticks` when the first crawler takes its 8 Red Guards back, the Helix its 5
+    /// places of the second's 8, and the bunker the 3 left, the crawler and the Overlord standing
+    /// still.
+    pub(crate) const fn expected(ticks: EntryTicks) -> Self {
+        Self {
+            ticks,
+            riders: [CRAWLER_LOAD, HELIX_PLACES, CRAWLER_LOAD - HELIX_PLACES],
+            still: [true; 2],
         }
     }
 }

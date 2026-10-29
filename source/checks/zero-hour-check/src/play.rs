@@ -29,6 +29,9 @@ pub(crate) enum Play {
     /// America's Chinook flies a Ranger and a Crusader across the map, its Ranger and Missile
     /// Defender fire from a Humvee, and its Crusaders destroy China's Troop Crawler of Red Guards.
     Transport,
+    /// China's Red Guards leave their Troop Crawlers and walk into one, a Helix and an Overlord's
+    /// bunker.
+    Entry,
     /// GLA's Rebels garrison a free building, outrange America's Ranger, and leave it as
     /// America's Crusaders shell it.
     Garrison,

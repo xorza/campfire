@@ -69,6 +69,14 @@ pub(crate) struct LookStates {
     draws: Vec<DrawShow>,
 }
 
+/// The barrels a weapon slot fires from, and the model whose nodes their bones and flashes are,
+/// none when its drawing's root holds them.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SlotBarrels<'l> {
+    pub(crate) barrels: &'l [FireBarrel],
+    pub(crate) model: Option<Entity>,
+}
+
 /// The units whose conditions' parts changed: their life, their tags or their destination.
 type Retested<'w, 's> = Query<
     'w,
@@ -206,14 +214,18 @@ impl Plugin for LookStatesPlugin {
 
 impl LookStates {
     /// The barrels the weapon slot `slot` fires from, of the first of its draws whose shown state,
-    /// or the state its transition goes to, names them, of its look in `looks`; none when none
-    /// does.
-    pub(crate) fn barrels<'l>(&self, looks: &'l UnitLooks, slot: u8) -> Option<&'l [FireBarrel]> {
+    /// or the state its transition goes to, names them, of its look in `looks`, and the model
+    /// whose nodes they are, none during a transition; none when no draw names them
+    /// (riders-and-upgrades.md, A carried model's barrels are its carrier's).
+    pub(crate) fn barrels<'l>(&self, looks: &'l UnitLooks, slot: u8) -> Option<SlotBarrels<'l>> {
         let draws = looks.draws(self.unit_type, self.variation)?.draws();
         self.draws.iter().zip(draws).find_map(|(show, draw)| {
             let state = &draw.states()[show.state()?];
             let bones = state.fire_bones.iter().find(|bones| bones.slot == slot)?;
-            Some(&*bones.barrels)
+            Some(SlotBarrels {
+                barrels: &bones.barrels,
+                model: show.state_model(bones.model),
+            })
         })
     }
 

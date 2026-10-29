@@ -235,12 +235,15 @@ pub struct LookState {
     pub fire_bones: Vec<FireBone>,
 }
 
-/// The barrels of the weapon slot `slot` of a state's models, in the order its shots take them,
-/// where each shot's fire effect plays and which muzzle flash it shows.
+/// The barrels of the weapon slot `slot` of the state's model at the place `model` among its
+/// models, in the order its shots take them, where each shot's fire effect plays and which muzzle
+/// flash it shows, each node of that model's (riders-and-upgrades.md, A carried model's barrels
+/// are its carrier's).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FireBone {
     pub slot: u8,
+    pub model: u8,
     pub barrels: Vec<FireBarrel>,
 }
 
@@ -370,6 +373,10 @@ impl LookDraw {
 
     pub fn states(&self) -> &[LookState] {
         &self.states
+    }
+
+    pub fn states_mut(&mut self) -> &mut [LookState] {
+        &mut self.states
     }
 
     pub fn ignore(&self) -> &[DeclaredName] {

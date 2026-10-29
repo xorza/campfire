@@ -254,6 +254,10 @@ impl CombatImport {
                     by: ImportName::latin(&structure.name).declared()?,
                     tag,
                 };
+                let first_slot = WeaponSet::SLOTS * sources.len();
+                for look in &mut additions.type_mut(type_name).carried {
+                    look.arm(&carried.by, first_slot);
+                }
                 sources.push((WeaponGate::of(set, None), Some(carried)));
             }
             let gated = sources
@@ -449,7 +453,9 @@ impl CombatImport {
     /// Gives each projectile type named for its weapon, in the unit looks `looks`, the look of the
     /// object it fires, when that object has one; then each type's look its weapons by the places
     /// of their slots in `additions`, which its attack conditions test (09-zero-hour.md, A
-    /// condition is the game's name for a test).
+    /// condition is the game's name for a test), and the barrels and rounds of its carried
+    /// structures' models at those slots (riders-and-upgrades.md, A carried model's barrels are its
+    /// carrier's).
     pub(crate) fn complete_looks(
         &self,
         additions: &Additions,
@@ -462,10 +468,14 @@ impl CombatImport {
             }
         }
         for (unit_type, added) in additions {
-            if let Some(look) = looks.get_mut(unit_type.declared())
-                && !added.weapon_slots.is_empty()
-            {
+            let Some(look) = looks.get_mut(unit_type.declared()) else {
+                continue;
+            };
+            if !added.weapon_slots.is_empty() {
                 look.weapons.clone_from(&added.weapon_slots);
+            }
+            for carried in &added.carried {
+                carried.carry(look);
             }
         }
     }

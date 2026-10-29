@@ -10,6 +10,7 @@ use criterion::Criterion;
 use crate::aside_depth::AsideDepth;
 use crate::bench::scene_cells;
 use crate::broadphase::internals::{indexed, scene, statics};
+use crate::gait::Gait;
 use crate::moves::Moves;
 use crate::pathing_grid::PathingGrid;
 use crate::route_planner::RoutePlanner;
@@ -34,6 +35,7 @@ pub(crate) fn steering(c: &mut Criterion) {
         .map(|collider| TickBody {
             body: indexed(collider),
             team: None,
+            gait: Gait::Step,
             walks: collider.walking,
             gathers: false,
             idle: !collider.walking,
@@ -72,6 +74,8 @@ pub(crate) fn steering(c: &mut Criterion) {
                     id: ids.allocate(),
                     position: from,
                     team: None,
+                    gait: Gait::Step,
+                    through: false,
                     step: Num::QUARTER,
                     walker,
                     stuck: false,

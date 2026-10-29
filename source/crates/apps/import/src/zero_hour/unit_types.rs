@@ -137,6 +137,7 @@ impl ImportedTypes {
             commands: _,
             bones: _,
             fire_points: _,
+            carried: _,
             production,
             sell,
             airfield,

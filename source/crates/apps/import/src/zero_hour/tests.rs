@@ -53,6 +53,7 @@ use crate::zero_hour::additions::Additions;
 use crate::zero_hour::animation_drop_cause::AnimationDropCause;
 use crate::zero_hour::animation_import::ConvertedAnimation;
 use crate::zero_hour::button_drop_cause::ButtonDropCause;
+use crate::zero_hour::carried_look::CarriedLook;
 use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::contain_import::ContainImport;
 use crate::zero_hour::dropped::Dropped;
@@ -95,6 +96,7 @@ use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::skirmish_start::SkirmishStart;
 use crate::zero_hour::state_drop_cause::StateDropCause;
 use crate::zero_hour::terrain_atlas::PackageTexture;
+use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::unit_types::TypeModifiers;
 use crate::zero_hour::upgrade_drop_cause::UpgradeDropCause;
 use crate::zero_hour::upgrade_import::{UpgradeImport, UpgradeSources};
@@ -1509,6 +1511,7 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     let flashing = |state: LookState| LookState {
         fire_bones: vec![FireBone {
             slot: 0,
+            model: 0,
             barrels: vec![FireBarrel {
                 bone: None,
                 flash: Some(BarrelFlash {
@@ -1797,6 +1800,9 @@ fn a_portable_structures_model_is_drawn_at_its_carriers_bone_while_its_upgrades_
     // at its container's `Turret` bone: each of the carrier's states draws the turret's model at
     // that bone, hidden from its root down, the tank's `RootTransform`, but while the carrier
     // holds the upgrade's tag (riders-and-upgrades.md, A model may be drawn at another's bone).
+    // The turret's first slot flashes the tank's `MuzzleFX`, which its model hides as the turret's
+    // state does, and which waits, of the turret's own slot, for the slots its weapons take
+    // (riders-and-upgrades.md, A carried model's barrels are its carrier's).
     let FixtureInstall {
         test_dir: _held,
         install,
@@ -1819,6 +1825,7 @@ Object Turret
     AttachToBoneInContainer = Turret
     DefaultConditionState
       Model = Tank
+      WeaponMuzzleFlash = PRIMARY MuzzleFX
     End
   End
 End
@@ -1835,11 +1842,31 @@ End
     let carrier = Toml::write(&looks.units[&DeclaredName::new("carrier").unwrap()]);
     let tag = "upgrade_turret_created";
     let attached = format!(
-        "model = \"client/models/tank.glb\"\nhide = [\"{root}\"]\nbone = \"turret\"\n\n\
-         [[draws.states.models.upgrades]]\ncondition = \"{tag}\"\nshow = [\"{root}\"]",
+        "model = \"client/models/tank.glb\"\nhide = [\"{root}\", \"tank.flash\"]\n\
+         bone = \"turret\"\n\n[[draws.states.models.upgrades]]\ncondition = \"{tag}\"\n\
+         show = [\"{root}\"]",
         root = "roottransform"
     );
     assert!(carrier.contains(&attached), "{carrier}");
+    let flash = FireBone {
+        slot: 0,
+        model: 0,
+        barrels: vec![FireBarrel {
+            bone: None,
+            flash: Some(BarrelFlash {
+                node: "tank.flash".to_owned(),
+                ms: 33,
+            }),
+        }],
+    };
+    let turret = CarriedLook::new(
+        DeclaredName::new("turret").unwrap(),
+        PackagePath::parse("client/models/tank.glb").unwrap(),
+        vec![flash],
+        Vec::new(),
+    );
+    let added = looks.additions.get(&TypeName::named("carrier")).unwrap();
+    assert_eq!(added.carried, [turret]);
     assert!(
         looks
             .conditions

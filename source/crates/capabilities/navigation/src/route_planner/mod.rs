@@ -11,6 +11,7 @@ use crate::body_index::{BodyIndex, IndexedBody};
 use crate::crowd_costs::CrowdPrice;
 use crate::pathing_grid::Clearance;
 use crate::regions::NearestScratch;
+use crate::route::RouteFound;
 use crate::route_planner::open_cells::OpenCells;
 use crate::segment::Segment;
 
@@ -100,7 +101,8 @@ struct Search {
     done: u64,
 }
 
-/// What planning a route cost, and whether it ends on the goal.
+/// What planning a route cost, whether it ends on the goal, and whether it goes through a unit of
+/// the walker's team.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Planned {
     /// The cost of the route's cells, 10 a straight step, which only the tests read.
@@ -112,6 +114,19 @@ pub(crate) struct Planned {
     /// All the work it did, the cells expanded among it.
     pub(crate) work: u32,
     pub(crate) reached: bool,
+    /// Whether its cells go through one a unit of the walker's team stands in, of those the
+    /// crowd's price charges.
+    pub(crate) through: bool,
+}
+
+impl Planned {
+    /// What it found of its route, as the route keeps it.
+    pub(crate) const fn found(self) -> RouteFound {
+        RouteFound {
+            reached: self.reached,
+            through: self.through,
+        }
+    }
 }
 
 impl Window {
@@ -294,6 +309,7 @@ impl RoutePlanner {
                 expanded: 0,
                 work,
                 reached: true,
+                through: false,
             };
         }
         // A short route stays in its window, where the regions, made over the whole grid, do not
@@ -326,6 +342,7 @@ impl RoutePlanner {
                 expanded: 0,
                 work,
                 reached: false,
+                through: false,
             };
         };
         let replaced = long && !leaves.meets(regions.reach(target));
@@ -382,6 +399,9 @@ impl RoutePlanner {
             self.cells.push(Self::number(at));
         }
         let reached = found && clear && !replaced;
+        let through = walkable
+            .crowd
+            .is_some_and(|crowd| self.cells.iter().any(|&cell| crowd.of(cell as usize) > 0));
         let last = if reached {
             goal
         } else {
@@ -396,6 +416,7 @@ impl RoutePlanner {
             expanded,
             work: work + expanded,
             reached,
+            through,
         }
     }
 

@@ -46,6 +46,7 @@ fn a_wide_walker_counts_every_unit_that_blocks_a_cell_of_its_window() {
     let still = TickBody {
         body: standing,
         team: None,
+        gait: Gait::Step,
         walks: false,
         gathers: false,
         idle: true,
@@ -58,6 +59,8 @@ fn a_wide_walker_counts_every_unit_that_blocks_a_cell_of_its_window() {
         id,
         position: eighths(7, 0),
         team: None,
+        gait: Gait::Step,
+        through: false,
         step: quarter,
         walker,
         stuck: false,
@@ -101,6 +104,7 @@ fn a_walker_that_gathers_steers_round_no_unit_that_gathers() {
         let gathering_still = TickBody {
             body: standing,
             team: None,
+            gait: Gait::Step,
             walks: false,
             gathers: true,
             idle: false,
@@ -111,6 +115,8 @@ fn a_walker_that_gathers_steers_round_no_unit_that_gathers() {
             id,
             position: eighths(0, 0),
             team: None,
+            gait: Gait::Step,
+            through: false,
             step: quarter,
             walker,
             stuck: false,
@@ -131,8 +137,10 @@ fn a_walk_that_may_move_an_idle_friend_walks_through_it_and_one_too_deep_goes_ro
     // A walker of a quarter meter of team 0 at the origin, bound for (2, 0), where an idle friend
     // of a quarter meter stands: a walk of its own and a step aside, each of which moves the friend
     // aside, walk straight to it, with no detour; a step aside as deep as `AsideDepth::MOST`, which
-    // moves no friend, steers round it, by a short route that cannot end on it
-    // (04-capabilities/navigation.md, A walker walks through the friends it moves aside).
+    // moves no friend, steers round it, by a short route that cannot end on it, and so does a walk
+    // of its own that steps where the friend drives (04-capabilities/navigation.md, A walker walks
+    // through the friends it moves aside; entries-and-blocking.md, A walker that steps moves no
+    // unit that drives aside).
     let quarter = Num::QUARTER;
     let walker = Walker {
         layer: Layer::FIRST,
@@ -153,6 +161,7 @@ fn a_walk_that_may_move_an_idle_friend_walks_through_it_and_one_too_deep_goes_ro
             layer: Layer::FIRST,
         },
         team: Some(Team::new(0)),
+        gait: Gait::Step,
         walks: false,
         gathers: false,
         idle: true,
@@ -161,7 +170,17 @@ fn a_walk_that_may_move_an_idle_friend_walks_through_it_and_one_too_deep_goes_ro
     let route = PlannedRoute::new(goal, eighths(0, 0), &[goal]);
     let own = AsideDepth::default();
     let deepest = own.deeper(Vec3::ZERO).deeper(Vec3::ZERO);
-    let detours = [own, own.ahead(Vec3::ZERO), deepest].map(|depth| {
+    let driving = TickBody {
+        gait: Gait::Drive,
+        ..idle
+    };
+    let cases = [
+        (own, idle),
+        (own.ahead(Vec3::ZERO), idle),
+        (deepest, idle),
+        (own, driving),
+    ];
+    let detours = cases.map(|(depth, idle)| {
         let mut planner = RoutePlanner::new(&cells);
         let mut steering = Steering::default();
         steering.read(&statics, Moves::Team, [idle]);
@@ -169,6 +188,8 @@ fn a_walk_that_may_move_an_idle_friend_walks_through_it_and_one_too_deep_goes_ro
             id,
             position: eighths(0, 0),
             team: Some(Team::new(0)),
+            gait: Gait::Step,
+            through: false,
             step: quarter,
             walker,
             stuck: false,
@@ -181,7 +202,7 @@ fn a_walk_that_may_move_an_idle_friend_walks_through_it_and_one_too_deep_goes_ro
             .steer(&mut planner, &grid, &statics, steered, route.read().ahead())
             .is_some()
     });
-    assert_eq!(detours, [false, false, true]);
+    assert_eq!(detours, [false, false, true, true]);
 }
 
 #[test]
@@ -207,6 +228,7 @@ fn a_walker_moves_aside_only_an_idle_unit_it_may_move_on_its_next_stretch() {
         TickBody {
             body: body(id, position),
             team: Some(Team::new(team)),
+            gait: Gait::Step,
             walks: false,
             gathers: false,
             idle,
@@ -226,6 +248,8 @@ fn a_walker_moves_aside_only_an_idle_unit_it_may_move_on_its_next_stretch() {
         id: walker,
         position: eighths(0, 0),
         team: Some(Team::new(0)),
+        gait: Gait::Step,
+        through: false,
         step: Num::QUARTER,
         walker: Walker {
             layer: Layer::FIRST,
@@ -270,6 +294,37 @@ fn a_walker_moves_aside_only_an_idle_unit_it_may_move_on_its_next_stretch() {
     }
     assert_eq!(asides(Moves::Team, twice), []);
     assert_eq!(asides(Moves::None, own), []);
+    // The friend on the way drives: it stays for the walker, which steps, and steps aside for one
+    // that drives, or for the walker once its route goes through its team's units or it is stuck
+    // (entries-and-blocking.md, A walker that steps moves no unit that drives aside).
+    let mut driving = bodies;
+    driving[1].gait = Gait::Drive;
+    steering.read(&statics, Moves::Team, driving);
+    let mut moved = Vec::new();
+    steering.asides(steered, stretch, &(3..5), &mut moved);
+    assert_eq!(moved, [aside(0, eighths(7, 8), own)]);
+    moved.clear();
+    let drives = Steered {
+        gait: Gait::Drive,
+        ..steered
+    };
+    let through = Steered {
+        through: true,
+        ..steered
+    };
+    let stuck = Steered {
+        stuck: true,
+        ..steered
+    };
+    for walker in [drives, through, stuck] {
+        moved.clear();
+        steering.asides(walker, stretch, &(3..5), &mut moved);
+        moved.sort_by_key(|aside| aside.id);
+        assert_eq!(
+            moved,
+            [aside(0, eighths(7, 8), own), aside(1, eighths(24, 8), own)]
+        );
+    }
     // A walk into the friend on the way at (3, 0) passes through it, so it stays, and the friend
     // ahead to the left still steps aside (entries-and-blocking.md, A walker passes through the
     // unit it walks into).
@@ -302,6 +357,7 @@ fn a_goal_a_standing_unit_crowds_lies_within_the_two_radii_and_the_step_as_the_w
             layer: Layer::FIRST,
         },
         team: None,
+        gait: Gait::Step,
         walks: false,
         gathers: false,
         idle: true,
@@ -313,6 +369,8 @@ fn a_goal_a_standing_unit_crowds_lies_within_the_two_radii_and_the_step_as_the_w
         id: walker,
         position: eighths(x, 0),
         team: None,
+        gait: Gait::Step,
+        through: false,
         step: Num::QUARTER,
         walker: Walker {
             layer: Layer::FIRST,

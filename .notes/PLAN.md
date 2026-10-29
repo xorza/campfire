@@ -6,28 +6,27 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 The slice of [Entries and blocking](../docs/design/entries-and-blocking.md): a player of a Zero Hour skirmish puts a group of soldiers into a standing or a driving container and sees each walk straight in, the container keeping its own course, and sends columns across each other and through gaps and sees each unit keep its line and wait behind the unit ahead. It stands before the end of Riders and upgrades, whose player's check needs riders that enter. Its facts are [Crowd movement](../docs/research/crowd-movement.md) and [Zero Hour's portable structures and entries](../docs/research/zero-hour-portable-structures.md); its checks are the design's.
 
-### Batch 3: the Zero Hour check
-
-The import's plays, measured, with the slice's whole change.
-
-- [ ] **EB7. The Zero Hour check enters and passes.** The check plays China's infantry into a Humvee, a Helix and an Overlord's bunker, each entering up to its places with the container's place unchanged; its bases and attack plays end, and their ticks and stalls, run before EB4 and after EB6, are written side by side into `docs/research/crowd-movement.md`. Check: `cargo drive run zero-hour`, its golden moved with each move stated.
-
 ### End of the slice
 
-- [ ] A player of Tournament Desert as China against the America builder bot does what the design's last check says, in the client; then the slice's decisions fold into `04-capabilities/navigation.md`, `04-capabilities/interaction.md` and `09-zero-hour.md`, the decisions they replace there go, and `entries-and-blocking.md` goes.
+- [x] A player of Tournament Desert as China against the America builder bot does what the design's last check says, in the client.
+- [ ] The player's check again, with the gait's rule, which came after it; then the slice's decisions fold into `04-capabilities/navigation.md`, `04-capabilities/interaction.md` and `09-zero-hour.md`, the decisions they replace there go, and `entries-and-blocking.md` goes.
 
 ## Riders and upgrades
 
 The slice of [Riders and upgrades](../docs/design/riders-and-upgrades.md): a player of a Zero Hour skirmish puts any soldier into a Helix and an Overlord's bunker, sees riders follow a transport that drives, buys one of the Overlord's and the Helix's three upgrades and no second, and sees the Gattling cannon's guns fire from its carrier and the Helix's riders fire from its bunker. Its facts are [Zero Hour's portable structures and entries](../docs/research/zero-hour-portable-structures.md); its checks are that document's.
 
-
 ### End of the slice
 
 It stands last, as the player's check is of the whole slice.
 
-- [ ] A player of Tournament Desert as China against the America builder bot does what the design's last check says, in the client; then the slice's decisions fold into `04-capabilities/actions.md`, `04-capabilities/interaction.md`, `04-capabilities/production.md`, `04-capabilities/navigation.md` and `09-zero-hour.md`, its losses into `09-zero-hour.md`'s, and `riders-and-upgrades.md` goes.
+- [x] A player of Tournament Desert as China against the America builder bot does what the design's last check says, in the client, but for the cannon's flashes.
+- [ ] The cannon's flashes show only as it fires, and its shots play at its own barrels, in the client; then the slice's decisions fold into `04-capabilities/actions.md`, `04-capabilities/interaction.md`, `04-capabilities/production.md`, `04-capabilities/navigation.md` and `09-zero-hour.md`, its losses into `09-zero-hour.md`'s, and `riders-and-upgrades.md` goes.
 
 ## Changed
+
+- **EB7. The Zero Hour check enters and passes.** The entry play lets China's two Troop Crawlers' 16 Red Guards out, sends the first 8 back into their crawler, then the second 8 into a Helix, which takes 5, and the 3 left into an Overlord's bunker once bought: 8, 5 and 3 ride, the crawler and the Overlord standing still. It found that soldiers walking past moved those vehicles aside, so a walker that steps moves no unit that drives aside but on a route through its team's units or once stuck: the planner says of each route whether it goes through them, a field of `Route` that raised the snapshot's data version to 101; and that a mover braked to a stop counted no stuck tick, so it never planned again, which it now does. The golden moved: the bases play ends in tick 9,681 with 737 stalls, the attack play in 14,272 with 69, the garrison in 985, the fight's shot in 946, the transports' boarding in 866, the combat play's returns in 113 and 118; `docs/research/crowd-movement.md` holds each run.
+
+- **RU4. A carried model's barrels are its carrier's.** The import gives a carried structure's model the hides of its default state, its barrels' flashes among them, and, once the combat import arms its carrier with the structure's weapons, the barrels of those slots in each state that holds it; `FireBone` names the place of its model, under whose node the client finds a barrel's bone and flash, none during a transition. The importer's output went to version 93, and one more look's state holds barrels.
 
 - **A filter reads a disabled entity for every link.** Every visibility filter goes through `AppFilterExt::add_filter`, which evaluates it for the disabled entities as a link connects and as its client component changes, which Replicon skips. A rider that rode as its player's link joined, as a start army's payload does, now carries its owner's slot times to that client, which the client's entry check reads, so a right click on a container orders its riders in, where it ordered a walk; an enemy's rider no longer reaches a client that joins while it rides.
 

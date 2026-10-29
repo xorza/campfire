@@ -47,6 +47,13 @@ impl UnitNavigationData {
     pub(crate) fn of(book: &ById<UnitType, Self>, unit_type: UnitType) -> Self {
         book.get(unit_type).copied().unwrap_or(Self::DEFAULT)
     }
+
+    /// The gait of a unit of `unit_type` in `book`, `DEFAULT`'s for a unit of no type.
+    pub(crate) fn gait_of(book: &ById<UnitType, Self>, unit_type: Option<&UnitType>) -> Gait {
+        unit_type
+            .map_or(Self::DEFAULT, |&unit_type| Self::of(book, unit_type))
+            .gait
+    }
 }
 
 impl PerId<UnitType> for UnitNavigationData {

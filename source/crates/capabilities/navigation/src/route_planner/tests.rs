@@ -6,8 +6,10 @@ use campfire_geometry::{Bounds, Radius, Shape};
 use campfire_math::{Rng, RngStream};
 use campfire_sim::IdAllocator;
 use campfire_units::Layer;
+use campfire_values::Team;
 
 use super::*;
+use crate::crowd_costs::{CrowdCosts, CrowdWalls, Stamp, Standing};
 use crate::pathing_grid::PathingGrid;
 use crate::terrain::WallGrid;
 use crate::walker::Walker;
@@ -68,6 +70,40 @@ fn walled(rows: &[&str]) -> Walled {
 }
 
 #[test]
+fn a_route_says_whether_it_goes_through_a_cell_its_teams_units_stand_in() {
+    // A unit of team 0 of 0.25 m stands at (2.5, 1.5), holding its own cell. A walker of team 0
+    // from (0.5, 1.5) to (4.5, 1.5) in a corridor one cell wide goes through it, at 42 past its
+    // step, and its route says so; on open ground it goes round it, by two diagonal steps of 14
+    // for two straight ones of 10, cheaper by 34, and its route goes through none
+    // (entries-and-blocking.md, A walker that steps moves no unit that drives aside).
+    let team = Team::new(0);
+    let through = |rows: &[&str]| {
+        let Walled { grid, statics } = walled(rows);
+        let clearance = grid.clearance(walker());
+        let mut costs = CrowdCosts::new(*clearance.grid(), &WalkerKinds::from([walker()]), [team]);
+        costs.update([Stamp {
+            body: IndexedBody {
+                id: IdAllocator::default().allocate(),
+                position: quarters(10, 6),
+                shape: Shape::Circle(Radius::new(Num::QUARTER).unwrap()),
+                layer: Layer::FIRST,
+            },
+            team: Some(team),
+            standing: Standing::Movable,
+        }]);
+        let price = costs.price(walker(), Some(team), CrowdWalls::Priced);
+        let walkable = Walkable::of(clearance, &statics).priced(price);
+        let mut planner = RoutePlanner::new(clearance.grid());
+        let mut waypoints = Vec::new();
+        let planned = planner.plan(walkable, quarters(2, 6), quarters(18, 6), &mut waypoints);
+        assert!(planned.reached);
+        planned.through
+    };
+    assert!(through(&["#####", ".....", "#####"]));
+    assert!(!through(&[".....", ".....", "....."]));
+}
+
+#[test]
 fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
     // A wall down column 3 over rows 0 to 2, then down column 4 over rows 3 and 4. Cells (3, 2)
     // and (4, 3) meet at a corner, which a diagonal step from (3, 3) to (4, 2) would cut: the
@@ -123,6 +159,7 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
             expanded: 3,
             work: 54,
             reached: false,
+            through: false,
         }
     );
     assert_eq!(waypoints, [quarters(10, 6)]);
@@ -171,6 +208,7 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
             expanded: 4,
             work: 22,
             reached: false,
+            through: false,
         }
     );
     assert_eq!(waypoints, [quarters(14, 6)]);
@@ -186,6 +224,7 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
             expanded: 0,
             work: 2,
             reached: true,
+            through: false,
         }
     );
     assert_eq!(waypoints, [quarters(3, 9)]);
@@ -220,6 +259,7 @@ fn a_goal_seen_past_two_posts_that_meet_at_a_corner_is_the_line_the_cells_cannot
             expanded: 0,
             work: 2,
             reached: true,
+            through: false,
         }
     );
     assert_eq!(waypoints, [goal]);
@@ -313,6 +353,7 @@ fn the_nearest_open_cell_is_the_nearest_of_the_grid_or_the_window_by_every_cell(
             expanded: 0,
             work: 10,
             reached: false,
+            through: false,
         }
     );
     assert_eq!(waypoints, []);

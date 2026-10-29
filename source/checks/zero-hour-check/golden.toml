@@ -3,7 +3,7 @@
 drive_ticks = 1711
 
 [fingerprints]
-game = "cd3a43ce43a2994caf4af322a3e4a0ea96d93beb90bb7f8c32019082411d1107"
+game = "4c31cf587f38a45a0657afc58beb81692942ae3f817d1a19d04a93d01693d363"
 rules = "eb4084de6d20209e818b0863096d1a5a8949dafc39310a8f6997d2fe24b5fd2c"
 
 [map]
@@ -92,7 +92,7 @@ hits = 0
 trails = 4
 ends = 32
 deaths = 866
-bones = 1882
+bones = 1883
 dropped = [35, 0, 8, 2, 7, 0, 18, 65, 139, 46, 5, 0, 42, 1, 9, 3, 0, 14, 77, 0, 0]
 
 [panel]
@@ -136,9 +136,9 @@ uncorrected = 16
 barracks = 648
 factory = [460, 650, 933]
 strategy_center = 1879
-shot = 905
-hit = 915
-fight = 2621
+shot = 946
+hit = 956
+fight = 2662
 
 [supply]
 built = [477, 418]
@@ -146,7 +146,7 @@ deliveries = [491, 899, 1313]
 
 [helicopter]
 climbed = 77
-delivered = 618
+delivered = 619
 shot_down = 320
 
 [jet]
@@ -167,23 +167,29 @@ paladin = 458
 [combat]
 cannon = 33
 missiles = 4
-rockets = 3
-back = [128, 133]
-turret = 211
+rockets = 2
+back = [113, 118]
+turret = 208
 arrived = 576
 
 [transport]
 loaded = 989
 flown = 95
 landed = 81
-boarded = 884
-fired = 10
-fell = 128
+boarded = 866
+fired = 24
+fell = 89
 evacuated = 9
 
+[entry]
+out = 57
+crawler = 60
+helix = 837
+bunker = 75
+
 [garrison]
-garrisoned = 824
-outranged = 1351
+garrisoned = 985
+outranged = 1310
 left = 940
 
 [defense]
@@ -213,12 +219,12 @@ built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 517
 
 [base]
-ended = 13906
+ended = 9681
 standing = [0, 9]
-ranks = [3, 5]
-perks = [4, 8]
-think_ops = 22839
-stalls = 531
+ranks = [2, 5]
+perks = [3, 8]
+think_ops = 18776
+stalls = 737
 
 [base.result]
 Won = 1
@@ -256,7 +262,7 @@ untaken = 0
 no_avatar = 0
 no_unit = 0
 no_slot = 0
-no_target = 7
+no_target = 3
 no_place = 0
 no_stack = 0
 
@@ -274,17 +280,17 @@ no_build = 0
 unusable = 0
 
 [base.sight]
-seen = [7054, 5884]
+seen = [3141, 4456]
 explored = [0, 0]
 words = 91
 
 [attack]
-ended = 14101
+ended = 14272
 standing = [4, 0]
 ranks = [1, 1]
 perks = [2, 2]
 think_ops = 9410
-stalls = 101
+stalls = 69
 
 [attack.result]
 Won = 0
@@ -340,6 +346,6 @@ no_build = 0
 unusable = 0
 
 [attack.sight]
-seen = [6012, 318]
+seen = [6138, 358]
 explored = [0, 0]
 words = 91

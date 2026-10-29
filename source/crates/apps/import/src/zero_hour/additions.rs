@@ -11,6 +11,7 @@ use campfire_progression::{ExperienceData, TypeTracksData};
 use campfire_stats::UpgradesData;
 
 use crate::zero_hour::area_write::AreaWrite;
+use crate::zero_hour::carried_look::CarriedLook;
 use crate::zero_hour::model_bones::ModelBones;
 use crate::zero_hour::type_name::TypeName;
 
@@ -61,6 +62,9 @@ pub(crate) struct TypeAdditions {
     /// kind of its entry (04-capabilities/interaction.md, A container says who rides).
     pub(crate) enter: Option<EnterData>,
     pub(crate) rides: Option<RidesData>,
+    /// The looks of the portable structures its upgrades make inside it, whose barrels wait for
+    /// the weapon slots their weapons take.
+    pub(crate) carried: Vec<CarriedLook>,
 }
 
 impl Additions {

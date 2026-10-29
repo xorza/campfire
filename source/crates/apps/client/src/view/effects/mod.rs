@@ -92,6 +92,8 @@ pub(crate) struct MatchEffects {
     track_meshes: Vec<GroupMesh>,
     flights: Vec<Flight>,
     followers: Vec<Follower>,
+    /// The nodes a search for a barrel's bone has yet to visit.
+    open: Vec<Entity>,
 }
 
 /// A projectile in flight: its drawing's root, its type, the trail it carries, and where its
@@ -334,6 +336,7 @@ impl MatchEffects {
             track_meshes,
             flights: Vec::new(),
             followers: Vec::new(),
+            open: Vec::new(),
         });
     }
 
@@ -384,13 +387,16 @@ impl MatchEffects {
                 .weapons(unit_type)
                 .iter()
                 .position(|group| group.contains(&action));
-            let barrel = group.and_then(|group| {
+            let slot = group.and_then(|group| {
                 let slot = u8::try_from(group).ok()?;
                 let barrels = states.get(root).ok()?.barrels(&looks, slot)?;
-                Some(&barrels[fired.turns.turn(group, barrels.len())])
+                let turn = fired.turns.turn(group, barrels.barrels.len());
+                Some((&barrels.barrels[turn], barrels.model.unwrap_or(root)))
             });
+            let barrel = slot.map(|(barrel, _)| barrel);
+            let under = slot.map_or(root, |(_, under)| under);
             if let Some(flash) = barrel.and_then(|barrel| barrel.flash.as_ref()) {
-                flashes.show(&mut parts, root, flash);
+                flashes.show(&mut parts, under, flash);
             }
             let Some(effects) = effects.as_deref_mut() else {
                 continue;
@@ -409,8 +415,9 @@ impl MatchEffects {
             }
             if let Some(&fire) = effects.plays.fires.get(&action) {
                 let bone = barrel.and_then(|barrel| barrel.bone.as_deref());
+                let open = &mut effects.open;
                 let at = bone
-                    .and_then(|bone| Self::bone(root, bone, &children, &names))
+                    .and_then(|bone| Self::bone(under, bone, (&children, &names), open))
                     .unwrap_or(root);
                 if let Ok(place) = places.get(at) {
                     effects
@@ -710,14 +717,16 @@ impl MatchEffects {
         self.followers.extend(Follower::last(&self.run, root));
     }
 
-    /// The node of the name `bone` among `root` and its descendants, the first found depth first.
+    /// The node of the name `bone` among `root` and its descendants, the first found depth first,
+    /// `open` holding the nodes yet to visit.
     fn bone(
         root: Entity,
         bone: &str,
-        children: &Query<'_, '_, &Children>,
-        names: &Query<'_, '_, &Name>,
+        (children, names): (&Query<'_, '_, &Children>, &Query<'_, '_, &Name>),
+        open: &mut Vec<Entity>,
     ) -> Option<Entity> {
-        let mut open = vec![root];
+        open.clear();
+        open.push(root);
         while let Some(at) = open.pop() {
             if names.get(at).is_ok_and(|name| name.as_str() == bone) {
                 return Some(at);

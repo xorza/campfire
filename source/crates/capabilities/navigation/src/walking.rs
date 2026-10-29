@@ -36,7 +36,7 @@ use crate::route::{Route, RouteAsk, RouteMut, RouteMutItem};
 use crate::route_planner::{Passage, RoutePlanner, Short, Walkable, Window};
 use crate::segment::Segment;
 use crate::stalled_walkers::StalledWalkers;
-use crate::steering::{Aside, Friends, Steered, Steering, TickBody};
+use crate::steering::{Aside, Friends, MovedBy, Steered, Steering, TickBody};
 use crate::unit_navigation_data::UnitNavigationData;
 use crate::unparted_pairs::UnpartedPairs;
 use crate::walker::Walker;
@@ -63,6 +63,7 @@ type SteerBodies<'w, 's> = Query<
             &'static Position,
             &'static Body,
             Option<&'static Team>,
+            Option<&'static UnitType>,
         ),
         Option<&'static Destination>,
         Option<&'static UnitTags>,
@@ -90,7 +91,7 @@ type Steerers<'w, 's> = Query<
         (
             &'static StableId,
             &'static Position,
-            Option<&'static Team>,
+            (Option<&'static Team>, Option<&'static UnitType>),
             Has<Altitude>,
             (Option<&'static StatusTags>, Option<&'static FlightGoal>),
         ),
@@ -142,9 +143,10 @@ impl Walking {
         (rate, index, tick): (Res<'_, MatchRate>, Res<'_, EntityIndex>, Res<'_, SimTick>),
         mut asks: ResMut<'_, DueIndex<Route>>,
         If((grid, mut planner)): If<(Res<'_, PathingGrid>, ResMut<'_, RoutePlanner>)>,
-        (statics, crowd, mut stalled): (
+        (statics, crowd, navigation, mut stalled): (
             Res<'_, BodyIndex>,
             Res<'_, CrowdBook>,
+            Res<'_, ById<UnitType, UnitNavigationData>>,
             ResMut<'_, StalledWalkers>,
         ),
         mut units: ParamSet<'_, '_, (SteerBodies<'_, '_>, Steerers<'_, '_>)>,
@@ -158,10 +160,16 @@ impl Walking {
     ) {
         let bodies = units.p0();
         let read = bodies.iter().map(
-            |((&id, &at, body, team), destination, tags, (progress, at_work, arrived, hemmed))| {
+            |(
+                (&id, &at, body, team, unit_type),
+                destination,
+                tags,
+                (progress, at_work, arrived, hemmed),
+            )| {
                 TickBody {
                     body: IndexedBody::of(id, at.get(), body),
                     team: team.copied(),
+                    gait: UnitNavigationData::gait_of(&navigation, unit_type),
                     walks: Self::walks(destination, tags, Motion::Own),
                     gathers: tags.is_some_and(|tags| tags.passes()),
                     idle: destination.is_some_and(|destination| destination.get().is_none())
@@ -193,7 +201,7 @@ impl Walking {
         for &Keyed { entity, .. } in order.sort(ordered) {
             let (
                 _,
-                (&id, &at, team, flies, _),
+                (&id, &at, (team, unit_type), flies, _),
                 mut destination,
                 (step, drive, last),
                 body,
@@ -208,15 +216,18 @@ impl Walking {
             let goal = route.goal().expect("a walker with a way ahead has a goal");
             // A mover comes nearer by its speed, which it gains and loses over ticks, not by its
             // step (04-capabilities/navigation.md, A mover keeps a velocity); a walker braked
-            // behind a unit that moves by the step the brake let it take, and one braked to a stop
-            // by its whole step, so it is stuck (entries-and-blocking.md, A walker brakes behind a
-            // unit that blocks it).
+            // behind a unit that moves by the step the brake let it take, and one braked to a stop,
+            // a mover among them, by its whole step, so it is stuck (entries-and-blocking.md, A
+            // walker brakes behind a unit that blocks it).
             let full = step.get();
-            let stepped = last
-                .get()
+            let braked = last.get();
+            let stepped = braked
                 .filter(|&braked| braked > Num::ZERO)
                 .map_or(full, |braked| braked.min(full));
-            let pace = drive.map_or(stepped, ZeroHourDrive::speed);
+            let pace = match drive {
+                Some(drive) if braked != Some(Num::ZERO) => drive.speed(),
+                _ => stepped,
+            };
             let stuck_for = progress.track(at.get(), route.read().ahead()[0], pace);
             // A flier steers in the plane of its route, as it walks (04-capabilities/navigation.md,
             // A flier walks in the plane).
@@ -230,6 +241,8 @@ impl Walking {
                 id,
                 position,
                 team: team.copied(),
+                gait: UnitNavigationData::gait_of(&navigation, unit_type),
+                through: route.read().is_through(),
                 step: step.get(),
                 walker: Walker::walking(Some(body)),
                 stuck: stuck_for >= stuck_ticks,
@@ -300,7 +313,7 @@ impl Walking {
             };
             let (
                 _,
-                (&id, position, team, ..),
+                (&id, position, (team, unit_type), ..),
                 mut destination,
                 _,
                 body,
@@ -346,9 +359,11 @@ impl Walking {
             debug_assert!(aside.depth.clears(), "a walk too deep moves no friend");
             let from = position.get();
             let side = aside.depth.deeper(from);
-            let mut found = place(Friends::Pass {
+            let mut found = place(Friends::Pass(MovedBy {
                 team: team.copied(),
-            });
+                gait: UnitNavigationData::gait_of(&navigation, unit_type),
+                blocked: false,
+            }));
             if !side.clears() && found.is_some_and(|to| !passage.leads_to(to)) {
                 found = place(Friends::Block);
             }
@@ -398,7 +413,7 @@ impl Walking {
             return;
         };
         let standing = bodies.iter().filter_map(
-            |((&id, &at, body, team), destination, tags, (progress, at_work, _, hemmed))| {
+            |((&id, &at, body, team, _), destination, tags, (progress, at_work, _, hemmed))| {
                 if Self::walks(destination, tags, Motion::Own) {
                     return None;
                 }

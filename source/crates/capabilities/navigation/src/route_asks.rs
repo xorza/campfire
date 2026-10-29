@@ -15,7 +15,7 @@ use crate::group_box::GroupBox;
 use crate::party::Party;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
-use crate::route::RouteMut;
+use crate::route::{RouteFound, RouteMut};
 use crate::route_planner::{RoutePlanner, Walkable};
 use crate::segment::Segment;
 use crate::walker::Walker;
@@ -91,6 +91,7 @@ struct SharedRoute {
     walker: Walker,
     waypoints: Range<usize>,
     reached: bool,
+    through: bool,
 }
 
 /// What a route search reads, the crowd's costs among it, and the planner that does it.
@@ -149,12 +150,16 @@ impl RouteAsks {
     pub(crate) fn plan(
         &mut self,
         search: Option<RouteSearch<'_>>,
-        answer: &mut impl FnMut(PlanWalker, &[Vec3], bool),
+        answer: &mut impl FnMut(PlanWalker, &[Vec3], RouteFound),
     ) {
         let Some(mut search) = search else {
+            let line = RouteFound {
+                reached: true,
+                through: false,
+            };
             for waiting in &self.waiting {
                 let member = waiting.ask.member;
-                answer(member, &[member.goal], true);
+                answer(member, &[member.goal], line);
             }
             return;
         };
@@ -177,7 +182,7 @@ impl RouteAsks {
                     member.goal,
                     &mut self.waypoints,
                 );
-                answer(member, &self.waypoints, outcome.reached);
+                answer(member, &self.waypoints, outcome.found());
                 self.waiting[index].answered = true;
                 continue;
             }
@@ -228,7 +233,7 @@ impl RouteAsks {
         &mut self,
         search: &mut RouteSearch<'_>,
         run: Range<usize>,
-        answer: &mut impl FnMut(PlanWalker, &[Vec3], bool),
+        answer: &mut impl FnMut(PlanWalker, &[Vec3], RouteFound),
     ) -> Planning {
         let party = self.waiting[self.parties[run.start] as usize]
             .ask
@@ -240,9 +245,9 @@ impl RouteAsks {
         }
         let mut answered = 0;
         let mut search = PartySearch { search, party };
-        let planning = self.plan_members(&mut search, &mut |member, waypoints, reached| {
+        let planning = self.plan_members(&mut search, &mut |member, waypoints, found| {
             answered += 1;
-            answer(member, waypoints, reached);
+            answer(member, waypoints, found);
         });
         for &index in &self.parties[run.start..run.start + answered] {
             self.waiting[index as usize].answered = true;
@@ -257,7 +262,7 @@ impl RouteAsks {
     fn plan_members(
         &mut self,
         search: &mut PartySearch<'_, '_>,
-        answer: &mut impl FnMut(PlanWalker, &[Vec3], bool),
+        answer: &mut impl FnMut(PlanWalker, &[Vec3], RouteFound),
     ) -> Planning {
         debug_assert!(self.members.len() >= 2);
         debug_assert!(self.members.is_sorted_by_key(|member| member.id));
@@ -320,20 +325,21 @@ impl RouteAsks {
             walker: widest,
             waypoints: start..self.shared.len(),
             reached: outcome.reached,
+            through: outcome.through,
         });
     }
 
     /// Gives `member` its route from its layer's shared route: from the last waypoint whose
     /// straight line it passes by its own walker's test, the waypoints tested from the goal back,
     /// on to its own goal when the line to it from the waypoint before the party's goal passes,
-    /// else to the party's goal. A member that sees no waypoint plans its own route, and so does
+    /// else to the party's goal, and whether its part of it goes through a unit of its team. A member that sees no waypoint plans its own route, and so does
     /// one for whom a route that stops short of the party's goal says nothing: a narrower walker,
     /// or one of another goal (04-capabilities/navigation.md, One command, one route).
     fn follow(
         &mut self,
         search: &mut PartySearch<'_, '_>,
         member: PlanWalker,
-        answer: &mut impl FnMut(PlanWalker, &[Vec3], bool),
+        answer: &mut impl FnMut(PlanWalker, &[Vec3], RouteFound),
     ) {
         let PartySearch { search, party } = search;
         let shared = self
@@ -353,7 +359,7 @@ impl RouteAsks {
             .find(|&at| planner.sees(walkable, Segment::new(member.position, route[at])));
         let Some(first) = seen else {
             let outcome = planner.plan(walkable, member.position, member.goal, &mut self.waypoints);
-            answer(member, &self.waypoints, outcome.reached);
+            answer(member, &self.waypoints, outcome.found());
             return;
         };
         self.waypoints.clear();
@@ -369,6 +375,13 @@ impl RouteAsks {
                 reached = true;
             }
         }
-        answer(member, &self.waypoints, reached);
+        // Its part of the shared route goes through a unit of its team where a leg of it crosses a
+        // cell one stands in, as the smoothing ends a line before such a cell but where the route
+        // goes through it; the line to its first waypoint crosses none, as the member sees it.
+        let through = shared.through
+            && (self.waypoints.windows(2))
+                .any(|leg| !planner.sees(walkable, Segment::new(leg[0], leg[1])));
+        let found = RouteFound { reached, through };
+        answer(member, &self.waypoints, found);
     }
 }

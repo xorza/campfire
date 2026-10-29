@@ -20,6 +20,7 @@ use crate::collider::Collider;
 use crate::crowd_costs::{self, CrowdCosts, CrowdWalls, Stamp, Standing};
 use crate::party::{Party, PartyKey};
 use crate::pathing_grid::PathingGrid;
+use crate::route::RouteFound;
 use crate::route_asks::{Ask, PlanWalker, RouteAsks, RouteSearch};
 use crate::route_planner::{self, RoutePlanner, Walkable};
 use crate::steering;
@@ -266,7 +267,7 @@ impl WalledScene {
                 let mut left = members.as_slice();
                 while !left.is_empty() {
                     let mut answered = 0;
-                    let mut answer = |_: PlanWalker, route: &[Vec3], _: bool| {
+                    let mut answer = |_: PlanWalker, route: &[Vec3], _: RouteFound| {
                         black_box(route);
                         answered += 1;
                     };
