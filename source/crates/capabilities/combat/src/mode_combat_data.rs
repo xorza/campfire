@@ -4,8 +4,9 @@ use campfire_common::DeclaredName;
 use campfire_declarations::{
     BookCx, BookError, NameSets, PatchError, Patched, Section, SectionTable,
 };
+use campfire_names::UnknownName;
 use campfire_script::{ApiVersion, Status};
-use campfire_script::{DataSection, DataTable, UnknownName};
+use campfire_script::{DataSection, DataTable};
 use campfire_units::PoolId;
 use campfire_values::{Named, Names, Stat};
 use serde::{Deserialize, Deserializer, Serialize};

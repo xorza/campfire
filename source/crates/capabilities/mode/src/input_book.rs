@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use bevy_ecs::resource::Resource;
 use campfire_common::DeclaredName;
 use campfire_declarations::{Book, BookCx, BookError};
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 
 use crate::mode_data::{InputType, ModeData};
 

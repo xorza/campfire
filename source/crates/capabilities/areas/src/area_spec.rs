@@ -1,7 +1,7 @@
 use campfire_common::{DeclaredName, Ticks};
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
 use campfire_math::Num;
-use campfire_script::{Filter, TagNames, UnknownName};
+use campfire_names::{Filter, TagNames, UnknownName};
 use campfire_sim::MatchRate;
 use campfire_stats::{Affects, ModifierBook};
 use campfire_units::UnitTypes;

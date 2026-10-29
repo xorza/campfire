@@ -213,7 +213,8 @@ pub mod internals {
     use campfire_declarations::ById;
     use campfire_declarations::internals::BookLoad;
     use campfire_math::Num;
-    use campfire_script::{Filters, MatchNames, ScriptId};
+    use campfire_names::{Filters, MatchNames};
+    use campfire_script::ScriptId;
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{MatchRate, StableId};
     use campfire_units::{ScriptBook, UnitTypeCore, Units};

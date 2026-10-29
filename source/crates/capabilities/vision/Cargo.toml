@@ -9,10 +9,11 @@ kind = "glue"
 
 [features]
 internals = [
-    "dep:campfire-measure",
     "campfire-declarations/internals",
     "campfire-geometry/internals",
     "campfire-math/internals",
+    "dep:campfire-measure",
+    "campfire-names/internals",
     "campfire-players/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
@@ -23,6 +24,7 @@ internals = [
 ]
 
 [dependencies]
+campfire-names.workspace = true
 campfire-common.workspace = true
 campfire-declarations.workspace = true
 campfire-geometry.workspace = true

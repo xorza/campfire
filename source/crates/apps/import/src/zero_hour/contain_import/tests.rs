@@ -215,11 +215,9 @@ fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes()
     let names = names.into_production().into_projectiles();
     let type_name = |name: &str| TypeName::named(name);
     // The chapel's model gives two fire points, the game's `(10, 5)` and `(−10, 5)`.
-    let fire_points = BTreeMap::from([(
-        type_name("chapel").declared().clone(),
-        vec![[10.0, 5.0], [-10.0, 5.0]],
-    )]);
-    let import = ContainImport::of(&rules, names.types(), &fire_points).unwrap();
+    let mut additions = Additions::default();
+    additions.type_mut(&type_name("chapel")).fire_points = vec![[10.0, 5.0], [-10.0, 5.0]];
+    let import = ContainImport::of(&rules, names.types(), &mut additions).unwrap();
     // Each type that walks and takes room of a transport rides, of that room: not the bomb,
     // which does not walk, nor the Chinook, of none.
     let size = |size| RidesData {
@@ -235,7 +233,11 @@ fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes()
         ("ranger", 1),
     ]
     .map(|(name, room)| (type_name(name), size(room)));
-    assert_eq!(import.rides, BTreeMap::from(rides));
+    let riders: Vec<(TypeName, RidesData)> = additions
+        .iter()
+        .filter_map(|(name, added)| Some((name.clone(), added.rides?)))
+        .collect();
+    assert_eq!(riders, rides);
     let filters = |filters: &[&str]| -> Vec<FilterData> {
         filters
             .iter()
@@ -243,7 +245,10 @@ fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes()
             .collect()
     };
     let share = |billionths| Share::billionths(billionths).unwrap();
-    let enter = |name: &str| import.enters[&type_name(name)].clone();
+    let enter = |name: &str| {
+        let added = additions.get(&type_name(name)).unwrap();
+        added.enter.clone().unwrap()
+    };
     // The Humvee takes 5 of its own player's infantry by their room, lets one out each 250 ms,
     // ⌈250 × 0.03⌉ = 8 frames, written back as ⌊8 × 100 / 3⌋ = 266 ms, kills each as it dies,
     // and lets its infantry fire from its place.
@@ -408,7 +413,11 @@ fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes()
             ("Tower", ContainDropCause::Overlord),
         ]
     );
-    let converted: Vec<&str> = import.enters.keys().map(TypeName::as_str).collect();
+    let converted: Vec<&str> = additions
+        .iter()
+        .filter(|(_, added)| added.enter.is_some())
+        .map(|(name, _)| name.as_str())
+        .collect();
     assert_eq!(
         converted,
         [

@@ -4,7 +4,7 @@ use std::num::NonZeroU32;
 use bevy_ecs::resource::Resource;
 use campfire_codec::{Toml, TomlTable};
 use campfire_common::DeclaredName;
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_script::{ApiVersion, Status};
 use serde::Deserialize;
 

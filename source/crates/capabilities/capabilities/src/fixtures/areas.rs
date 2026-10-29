@@ -5,7 +5,7 @@ use campfire_declarations::ById;
 use campfire_declarations::internals::BookLoad;
 use campfire_deliveries::Delivering;
 use campfire_math::Num;
-use campfire_script::Filter;
+use campfire_names::Filter;
 use campfire_sim::IdAllocator;
 use campfire_values::{ActionId, Rank, RelationSet, UnitType};
 

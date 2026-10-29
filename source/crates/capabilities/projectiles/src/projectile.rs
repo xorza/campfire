@@ -5,7 +5,7 @@ use bevy_ecs::world::{DeferredWorld, World};
 use campfire_actions::{ActionBook, LaunchId, ShotDamage};
 use campfire_declarations::ById;
 use campfire_math::{Num, Vec3};
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_sim::{SimComponent, StableId};
 use campfire_states::{Replication, SentOnce};
 use campfire_units::{DeliveryEntity, MapBook};

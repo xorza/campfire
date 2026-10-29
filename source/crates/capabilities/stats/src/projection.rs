@@ -1,5 +1,5 @@
 use campfire_math::{Num, Vec3};
-use campfire_script::Filter;
+use campfire_names::Filter;
 use campfire_sim::StableId;
 use campfire_values::{ActionId, ModifierId, Rank, Relation, TagSet, Team};
 

@@ -1,12 +1,11 @@
+use std::any::TypeId;
 use std::ops::Deref;
 
+use campfire_names::{KindTexts, MatchNames};
 use campfire_values::NameId;
 
 use crate::scripts::id_name::IdName;
-use crate::scripts::script_names::ScriptNames;
-use crate::scripts::typed_list::TypedList;
-use crate::scripts::view::match_names::MatchNames;
-use crate::scripts::view::name_tables::AnyNames;
+use crate::scripts::script_text::ScriptText;
 
 /// The names scripts read, as the script view derives them from the match's `MatchNames` as a
 /// batch reads it: those names, which it reads through, and each id's name as a script string,
@@ -14,36 +13,34 @@ use crate::scripts::view::name_tables::AnyNames;
 #[derive(Debug, Default)]
 pub struct ViewNames {
     names: MatchNames,
-    /// The names of each kind of id as scripts read them, a `ScriptNames<I>` by the id's type `I`.
-    texts: TypedList<dyn AnyNames>,
+    /// Each kind's names as script strings, by the type of its ids, sorted by it, each by its
+    /// id's place.
+    texts: Vec<(TypeId, Box<[ScriptText]>)>,
 }
 
 impl ViewNames {
     /// The names of `names`, each a script string.
     pub(crate) fn of(names: &MatchNames) -> Self {
-        let mut texts = TypedList::default();
-        for table in names.script_tables() {
-            texts.add(table);
-        }
+        let mut texts: Vec<(TypeId, Box<[ScriptText]>)> = names
+            .texts()
+            .map(|KindTexts { id_type, texts }| (id_type, texts.map(ScriptText::from).collect()))
+            .collect();
+        texts.sort_unstable_by_key(|&(id_type, _)| id_type);
         Self {
             names: names.clone(),
             texts,
         }
     }
 
-    /// The names of the ids of type `I` as scripts read them; none before their module puts them
-    /// in.
-    pub fn texts<I: NameId + 'static>(&self) -> Option<&ScriptNames<I>> {
-        self.texts.get::<ScriptNames<I>>()
-    }
-
     /// The name of `id`, an id of the match: its module put in the table of its kind before it
     /// made any id of it.
     pub fn name<I: NameId + 'static>(&self, id: I) -> IdName<I> {
-        let table = self
-            .texts::<I>()
+        let at = self
+            .texts
+            .binary_search_by_key(&TypeId::of::<I>(), |&(id_type, _)| id_type)
             .expect("the match names each kind of id it holds");
-        IdName::new(table.name(id).expect("an id of the match is in its table"))
+        let text = self.texts[at].1.get(id.index());
+        IdName::new(text.expect("an id of the match is in its table").clone())
     }
 }
 
@@ -55,3 +52,6 @@ impl Deref for ViewNames {
         &self.names
     }
 }
+
+#[cfg(test)]
+mod tests;

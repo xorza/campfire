@@ -1,71 +1,24 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::num::NonZeroU8;
+use std::collections::BTreeMap;
 use std::path::Path;
 
-use bevy_math::UVec2;
-use campfire_client_files::{
-    ButtonLook, CameraFile, ClientFile, ClientObjects, ClientUnits, EffectsFile, FogFile, FogLevel,
-    HitMark, HudFile, KeysFile, MapConditions, MapLights, Minimap, PanelGrid, PanelPlaces,
-    PerkPage, PerkPlace, PerksFile, PickingFile, PixelRadius, PlaceOrder, RadarShown, ShownBars,
-    SoundFile, TeamColors, TerrainFile,
-};
-use campfire_client_files::{SpeedScale, TrackMarks, TreadDust, WreckGround};
-use campfire_codec::{Toml, TomlValue};
-use campfire_common::{DeclaredName, MapName, PackageFingerprint};
-use campfire_math::Num;
-use campfire_package::{MapFile, ModeFile, ModeRead, UnitsFile};
+use campfire_common::{MapName, PackageFingerprint};
+use campfire_package::ModeRead;
 use campfire_package_disk::{PackageDir, PackageWriter, WriteError};
-use campfire_package_format::{FileIndex, PackageFiles};
+use campfire_package_format::FileIndex;
 use campfire_store::DurableDir;
-use campfire_units::HeightGrid;
-use campfire_values::{PackagePath, Speed};
+use campfire_values::PackagePath;
 use serde::{Deserialize, Serialize};
 
-use crate::texture::dds_file::DdsFile;
-use crate::texture::texture_kind::TextureKind;
-use crate::texture::tga_file::{TgaAlpha, TgaFile, TgaHeader};
-use crate::zero_hour::archive_path::ArchivePath;
-use crate::zero_hour::art_paths::ArtPaths;
-use crate::zero_hour::chassis_import::ChassisImport;
-use crate::zero_hour::combat_import::CombatImport;
-use crate::zero_hour::contain_import::ContainImport;
-use crate::zero_hour::dropped::Losses;
-use crate::zero_hour::effects_import::{EffectSources, EffectsImport};
 use crate::zero_hour::error::ZeroHourError;
-use crate::zero_hour::format::game_frames;
-use crate::zero_hour::format::ini::object_ini::ini_object::IniObject;
-use crate::zero_hour::format::ini::object_ini::ini_object::RadarPriority;
-use crate::zero_hour::format::ini::terrain_ini::TerrainIni;
-use crate::zero_hour::format::map::map_file::ZeroHourMap;
-use crate::zero_hour::format::map::terrain::TextureClass;
 use crate::zero_hour::game_version::GameVersion;
+use crate::zero_hour::game_write::GameWrite;
 use crate::zero_hour::import_loss::ImportLoss;
-use crate::zero_hour::import_name::ImportName;
-use crate::zero_hour::import_names::ImportNames;
-use crate::zero_hour::import_team::SLOTS;
 use crate::zero_hour::install::Install;
-use crate::zero_hour::look_flags::LookFlags;
-use crate::zero_hour::map_import::{MapImport, MapSources};
-use crate::zero_hour::map_roads::MapRoads;
-use crate::zero_hour::model_assets::ModelAssets;
-use crate::zero_hour::model_converter::WrittenModel;
-use crate::zero_hour::model_writer::{ModelReport, ModelWriter};
-use crate::zero_hour::panel_import::PanelImport;
-use crate::zero_hour::production_import::ProductionImport;
-use crate::zero_hour::propaganda_import::PropagandaImport;
 use crate::zero_hour::road_pieces::RoadPieces;
-use crate::zero_hour::rules_package::{FACTION, ModeImport, RULES_FILES};
-use crate::zero_hour::science_import::ScienceImport;
-use crate::zero_hour::skirmish_start::SkirmishStart;
-use crate::zero_hour::sound_import::SoundImport;
-use crate::zero_hour::terrain_atlas::PackageTexture;
-use crate::zero_hour::type_name::TypeName;
-use crate::zero_hour::unit_types::TypeAdditions;
-use crate::zero_hour::upgrade_import::UpgradeImport;
-use crate::zero_hour::veterancy_import::VeterancyImport;
-use crate::zero_hour::wreck_import::WreckImport;
+use crate::zero_hour::rules_package::RULES_FILES;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
+pub(crate) mod additions;
 mod airfield_bones;
 pub(crate) mod animation_drop_cause;
 pub(crate) mod animation_import;
@@ -92,6 +45,7 @@ pub(crate) mod format;
 pub(crate) mod game_path;
 pub(crate) mod game_time;
 pub(crate) mod game_version;
+mod game_write;
 pub(crate) mod import_loss;
 pub(crate) mod import_name;
 pub(crate) mod import_names;
@@ -116,6 +70,7 @@ mod portable_structure;
 pub(crate) mod power_drop_cause;
 mod press_import;
 mod production_bones;
+pub(crate) mod production_cx;
 pub(crate) mod production_import;
 mod propaganda_import;
 pub(crate) mod road_buffer;
@@ -146,8 +101,6 @@ pub(crate) mod weapon_drop_cause;
 pub(crate) mod wreck_import;
 pub(crate) mod zero_hour_rules;
 
-/// The player template of the neutral player, whose color the neutral team takes.
-const CIVILIAN: &str = "FactionCivilian";
 /// What an import wrote: the packages' fingerprints, each map, by name, which loads, the road
 /// pieces each map draws, and what it does not hold of the install, in the order the import met
 /// it.
@@ -197,522 +150,28 @@ impl ZeroHour {
     pub fn write(&self, out: &Path) -> Result<Imported, ZeroHourError> {
         DurableDir::create_new(out).map_err(WriteError::CreateDir)?;
         let rules = Self::write_rules(&out.join(Self::RULES))?;
-        let mut writer = PackageWriter::create(&out.join(Self::GAME))?;
         let game = ZeroHourRules::read(&self.install)?;
-        let camera = camera_import::camera_file(&game.game_data).ok_or(ZeroHourError::Camera)?;
-        writer.write(CameraFile::path(), &camera.encode())?;
-        let keys = press_import::keys_file(&game.mouse);
-        writer.write(KeysFile::path(), &keys.encode())?;
-        // Units before structures, each widened to a radius of at least 10 pixels, where the game
-        // picks the nearest triangle alone (09-zero-hour.md, Zero Hour's units come before its
-        // structures).
-        let picking = PickingFile {
-            tiers: vec![game.names.no_structures.clone()],
-            least_radius_px: PixelRadius::new(10.0).expect("a radius at least 0"),
-        };
-        writer.write(PickingFile::path(), &picking.encode())?;
-        // The players' colors, each team's by its index, the slots' of the multiplayer colors in
-        // turn, then the neutral team's of the civilians' template, as the game colors the neutral
-        // player by `FactionCivilian`'s `PreferredColor`, white when it gives none
-        // (02-engine-core.md, Team colors in the one material).
-        let players = game.multiplayer.colors();
-        let civilian = game
-            .templates
-            .named(CIVILIAN)
-            .and_then(|civilian| civilian.color);
-        let slots = players.iter().cycle().take(usize::from(SLOTS)).copied();
-        let colors = slots.chain([civilian.unwrap_or([u8::MAX; 3])]);
-        let colors = TeamColors::new(colors.collect())?;
-        writer.write(TeamColors::path(), &colors.encode())?;
-        let mut models = ModelWriter::new(ModelAssets::new(&self.install));
-        let mut object_names = ImportNames::default();
-        let flags = LookFlags::of(&game.game_data, &game.names, &game.objects)?;
-        let mut looks = models.units(&game, &mut object_names, &flags)?;
-        let wrecks = WreckImport::new(
-            &game.objects,
-            &game.creation_lists,
-            &game.locomotors,
-            game.game_data.gravity,
-        )?;
-        let wreck_losses = wrecks.name(
-            &mut |model: &str| Ok(matches!(models.model(model)?, WrittenModel::Nodes { .. })),
-            &mut looks.units,
-        )?;
-        let chassis_losses =
-            ChassisImport::name(&game.objects, &game.locomotors, &mut looks.units)?;
-        let ModelReport {
-            skipped,
-            dropped_states,
-            dropped_animations,
-            models: mut converted_models,
-            animations: mut converted_animations,
-        } = models.report();
-        let variations = game.variations.dropped().into_iter().cloned();
-        let mut losses: Vec<ImportLoss> = variations.map(ImportLoss::Variation).collect();
-        losses.extend(skipped.into_iter().map(ImportLoss::Model));
-        losses.extend(dropped_animations.into_iter().map(ImportLoss::Animation));
-        losses.extend(dropped_states.into_iter().map(ImportLoss::States));
-        let mut names = BTreeMap::<MapName, ArchivePath>::new();
-        let mut maps = Vec::new();
-        let mut roads = BTreeMap::new();
-        let mut terrain_textures = BTreeMap::new();
-        let art = ArtPaths::new(&self.install);
-        for map in self.install.maps() {
-            let name = ImportName::of(map.dir.as_bytes()).map()?;
-            if let Some(first) = names.insert(name.clone(), map.path.clone()) {
-                return Err(ZeroHourError::MapNameClash {
-                    first,
-                    second: map.path,
-                });
-            }
-            let bytes = self.install.read(&map.path)?;
-            let in_map = |error| ZeroHourError::Map {
-                path: map.path.clone(),
-                error,
-            };
-            let file = ZeroHourMap::read(&bytes).map_err(|error| in_map(error.into()))?;
-            let textures = file
-                .terrain
-                .fields()
-                .classes
-                .iter()
-                .map(|class| self.class_texture(class, &game.terrain, &mut terrain_textures))
-                .collect::<Result<Vec<_>, _>>()?;
-            let map_roads = MapRoads::of(&file.objects, &game.roads);
-            let road_textures = map_roads
-                .types()
-                .iter()
-                .map(|&road| {
-                    let name = &game.roads[road].texture;
-                    self.road_texture(name, art, &mut terrain_textures)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            let sources = MapSources {
-                rules: &game,
-                names: &mut object_names,
-                object_looks: &looks.objects,
-                lights: game.game_data.global_lights(),
-                game: game.game_data.terrain,
-                textures: &textures,
-                roads: &map_roads,
-                road_textures: &road_textures,
-            };
-            let imported = MapImport::new(&file, sources).map_err(in_map)?;
-            writer.write(MapFile::path(&name), imported.map.as_bytes())?;
-            writer.write(HeightGrid::path(&name), &imported.heights)?;
-            writer.write(TerrainFile::path(&name), &imported.terrain)?;
-            writer.write(MapConditions::path(&name), &imported.conditions)?;
-            writer.write(MapLights::path(&name), &imported.lights)?;
-            writer.write(ClientObjects::path(&name), &imported.objects)?;
-            if imported.untextured > 0 {
-                losses.push(ImportLoss::UntexturedCells {
-                    map: name.clone(),
-                    cells: imported.untextured,
-                });
-            }
-            let waypoints = imported.dropped_waypoints.into_iter();
-            losses.extend(waypoints.map(|waypoint| ImportLoss::Waypoint {
-                map: name.clone(),
-                waypoint,
-            }));
-            let dropped_roads = imported.dropped_roads.into_iter();
-            losses.extend(dropped_roads.map(|dropped| ImportLoss::Road {
-                map: name.clone(),
-                dropped,
-            }));
-            roads.insert(name.clone(), imported.road_pieces);
-            maps.push(name);
-        }
-        let start = SkirmishStart::of(&game, &mut object_names)?;
-        let money = game.multiplayer.money()?;
-        let mut object_names = object_names.into_production();
-        let production = ProductionImport::of(&game, &mut object_names, looks.points.clone());
-        // The panel's icons and keys, its grid, and the atlases its icons draw from
-        // (02-engine-core.md, A button's look is its action's).
-        let mut panel_dropped = Losses::default();
-        let mut panel = PanelImport::of(
-            &production.panel,
-            &game.images,
-            |name| art.texture(name),
-            &mut panel_dropped,
-        )?;
-        // The panel of perks: each faction's purchase sets, each at its places on the game's
-        // grid of 5 columns of 3, down each column, its buttons' icons (02-engine-core.md, The perk
-        // panel by a choice).
-        let mut pages = BTreeMap::new();
-        for (faction, faces) in ScienceImport::pages(&game)? {
-            let mut held = Vec::with_capacity(faces.len());
-            for page in faces {
-                let mut places = Vec::with_capacity(page.len());
-                for face in page {
-                    let found = PanelImport::found(
-                        &game.images,
-                        |name| art.texture(name),
-                        face.image.as_deref(),
-                    );
-                    let icon = panel.icon(found, face.perk.as_str(), &mut panel_dropped)?;
-                    places.push(PerkPlace {
-                        place: face.place,
-                        perk: face.perk,
-                        icon,
-                    });
-                }
-                held.push(PerkPage { places });
-            }
-            pages.insert(faction, held);
-        }
-        let perks = PerksFile {
-            choice: DeclaredName::new(FACTION).expect("the faction's choice is a declared name"),
-            grid: PanelGrid {
-                columns: NonZeroU8::new(5).expect("5 columns"),
-                rows: NonZeroU8::new(3).expect("3 rows"),
-                order: PlaceOrder::Columns,
-                commands: BTreeMap::new(),
-            },
-            pages,
-        };
-        writer.write(PerksFile::path(), &perks.encode())?;
-        for (producer, places) in &production.panel.places {
-            if let Some(look) = looks.units.get_mut(producer.declared()) {
-                look.panel = PanelPlaces::try_from(places.clone())
-                    .expect("a command set gives each place one button");
-            }
-        }
-        // Each type's icon, its `ButtonImage`, which a button that stands for its unit shows, as
-        // a container's exit shows its rider (02-engine-core.md, The client orders entries by the
-        // right click).
-        for object in game.objects.objects() {
-            let Some(image) = object.button_image() else {
-                continue;
-            };
-            let name = TypeName::of(object)?;
-            let declared = name.declared();
-            let Some(look) = looks.units.get_mut(declared) else {
-                continue;
-            };
-            let found = PanelImport::found(&game.images, |name| art.texture(name), Some(image));
-            if let Some(icon) = panel.icon(found, &object.name, &mut panel_dropped)? {
-                look.icon = Some(icon);
-            }
-        }
-        // The game draws a bar only over a unit selected or under the cursor
-        // (`Drawable::drawHealthBar`), and marks no hit (02-engine-core.md, The mode chooses its
-        // hit mark).
-        // The radar the game draws by a `RadarUpgrade`'s tag, over its `RADAR_CELL_WIDTH` of 128,
-        // darkened by `interpolateColorForHeight`'s 0.6, its objects of 2 × 2 texels
-        // (02-engine-core.md, A minimap by a radar tag).
-        let hud = HudFile {
-            bars: ShownBars::Selected,
-            hit_mark: HitMark::Hidden,
-            panel: panel.grid.clone(),
-            minimap: Minimap {
-                radar: Some(game.names.radar.clone()),
-                ..Minimap::default()
-            },
-            level_icons: panel.level_icons.clone(),
-        };
-        writer.write(HudFile::path(), &hud.encode())?;
-        let mut object_names = object_names.into_projectiles();
-        let combat = CombatImport::of(&game, &mut object_names)?;
-        // The systems the projectiles of the weapons the import converts carry.
-        let mut trails = combat.exhausts(&game.weapons);
-        // And the systems the treads throw, which a look names as it names a trail
-        // (02-engine-core.md, A tread throws dust while it drives).
-        let treads = game.objects.objects().flat_map(IniObject::draws);
-        trails.extend(treads.flat_map(|draw| draw.tread_dust.iter().flatten().map(String::as_str)));
-        // Each sound a weapon, an effect or a look names, its files read once and held until the
-        // package is written (09-zero-hour.md, A sound is PCM, the music the game's MP3).
-        let language = self.install.language();
-        let install = &self.install;
-        let mut sounds = SoundImport::new(&game.audio, language, |path| {
-            if install.contains(path) {
-                install.read(path).map(Some)
-            } else {
-                Ok(None)
-            }
-        });
-        let sources = EffectSources {
-            systems: &game.particles,
-            lists: &game.effects,
-            trails: &trails,
-            cap: game.game_data.max_particles,
-            texture: |name: &str| art.texture(name),
-        };
-        let mut effects = EffectsImport::of(sources, &mut sounds)?;
-        // The wrecks fall by the game's gravity and meet its ground (02-engine-core.md, Wrecks move
-        // by the client's step): an object's friction on the ground, `DEFAULT_FORWARD_FRICTION` and
-        // `DEFAULT_LATERAL_FRICTION`, takes 0.15 of its speed a frame, and it rests below
-        // `STUN_RELIEF_EPSILON`, half a world unit a frame.
-        let ground = WreckGround {
-            gravity: game.game_data.gravity,
-            stiffness: game.game_data.ground_stiffness,
-            friction: 0.15,
-            rest: 0.5 * game_frames::PER_SECOND,
-        };
-        effects.file.set_wrecks(ground)?;
-        // A tread's dust runs while its unit moves faster than the game's `DEBRIS_THRESHOLD`, a
-        // squared speed of 0.00001 a frame, scaled across by half its speed a frame and a tenth,
-        // and up and in count by its speed a frame and a tenth, each up to 1
-        // (`W3DTankDraw::doDrawModule`). A track lays an edge each cell of 10 it moves, 0.2 of a
-        // cell above the ground, up to `GlobalData`'s 100 edges, of which the newest 25 stay
-        // opaque, each fading over 300 s (`W3DModelDraw`, `W3DTerrainTracks.cpp`), when the game
-        // makes track marks.
-        let per_frame = |scale: f32| scale / game_frames::PER_SECOND;
-        let dust = TreadDust {
-            moving: 0.00001_f32.sqrt() * game_frames::PER_SECOND,
-            across: SpeedScale {
-                base: 0.1,
-                per_speed: per_frame(0.5),
-                most: 1.0,
-            },
-            rise: SpeedScale {
-                base: 0.1,
-                per_speed: per_frame(1.0),
-                most: 1.0,
-            },
-            count: SpeedScale {
-                base: 0.1,
-                per_speed: per_frame(1.0),
-                most: 1.0,
-            },
-        };
-        let tracks = if game.game_data.track_marks {
-            TrackMarks {
-                spacing: 10.0,
-                lift: 0.2 * 10.0,
-                edges: 100,
-                opaque: 25,
-                fade: 300.0,
-                tracks: game.game_data.most_tracks,
-            }
-        } else {
-            TrackMarks::NONE
-        };
-        effects.file.set_treads(dust, tracks)?;
-        effects.name_deaths(&game.objects, |name: &str| art.texture(name), &mut looks)?;
-        losses.extend(effects.dropped.iter().cloned().map(ImportLoss::Effect));
-        losses.extend(wreck_losses.into_iter().map(ImportLoss::Effect));
-        losses.extend(chassis_losses.into_iter().map(ImportLoss::Effect));
-        combat.complete_looks(&mut looks.units);
-        let converted = combat.converted_shots();
-        let shots_of = |weapon: &str| converted.get(weapon).map_or(&[][..], Vec::as_slice);
-        let mut actions =
-            effects.action_looks(&game.weapons, shots_of, &mut sounds, &mut looks.units)?;
-        // A look of no unit type is drawn by nothing, and its models, animations and textures go
-        // with it, unless another look draws them (09-zero-hour.md, A look is a unit type's).
-        let typed: BTreeSet<&DeclaredName> = object_names
-            .types()
-            .map(|typed| typed.name.declared())
-            .collect();
-        let looked = looks.units.len();
-        looks.units.retain(|name, _| typed.contains(name));
-        let unnamed = looked - looks.units.len();
-        if unnamed > 0 {
-            losses.push(ImportLoss::UnnamedLooks { looks: unnamed });
-        }
-        // Each look's voices, and who sees it on the minimap, and the music of each faction's base
-        // side (02-engine-core.md, A look names its voices; 02-engine-core.md, The minimap is drawn
-        // from the terrain at load; 02-engine-core.md, Music by a choice).
-        for object in game.objects.objects() {
-            let name = TypeName::of(object)?;
-            let declared = name.declared();
-            if let Some(look) = looks.units.get_mut(declared) {
-                look.voices = sounds.voices(object.voices())?;
-                look.radar = match object.radar_priority() {
-                    RadarPriority::Unset | RadarPriority::NotOnRadar => RadarShown::Never,
-                    RadarPriority::LocalUnitOnly => RadarShown::Owner,
-                    RadarPriority::Shown => RadarShown::Everyone,
-                };
-            }
-        }
-        let factions = start.factions.iter().filter_map(|faction| {
-            let side = faction.base_side.as_deref()?;
-            Some((faction.name.clone(), side))
-        });
-        let choice = DeclaredName::new(FACTION).expect("the faction's choice is a declared name");
-        let music = sounds.music(choice, factions)?;
-        let sound_file = sounds.sound_file(Some(music));
-        let sounded = sounds.finish();
-        effects.file.add_sounds(sounded.events)?;
-        writer.write(EffectsFile::path(), &effects.file.encode())?;
-        writer.write(SoundFile::path(), &sound_file.encode())?;
-        // The fog of the game's shroud levels (02-engine-core.md, The fog is the one material's).
-        let game_data = &game.game_data;
-        let fog = FogFile::new(
-            game_data.shroud_levels.map(FogLevel),
-            game_data.shroud_color,
-        )?;
-        writer.write(FogFile::path(), &fog.encode())?;
-        for (to, bytes) in &sounded.files {
-            writer.write(to.clone(), bytes)?;
-        }
-        losses.extend(sounded.dropped.into_iter().map(ImportLoss::Sound));
-        for (action, button) in panel.actions {
-            if button == ButtonLook::default() {
-                continue;
-            }
-            let look = actions.entry(action).or_default();
-            look.icon = button.icon;
-            look.key = button.key;
-        }
-        let looks_bones = looks.bones;
-        let fire_points = std::mem::take(&mut looks.fire_points);
-        let looks =
-            ClientUnits::new(looks.units, looks.conditions, looks.objects)?.with_actions(actions);
-        let mut upgrades = UpgradeImport::of(&game, object_names.types(), &production, &combat)?;
-        let propaganda = PropagandaImport::of(&game, object_names.types())?;
-        upgrades.take_propaganda(&propaganda);
-        let veterancy = VeterancyImport::of(&game.game_data, object_names.types(), &game.names)?;
-        let needed = production.sciences.iter().chain(&veterancy.sciences);
-        let sciences = ScienceImport::of(&game, needed.map(String::as_str))?;
-        let contains = ContainImport::of(&game, object_names.types(), &fire_points)?;
-        writer.write(ClientUnits::path(), &looks.encode())?;
-        // The models and the animations the looks and the effects name, each written once, and
-        // the textures of those models.
-        let mut model_textures = BTreeSet::new();
-        let mut missing_textures = BTreeSet::new();
-        let looks_value = TomlValue::of(&looks);
-        let effects_value = TomlValue::of(&effects.file);
-        let named = looks_value
-            .strings()
-            .into_iter()
-            .chain(effects_value.strings());
-        for named in named.filter_map(PackagePath::parse) {
-            if let Some(model) = converted_models.remove(&named) {
-                writer.write(named, &model.glb)?;
-                model_textures.extend(model.textures);
-                missing_textures.extend(model.missing_textures);
-            } else if let Some(animation) = converted_animations.remove(&named) {
-                writer.write(named, &animation)?;
-            }
-        }
-        losses.extend(missing_textures.into_iter().map(ImportLoss::Texture));
-        // The textures the models, the terrain and the effects draw with, each converted once: no
-        // other file of the install is drawn.
-        let drawn = model_textures
-            .into_iter()
-            .chain(terrain_textures.keys().cloned())
-            .chain(effects.textures.iter().cloned())
-            .chain(panel.textures.iter().cloned());
-        for (to, path) in texture_files(drawn)? {
-            let kind = path
-                .extension()
-                .and_then(TextureKind::of)
-                .expect("a drawn texture is DDS or TGA");
-            // A terrain's texture was read for its size, and is not read again.
-            let bytes = match terrain_textures.remove(&path) {
-                Some(read) => read.bytes,
-                None => self.install.read(&path)?,
-            };
-            let texture = |error| ZeroHourError::Texture {
-                path: path.clone(),
-                error,
-            };
-            let ktx2 = match kind {
-                TextureKind::Dds => DdsFile::read(&bytes).map_err(texture)?.ktx2(),
-                // Zero Hour's loader keeps a texel's alpha whatever the header counts.
-                TextureKind::Tga => TgaFile::read(&bytes, TgaAlpha::Always)
-                    .map_err(texture)?
-                    .ktx2(),
-            };
-            writer.write(to, &ktx2)?;
-        }
-        // Every unit type is made: the maps', the start's, the command sets' and the projectiles
-        // their weapons fire. The stages after read their closed set, and return what they give
-        // each.
-        let types = object_names.close();
-        let retaliation = rules_package::retaliation(game.ai.retaliation, &game.names)?;
-        let movers = types.movers();
-        let second_lives = types.second_lives(&game.names);
-        let mode = ModeImport {
-            start: &start,
-            production: &production,
-            combat: &combat,
-            upgrades: &upgrades,
-            veterancy: &veterancy,
-            sciences: &sciences,
-            contains: &contains,
-            start_money: &money,
-            retaliation: retaliation.as_ref(),
-            movers: &movers,
-            second_lives: &second_lives,
-            propaganda: &propaganda,
-        };
-        writer.write(ModeFile::path(), mode.data().as_bytes())?;
-        let barrels = combat.barrels(&looks_bones);
-        let additions = TypeAdditions {
-            barrels: &barrels,
-            bones: &looks_bones,
-            weapon: &combat.weapons,
-            weapon_slots: &combat.weapon_slots,
-            command: &production.commands,
-            production: &production.sections,
-            sells: &production.sells,
-            airfields: &production.airfields,
-            nodes: &production.supply.nodes,
-            drop_offs: &production.supply.drop_offs,
-            spawns: &production.supply.spawns,
-            upgrades: &upgrades.types,
-            tracks: &veterancy.tracks,
-            experience: &veterancy.experience,
-            areas: &production.areas,
-            enters: &contains.enters,
-            rides: &contains.rides,
-            movers: &movers,
-            second_lives: &second_lives,
-        };
-        let units = types.units_file(additions, &game.names);
-        writer.write(UnitsFile::path(), units.text.as_bytes())?;
-        // A mode whose types drive none caps no speed it moves at; 1 m a second is as good as any.
-        let max_move_speed = units
-            .max_speed
-            .and_then(Speed::new)
-            .unwrap_or(Speed::new(Num::ONE).expect("1 m a second is a speed"));
-        let manifest = rules_package::mode_manifest(max_move_speed);
-        let text = rules_package::mode_text(&production.texts);
-        writer.write(manifest.header.language.text_path(), text.as_bytes())?;
-        let manifest = Toml::write(&manifest);
-        writer.write(PackageFiles::manifest_path(), manifest.as_bytes())?;
-        let fingerprint = writer.finish()?;
+        let written = GameWrite::new(&self.install, &game, &out.join(Self::GAME))?.write()?;
         // The engine's own load of each map is the check of what the import wrote, so it
         // repeats none of the load's game.
-        let game = PackageDir::new(out.join(Self::GAME));
+        let package = PackageDir::new(out.join(Self::GAME));
         let load = |map: &MapName, error| ZeroHourError::Load {
             map: map.clone(),
             error: Box::new(error),
         };
         // A read that fails fails every map's load, so its error names the first.
-        if let Some(first) = maps.first() {
-            let read = ModeRead::at(&game).map_err(|error| load(first, error))?;
-            for map in &maps {
+        if let Some(first) = written.maps.first() {
+            let read = ModeRead::at(&package).map_err(|error| load(first, error))?;
+            for map in &written.maps {
                 read.on(Some(map)).map_err(|error| load(map, error))?;
             }
         }
-        losses.extend(production.dropped.into_iter().map(ImportLoss::Button));
-        losses.extend(production.powers_dropped.into_iter().map(ImportLoss::Power));
-        let panel_losses = production.panel.dropped.into_iter().chain(panel_dropped);
-        losses.extend(panel_losses.map(ImportLoss::Panel));
-        losses.extend(upgrades.dropped.into_iter().map(ImportLoss::Upgrade));
-        losses.extend(propaganda.dropped.into_iter().map(ImportLoss::Upgrade));
-        let supply = production.supply.dropped.into_iter();
-        losses.extend(supply.map(ImportLoss::Supply));
-        losses.extend(combat.dropped.into_iter().map(ImportLoss::Weapon));
-        losses.extend(contains.dropped.into_iter().map(ImportLoss::Contain));
-        losses.extend(combat.unliving.into_iter().map(ImportLoss::Unliving));
-        losses.extend(combat.wounded.into_iter().map(ImportLoss::Wounded));
-        losses.extend(combat.unpreferred.into_iter().map(ImportLoss::Unpreferred));
-        losses.extend(
-            veterancy
-                .untrainable
-                .into_iter()
-                .map(ImportLoss::Untrainable),
-        );
         Ok(Imported {
-            fingerprint,
+            fingerprint: written.fingerprint,
             rules,
-            maps,
-            roads,
-            losses,
+            maps: written.maps,
+            roads: written.roads,
+            losses: written.losses,
         })
     }
 }
@@ -752,106 +211,6 @@ impl ZeroHour {
             .expect("the workspace's index of the rules decodes")
             .fingerprint()
     }
-
-    /// The texture of `class`: the TGA `Art\Terrain\` holds by the name its terrain type gives,
-    /// as `readTexClass` opens it, read once into `read` with its size, for its conversion; none
-    /// for a class no type names, or a TGA the install lacks.
-    fn class_texture(
-        &self,
-        class: &TextureClass,
-        types: &TerrainIni,
-        read: &mut BTreeMap<ArchivePath, TerrainTexture>,
-    ) -> Result<Option<PackageTexture>, ZeroHourError> {
-        let Some(file) = types.texture(&class.name) else {
-            return Ok(None);
-        };
-        let path = ArchivePath::of(&format!("art\\terrain\\{file}"));
-        if path.extension() != Some("tga") || !self.install.contains(&path) {
-            return Ok(None);
-        }
-        let size = if let Some(texture) = read.get(&path) {
-            texture.size
-        } else {
-            let bytes = self.install.read(&path)?;
-            let header = TgaHeader::read(&bytes).map_err(|error| ZeroHourError::Texture {
-                path: path.clone(),
-                error,
-            })?;
-            let size = header.size();
-            read.insert(path.clone(), TerrainTexture { size, bytes });
-            size
-        };
-        Ok(Some(PackageTexture {
-            path: game_path::texture(&path)?,
-            size,
-        }))
-    }
-
-    /// The texture of a road type, of the file `name` its `Texture` gives, as the game's asset
-    /// manager finds it: its DDS, else its TGA, in `Art\Textures\` of the language's directory,
-    /// then of the archives' (09-zero-hour.md, A road's type is `Roads.ini`'s), read once into
-    /// `read` with its size, for its conversion; none for one no archive holds.
-    fn road_texture(
-        &self,
-        name: &str,
-        art: ArtPaths<'_>,
-        read: &mut BTreeMap<ArchivePath, TerrainTexture>,
-    ) -> Result<Option<PackageTexture>, ZeroHourError> {
-        let Some(path) = art.texture(name) else {
-            return Ok(None);
-        };
-        let size = if let Some(texture) = read.get(&path) {
-            texture.size
-        } else {
-            let bytes = self.install.read(&path)?;
-            let texture = |error| ZeroHourError::Texture {
-                path: path.clone(),
-                error,
-            };
-            let size = match path.extension().and_then(TextureKind::of) {
-                Some(TextureKind::Dds) => DdsFile::read(&bytes).map_err(texture)?.size(),
-                _ => TgaHeader::read(&bytes).map_err(texture)?.size(),
-            };
-            read.insert(path.clone(), TerrainTexture { size, bytes });
-            size
-        };
-        Ok(Some(PackageTexture {
-            path: game_path::texture(&path)?,
-            size,
-        }))
-    }
-}
-
-/// A terrain's texture as the import read it for its size: the size, and the file's bytes, which
-/// its conversion takes.
-#[derive(Debug)]
-struct TerrainTexture {
-    size: UVec2,
-    bytes: Vec<u8>,
-}
-
-/// Where each texture of `drawn` goes in the package, each once; an error for two that go to one
-/// file, as an `x.dds` and an `x.tga` of one directory would.
-fn texture_files(
-    drawn: impl IntoIterator<Item = ArchivePath>,
-) -> Result<BTreeMap<PackagePath, ArchivePath>, ZeroHourError> {
-    let mut files = BTreeMap::<PackagePath, ArchivePath>::new();
-    for path in drawn {
-        let to = game_path::texture(&path)?;
-        match files.get(&to) {
-            Some(first) if *first == path => {}
-            Some(first) => {
-                return Err(ZeroHourError::TextureClash {
-                    first: first.clone(),
-                    second: path,
-                });
-            }
-            None => {
-                files.insert(to, path);
-            }
-        }
-    }
-    Ok(files)
 }
 
 /// The path `text` of a file the import writes by a name of its own.

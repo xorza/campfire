@@ -5,7 +5,7 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_declarations::{Book, BookCx, BookError, BookPlace, ByIdBuilder};
 use campfire_math::{Num, Rounding};
-use campfire_script::{MatchNames, UnknownName};
+use campfire_names::{MatchNames, UnknownName};
 use campfire_sim::MatchRate;
 use campfire_units::{AccelStep, MoveStep, StatId, TurnStep, UnitSteps};
 use campfire_values::{EngineStat, NameId, Named, Names, PackageIndex, Stat, UnitType};

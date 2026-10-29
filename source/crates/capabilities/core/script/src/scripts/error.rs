@@ -138,25 +138,6 @@ impl PartialEq for Refusal {
 
 impl Eq for Refusal {}
 
-/// A name that data gives of a kind the match does not declare: what a book refuses as it
-/// resolves the name.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[error("no {of} {name:?}")]
-pub struct UnknownName {
-    pub of: NameKind,
-    pub name: String,
-}
-
-impl UnknownName {
-    /// The name `name`, which names no `of`.
-    pub fn new(of: NameKind, name: &(impl ToString + ?Sized)) -> Self {
-        Self {
-            of,
-            name: name.to_string(),
-        }
-    }
-}
-
 /// A use of `ctx` that hides it from the load checks: every value of `ctx` in a script is a
 /// variable named `ctx`, used as `ctx.<name>` or as a whole argument of a call.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

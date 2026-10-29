@@ -7,9 +7,9 @@ use campfire_values::{
     Scalar, Team, UnitType,
 };
 
-use crate::scripts::view::name_tables::{AnyNames, NameTables};
-use crate::scripts::view::tag_names::TagNames;
-use crate::scripts::view::teams::Teams;
+use crate::name_tables::{KindTexts, NameTables};
+use crate::tag_names::TagNames;
+use crate::teams::Teams;
 
 /// The names of the match, as its books and its mode give them: one table for each kind of id,
 /// found by the id's type; the tags; the teams and their players; and each unit type's params.
@@ -48,9 +48,10 @@ impl MatchNames {
         &self.tables
     }
 
-    /// Each table as scripts read it, in the order the books put them in.
-    pub(crate) fn script_tables(&self) -> impl Iterator<Item = Box<dyn AnyNames>> + '_ {
-        self.tables.script_tables()
+    /// Each table's names, by the type of its ids, in the order the books put them in, as the
+    /// script view makes its strings of them.
+    pub fn texts(&self) -> impl Iterator<Item = KindTexts<'_>> {
+        self.tables.texts()
     }
 
     /// The id of type `I` named `key`.
@@ -95,7 +96,7 @@ impl MatchNames {
     }
 
     /// How many times its names changed.
-    pub(crate) const fn revision(&self) -> u64 {
+    pub const fn revision(&self) -> u64 {
         self.revision
     }
 
@@ -150,54 +151,14 @@ impl MatchNames {
 pub(crate) mod internals {
     use campfire_values::FilterData;
 
-    use crate::scripts::error::UnknownName;
-    use crate::scripts::view::filter::Filter;
-    use crate::scripts::view::match_names::MatchNames;
+    use crate::error::UnknownName;
+    use crate::filter::Filter;
+    use crate::match_names::MatchNames;
 
     impl MatchNames {
         /// The run-time form of `filter`, its tag among those of the match's unit types.
         pub fn resolve_filter(&self, filter: &FilterData) -> Result<Filter, UnknownName> {
             Filter::resolve(filter, self.tags())
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::num::NonZeroU32;
-
-    use bevy_ecs::world::World;
-    use campfire_sim::MatchRate;
-
-    use super::*;
-    use crate::scripts::script_text::ScriptText;
-    use crate::scripts::view::View;
-    use campfire_visibility::Visibility;
-
-    #[test]
-    fn the_view_derives_its_names_from_the_match_names_as_it_reads_once_they_changed() {
-        let mut world = World::new();
-        let mut names = MatchNames::default();
-        names.set_table(Arc::new(Names::<ResourceId>::unique(["gold"])));
-        world.insert_resource(names);
-        let view = View::new(
-            MatchRate::new(NonZeroU32::new(30).unwrap()),
-            Visibility::DEFAULT,
-            |_| {},
-        );
-        // Before its first read the view holds no name; the read derives them, scripts' strings
-        // among them.
-        assert_eq!(view.names().count::<ResourceId>(), 0);
-        view.read(&mut world);
-        let gold = ResourceId::new(0);
-        assert_eq!(view.names().named::<ResourceId>("gold"), Some(gold));
-        assert_eq!(ScriptText::from(view.names().name(gold)).as_str(), "gold");
-        // A change of the match's names reaches the view at its next read, not before.
-        let both = Names::<ResourceId>::unique(["gold", "wood"]);
-        world.resource_mut::<MatchNames>().set_table(Arc::new(both));
-        assert_eq!(view.names().count::<ResourceId>(), 1);
-        view.read(&mut world);
-        assert_eq!(view.names().count::<ResourceId>(), 2);
-        assert!(world.resource::<MatchNames>().fits_resources(5));
     }
 }

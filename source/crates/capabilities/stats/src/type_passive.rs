@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
-use campfire_script::UnknownName;
+use campfire_names::UnknownName;
 use campfire_sim::StableId;
 use campfire_values::{ModifierId, Named, Rank, UnitType};
 

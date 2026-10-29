@@ -1,19 +1,14 @@
-use bevy_ecs::change_detection::CheckChangeTicks;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::observer::On;
 use bevy_ecs::schedule::SystemSet;
-use bevy_ecs::system::NonSend;
 use bevy_ecs::world::World;
 use campfire_common::EnumAll;
 use campfire_declarations::{
-    BookCx, BookError, ById, ByIdBuilder, Declarations, InstallCx, KindVisitor, MatchFacts, Module,
+    BookCx, BookError, ById, ByIdBuilder, Declarations, InstallCx, KindVisitor, Module,
     ModuleSystems, SetPlace, StateFields,
 };
-use campfire_script::{
-    CompileError, CoreApi, Ctx, Listing, MatchNames, ScriptBudgets, ScriptCall, ScriptFailures,
-    ScriptHost, ScriptId, ScriptList, ScriptPrints, StatePlace, StateSchema, View, ViewApi,
-};
-use campfire_sim::{Breach, Capability, MatchRate, Position, SimEdgeSystems, SimSystems};
+use campfire_names::MatchNames;
+use campfire_script::{Listing, ScriptCall, ScriptList, StatePlace, StateSchema, View};
+use campfire_sim::{Breach, Capability, Position, SimEdgeSystems, SimSystems};
 use campfire_values::{Relations, Tag, Team, UnitTags, UnitType};
 
 use crate::accel_step::AccelStep;
@@ -63,13 +58,13 @@ use crate::units_call::UnitsCall;
 use crate::units_column::{StateRowReads, UnitsColumn};
 use crate::variation::Variation;
 use crate::variations::Variations;
-use crate::view_reader::ViewReader;
 
 /// The core's steps, the first and the last of each tick, which every module's start and end of
 /// the tick sit at.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
 pub enum UnitsSystems {
-    /// The tick begins: every budget starts full, and the last tick's failures clear.
+    /// The tick begins, before any input: the steps that start each tick, the scripts' among
+    /// them.
     Begin,
     /// The tick ends: the units whose lifespan ended despawn.
     End,
@@ -90,9 +85,9 @@ impl ModuleSystems for UnitsSystems {
     }
 }
 
-/// The core under every capability's scripts: unit types, the script host they run in, and the
-/// units as scripts see them, with the queries on them. Every match installs it before its
-/// capabilities.
+/// The core under every capability: unit types, their bodies, states and tags, the map, and the
+/// units' script books. Every match installs it before its capabilities, after the scripts'
+/// runtime, `Scripts`.
 #[derive(Debug)]
 pub struct Units;
 
@@ -103,9 +98,6 @@ impl Module for Units {
     type Systems = UnitsSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
-        // Before every book, which shares its names into it as it installs.
-        d.cache::<MatchNames>();
-        Self::runtime(d);
         d.calls::<SpawnCallbacks>();
         d.engine_tags(&[Avatar::TAG, Dead::TAG]);
         d.section::<TypeTagsData>();
@@ -153,9 +145,6 @@ impl Module for Units {
         d.derived::<ArrivedShort>();
         d.component::<Relations>();
         d.scratch::<NewUnitStates>();
-        d.report::<ScriptBudgets>();
-        d.report::<ScriptPrints>();
-        d.report::<ScriptFailures>();
         d.on_insert::<UnitType>(TagBook::give_tags);
         d.cache::<UnitGrid>();
         d.cache::<UnitTracker<GridUnits>>();
@@ -164,9 +153,6 @@ impl Module for Units {
         d.observer(UnitTracker::<GridUnits>::disabled);
         d.observer(UnitTracker::<GridUnits>::enabled);
         d.observer(Lifespan::revived);
-        d.observer(Self::refill_view);
-        d.observer(ViewReader::disabled);
-        d.observer(ViewReader::enabled);
         d.check::<Position>(Self::within_bounds);
         d.host::<Position, UnitEntity>();
         d.check::<Team>(Self::teams_known);
@@ -193,10 +179,7 @@ impl Module for Units {
         d.column::<UnitsColumn, StateRowReads>(UnitsColumn::fill_state);
         d.call_extension::<UnitsCall>();
         d.call_extension::<ScriptCall>();
-        d.api(CoreApi::register);
-        d.api(ViewApi::register_unit);
         d.api(UnitsApi::register);
-        d.api(ViewApi::register_queries);
         d.book::<ById<UnitType, MoveStep>>(UnitSteps::steps);
         d.book::<ById<UnitType, TurnStep>>(UnitSteps::turns);
         d.book::<ById<UnitType, AccelStep>>(UnitSteps::accelerations);
@@ -227,16 +210,11 @@ impl Module for Units {
         d.part::<BodyUnit, Leaving>(|at| at.of_type::<MoveStep>().map(|_| Leaving::default()));
     }
 
-    /// Adds the core to a match: the grid of its body units, empty, which its readers build. With
-    /// scripts, in Inputs, every budget starts full and the last tick's failures clear, and as the
-    /// tick ends, its writes to units that never spawned drop.
+    /// Adds the core to a match: as the tick ends, the units whose lifespan ended despawn, and its
+    /// writes to units that never spawned drop.
     fn install(cx: &mut InstallCx<'_, Self::Systems>) {
-        cx.scripted(UnitsSystems::Begin, UnitTicks::begin_tick);
         cx.scripted(UnitsSystems::End, UnitTicks::end_lifespans);
-        cx.scripted(
-            UnitsSystems::Close,
-            (UnitTicks::drop_unspawned_states, UnitTicks::report_prints),
-        );
+        cx.scripted(UnitsSystems::Close, UnitTicks::drop_unspawned_states);
     }
 }
 
@@ -246,15 +224,6 @@ impl Units {
         view.units_where(|row| {
             listing.lists(row) && Avatar::is_tagged(row) && team.is_none_or(|team| row.team == team)
         })
-    }
-
-    /// The observer of Bevy's check of change ticks: the script view's next read fills every
-    /// row, as its queries of changed parts may miss a change after the check; a match that runs
-    /// no scripts has no view.
-    fn refill_view(_: On<'_, '_, CheckChangeTicks>, view: Option<NonSend<'_, View>>) {
-        if let Some(view) = view {
-            view.refill_next();
-        }
     }
 
     /// The body of each unit type that stands with a `collision` or `variations`: its
@@ -333,35 +302,6 @@ impl Units {
                 .is_some_and(|at| !bounds.contains(at.get()))
         })
     }
-
-    /// Compiles `source` in the match's script host, once for every capability that runs it.
-    pub fn compile(world: &mut World, source: &str) -> Result<ScriptId, CompileError> {
-        world.non_send_mut::<ScriptHost>().compile(source)
-    }
-
-    /// The scripts' runtime, which the core's install puts in first, for the modules' installs,
-    /// in a match that runs scripts: the script view and its reader, the context of their calls,
-    /// the script host they run in within the role's budgets, and their failures. A client runs
-    /// no scripts, and its bot reads the world through its own view.
-    fn runtime<D: Declarations>(d: &mut D) {
-        d.cache::<ViewReader>();
-        d.non_send::<View>(|world, role| {
-            let rate = *world.resource::<MatchRate>();
-            let visibility = world.resource::<MatchFacts>().visibility;
-            role.scripts()
-                .then(|| View::new(rate, visibility, ViewReader::read))
-        });
-        d.non_send::<Ctx>(|world, role| {
-            role.scripts()
-                .then(|| Ctx::new(world.non_send::<View>().clone()))
-        });
-        d.non_send::<ScriptHost>(|world, role| {
-            let setup = role.budgets()?;
-            let mut host = ScriptHost::new(setup.limits.per_call);
-            world.non_send::<Ctx>().tag(&mut host);
-            Some(host)
-        });
-    }
 }
 
 /// Whether the unit of `entity` holds a class's `UnitState`.
@@ -387,13 +327,13 @@ pub(crate) mod internals {
     use campfire_common::DeclaredName;
     use campfire_declarations::internals::BookLoad;
     use campfire_declarations::{ById, PerId};
-    use campfire_script::{
-        CallError, CompileError, Ctx, MatchNames, ScriptHost, ScriptId, ScriptValue,
-    };
+    use campfire_names::MatchNames;
+    use campfire_script::{CallError, CompileError, Ctx, ScriptHost, ScriptId, ScriptValue};
     use campfire_sim::StableId;
     use campfire_values::{Block, PackageIndex, Relation, Scalar, Team, TypeScope, UnitType};
 
     use crate::script_book::ScriptBook;
+    use crate::scripts::Scripts;
     use crate::tag_book::TagBook;
     use crate::tag_data::TagData;
     use crate::type_origin_book::TypeOrigin;
@@ -530,7 +470,7 @@ pub(crate) mod internals {
         /// Compiles `source`, and adds the hooks the host reads of it to the match's book, as a
         /// test match has no package load to read them.
         pub fn compile_hooked(world: &mut World, source: &str) -> Result<ScriptId, CompileError> {
-            let script = Self::compile(world, source)?;
+            let script = Scripts::compile(world, source)?;
             ScriptBook::amend(world, |world, scripts| {
                 assert_eq!(script.index(), scripts.len(), "the book holds every script");
                 scripts.push(world.non_send::<ScriptHost>().functions(script));

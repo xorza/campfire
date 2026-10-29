@@ -205,7 +205,12 @@ fn two_upgrades_of_one_modifier_s_name_are_refused() {
         .unwrap();
     let production = ProductionImport::default();
     let combat = CombatImport::default();
-    let refused = UpgradeImport::of(&rules, std::iter::empty(), &production, &combat);
+    let sources = UpgradeSources {
+        rules: &rules,
+        production: &production,
+        combat: &combat,
+    };
+    let refused = UpgradeImport::of(sources, std::iter::empty(), &mut Additions::default());
     assert!(
         matches!(&refused, Err(ZeroHourError::UpgradeName(name)) if name == "Upgrade_A"),
         "{refused:?}"

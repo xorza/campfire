@@ -24,13 +24,14 @@ use campfire_declarations::{
     SetPlace,
 };
 use campfire_deliveries::Deliverers;
+use campfire_names::MatchNames;
 use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
 use campfire_players::Player;
 use campfire_production::{Builder, Gatherer, PlayerSupply};
 use campfire_progression::Experience;
 use campfire_script::{
-    ApiBuilder, CallExtension, CallParams, EventPhase, HookDecl, MatchNames, ModeEvents,
-    PlannedCapability, RowReads, Status, ViewColumn,
+    ApiBuilder, CallExtension, CallParams, EventPhase, HookDecl, ModeEvents, PlannedCapability,
+    RowReads, Status, ViewColumn,
 };
 use campfire_sim::{
     Breach, Capability, DueIndex, HostRule, OnAny, OwnResources, SimComponent, SimResource,
@@ -489,6 +490,9 @@ impl Declarations for DeclarationAudit {
 
     fn loaded<R: Resource>(&mut self) {}
 
+    fn package_data<R: Resource + Default>(&mut self) {
+        self.resources.push(type_name::<R>());
+    }
     fn stages_run_if<M>(&mut self, _: impl SystemCondition<M> + Clone) {}
 
     fn part_with<H: Component, C: Component + Default>(&mut self) {}
@@ -535,14 +539,14 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     assert_eq!(
         audit.observers,
         [
+            "Scripts::refill_view",
+            "ViewReader::disabled",
+            "ViewReader::enabled",
             "UnitTracker<GridUnits>::aged",
             "UnitTracker<GridUnits>::lost_body",
             "UnitTracker<GridUnits>::disabled",
             "UnitTracker<GridUnits>::enabled",
             "Lifespan::revived",
-            "Units::refill_view",
-            "ViewReader::disabled",
-            "ViewReader::enabled",
             "OrderSteps::forget_gone",
             "Level::raise",
             "Aiming::revived",

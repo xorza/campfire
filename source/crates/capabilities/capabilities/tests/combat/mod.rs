@@ -24,9 +24,9 @@ use campfire_declarations::internals::BookLoad;
 use campfire_declarations::{ById, Role};
 use campfire_geometry::Metric;
 use campfire_math::{Num, Rng, Vec3};
+use campfire_names::{Filter, MatchNames};
 use campfire_navigation::{FlightData, Navigation};
 use campfire_players::{Players, PlayersWorld, ResourceAmount};
-use campfire_script::{Filter, MatchNames};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
     Capability, EntityIndex, MatchRate, Position, SimComponent, SimEdgeSystems, SimRng, SimSystems,

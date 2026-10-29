@@ -2,9 +2,9 @@ use std::collections::VecDeque;
 use std::fmt::Debug;
 
 use bevy_ecs::world::World;
+use campfire_names::{TypedItem, TypedList};
 
 use crate::scripts::frame::Frame;
-use crate::scripts::typed_list::{TypedItem, TypedList};
 
 /// An effect a call queues: it applies itself when the call returns, in the order queued among
 /// every type's.

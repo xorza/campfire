@@ -30,6 +30,7 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
     let data = |combat: &CombatImport| {
         ModeImport {
             start: &start,
+            additions: &Additions::default(),
             production: &ProductionImport::default(),
             combat,
             upgrades: &UpgradeImport::default(),
@@ -77,6 +78,7 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
     assert_eq!(retaliation(AiRetaliation::default(), &names).unwrap(), None);
     let written = ModeImport {
         start: &start,
+        additions: &Additions::default(),
         production: &ProductionImport::default(),
         combat: &CombatImport::default(),
         upgrades: &UpgradeImport::default(),

@@ -7,9 +7,10 @@ use campfire_declarations::{
     BookError, BookPlace, ScriptParams, SectionReaders, SectionTable, TypePlace,
 };
 use campfire_mode::{ChoiceId, TimerId};
+use campfire_names::{Filter, UnknownName};
 use campfire_script::{
-    ApiHolder, ApiVersion, CtxMisuse, DataTable, EnumRecord, EnumString, Filter, Hook, MemberKind,
-    MemberUse, ScriptApi, ScriptFacts, ScriptFunction, ScriptName, ScriptRole, Status, UnknownName,
+    ApiHolder, ApiVersion, CtxMisuse, DataTable, EnumRecord, EnumString, Hook, MemberKind,
+    MemberUse, ScriptApi, ScriptFacts, ScriptFunction, ScriptName, ScriptRole, Status,
 };
 use campfire_sim::{Capability, MatchRate};
 use campfire_values::{

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_client_files::ClientUnits;
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_units::TypeOriginBook;
 use campfire_values::{ActionId, PackageIndex, PackagePath, UnitType};
 

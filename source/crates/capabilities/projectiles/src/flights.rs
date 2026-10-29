@@ -7,7 +7,7 @@ use campfire_common::{PlayerSlot, StableNumber};
 use campfire_deliveries::{AttackShot, Delivered, DeliveredPayload, Delivering, DeliveryQueue};
 use campfire_geometry::{BodyGrid, Metric, Placed, Shape, Volume};
 use campfire_math::{Num, Vec3};
-use campfire_script::Filters;
+use campfire_names::Filters;
 use campfire_sim::{Position, StableId};
 use campfire_values::{Allegiance, Hit, Team};
 

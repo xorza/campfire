@@ -1,7 +1,8 @@
+use campfire_names::Filter;
+use campfire_names::TagNames;
+
 use crate::scripts::error::ApiError;
 use crate::scripts::script_text::ScriptText;
-use crate::scripts::view::filter::Filter;
-use crate::scripts::view::tag_names::TagNames;
 
 /// The filters scripts gave as text, each as the match's tags resolve it, so a literal a call
 /// site gives again resolves once: Rhai passes a literal as the one shared text its script holds,
@@ -28,7 +29,7 @@ impl FilterTexts {
         if let Some(&(_, filter)) = same.or_else(equal) {
             return Ok(filter);
         }
-        let filter = Filter::parse(text, tags)?;
+        let filter = Filter::parse(text, tags).map_err(ApiError::Unknown)?;
         if self.held.len() < Self::HELD {
             self.held.push((text.clone(), filter));
         }

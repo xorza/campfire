@@ -1,7 +1,8 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
-use campfire_script::{ListPlace, MatchNames, StateValue};
+use campfire_names::MatchNames;
+use campfire_script::{ListPlace, StateValue};
 use campfire_sim::SimResource;
 use campfire_values::NameId;
 use serde::{Deserialize, Serialize};

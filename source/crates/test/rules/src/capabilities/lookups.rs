@@ -6,7 +6,7 @@ use crate::workspace::Workspace;
 /// spelled, a table's `named` the most. Each runs in a script call, which resolves the names it is
 /// given once, as its arguments' types take them, in the load, which resolves the packages' names
 /// once, or as a bot starts. The test fails when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 90] = [
+const LOOKUPS: [(&str, &str); 89] = [
     // The load, each module's books by their builders.
     ("actions/action_load.rs", "named"),
     ("actions/action_names.rs", "named"),
@@ -73,9 +73,9 @@ const LOOKUPS: [(&str, &str); 90] = [
     ("bots/bot_script/bot_names.rs", "actions_named"),
     ("bots/bot_script/bot_names.rs", "named"),
     // The load, and a filter a script names.
-    ("script/scripts/view/filter.rs", "named"),
-    ("script/scripts/view/match_names.rs", "named"),
-    ("script/scripts/view/name_tables.rs", "named"),
+    ("names/filter.rs", "named"),
+    ("names/match_names.rs", "named"),
+    ("names/name_tables.rs", "named"),
     ("values/filter_data.rs", "named"),
     // A probe's unit type, as a command line or a test names it.
     ("match_probe/probe_spec.rs", "named"),
@@ -99,9 +99,8 @@ const LOOKUPS: [(&str, &str); 90] = [
     ("script/scripts/id_args.rs", "named"),
     ("script/scripts/script_api/api_builder.rs", "named"),
     ("script/scripts/script_api/mod.rs", "hook_named"),
-    ("script/scripts/script_names.rs", "named"),
     ("script/scripts/state_decl/state_schema.rs", "named"),
-    ("script/scripts/view/tag_names.rs", "named"),
+    ("names/tag_names.rs", "named"),
     ("stats/param_table.rs", "named"),
     ("stats/stats_call.rs", "named"),
     ("units/stat_id.rs", "named"),

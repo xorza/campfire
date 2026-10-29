@@ -1,4 +1,4 @@
-use std::num::{NonZeroI64, NonZeroU64};
+use std::num::NonZeroI64;
 
 use bevy_ecs::change_detection::{DetectChangesMut, Mut};
 use bevy_ecs::entity::Entity;
@@ -7,13 +7,13 @@ use bevy_ecs::system::{Commands, Local, Query, Res};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionProgress, ActionSlots, ProgressIndexes};
 use campfire_combat::{
-    ClipRefill, ClipShots, Damage, DamageCause, DamagePass, Heal, HealCause, PassEntry, Weapon,
+    ClipShots, Damage, DamageCause, DamagePass, Heal, HealCause, HomeReload, PassEntry, Weapon,
 };
-use campfire_common::{Tick, Ticks};
+use campfire_common::Ticks;
 use campfire_declarations::ById;
 use campfire_math::{Num, Rounding, Vec3};
 use campfire_navigation::FlightData;
-use campfire_production::{Doors, FramePoint, HeldPlaces, MadeAt, ProducerSpec, Sold};
+use campfire_production::{Doors, FramePoint, HeldPlaces, MadeAt, ProducerSpec, Rehome, Sold};
 use campfire_sim::{EntityIndex, Keyed, MatchRate, Ordered, Position, SimTick, StableId};
 use campfire_units::{
     DashTo, Dead, Destination, Facing, FlightGoal, ForcedMove, Life, MoveStep, StatusTags,
@@ -277,16 +277,18 @@ impl Sorties {
                     let entity = index.get(field).expect("a living airfield is indexed");
                     let (_, (&field_type, _), (_, mut held, doors)) =
                         fields.get_mut(entity).expect("an airfield");
-                    held.hold_for(place, id);
-                    // Its place's door opens for it, as Zero Hour's `reserveSpace` holds it open.
                     let times = producers.get(field_type).and_then(|spec| spec.doors);
-                    if let Some((mut doors, times)) = doors.zip(times) {
-                        doors.hold(place, now, times);
-                    }
-                    made.set_if_neq(MadeAt {
+                    let mut doors = doors.zip(times);
+                    Rehome {
+                        unit: id,
+                        made: &mut made,
                         producer: field,
                         place,
-                    });
+                        held: &mut held,
+                        doors: doors.as_mut().map(|(doors, times)| (&mut **doors, *times)),
+                        now,
+                    }
+                    .apply();
                     home = Some(entity);
                 }
             }
@@ -425,9 +427,7 @@ impl Sorties {
                 Sortie::BackToPlace if !moving => {
                     facing.set_if_neq(Facing::of(field.angle + parked.angle));
                     let reload = home_clips()
-                        .map(|home| {
-                            Self::share(home.clip.reload, home.fired, home.clip.shots.get())
-                        })
+                        .map(|home| home.reload_ticks())
                         .max()
                         .unwrap_or(Ticks::ZERO);
                     if reload == Ticks::ZERO {
@@ -443,7 +443,10 @@ impl Sorties {
                     if let (Some(clips), Some(slots), Some(weapons)) =
                         (clips.as_deref_mut(), slots, weapons.as_deref())
                     {
-                        Self::reload(clips, slots, weapons, now, from, until);
+                        let total = until.since(from).expect("a reload ends after it starts");
+                        let passed = now.since(from).unwrap_or(Ticks::ZERO).min(total);
+                        let reload = HomeReload { passed, total };
+                        clips.reload_at_home(slots, weapons, reload);
                     }
                     if now >= until {
                         Sortie::Parked
@@ -624,48 +627,6 @@ impl Sorties {
             .expect("a distance over a runway's length fits");
         let share = (Num::ONE - left).clamp(Num::ZERO, Num::ONE);
         share * share
-    }
-
-    /// The ticks of `reload` for the share of a clip of `shots` that `fired` empties, rounded up.
-    fn share(reload: Ticks, fired: u16, shots: u16) -> Ticks {
-        let ticks = reload.get() * u64::from(fired);
-        Ticks::new(ticks.div_ceil(u64::from(shots)))
-    }
-
-    /// Refills each clip of `slots` that refills at home, of `weapons`, in `clips`, by the share of
-    /// a reload from `from` to `until` that passed by `now`: the share of its shots back, rounded
-    /// down, as Zero Hour fills a clip in proportion (`JetOrHeliReloadAmmoState::update`).
-    fn reload(
-        clips: &mut ClipShots,
-        slots: &ActionSlots,
-        weapons: &ById<ActionId, Weapon>,
-        now: Tick,
-        from: Tick,
-        until: Tick,
-    ) {
-        let total = until
-            .since(from)
-            .expect("a reload ends after it starts")
-            .get();
-        let passed = now.since(from).map_or(0, Ticks::get).min(total);
-        for slot in slots {
-            let (Some(action), Some(rank)) = (slot.action, slot.rank) else {
-                continue;
-            };
-            let clip = weapons
-                .get(action)
-                .and_then(|weapon| weapon.clip(&[], rank));
-            let Some(clip) = clip.filter(|clip| clip.refill == ClipRefill::Home) else {
-                continue;
-            };
-            let shots = NonZeroU64::from(clip.shots).get();
-            let back =
-                u16::try_from(shots * passed / total).expect("a share of a clip's shots fits");
-            let fired = clips.fired(action).min(clip.shots.get() - back);
-            if fired != clips.fired(action) {
-                clips.refill(action, fired);
-            }
-        }
     }
 
     /// The dash of `step` a tick that sends a unit at `from` straight to `to`, which carries it as

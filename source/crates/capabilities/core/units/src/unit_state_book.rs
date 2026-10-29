@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_declarations::Book;
-use campfire_script::{Audience, MatchNames, StateSchema, StateValue};
+use campfire_names::MatchNames;
+use campfire_script::{Audience, StateSchema, StateValue};
 use campfire_values::{NameId, UnitType};
 
 /// The script state each unit type declares, a schema for each type in the order of the types:

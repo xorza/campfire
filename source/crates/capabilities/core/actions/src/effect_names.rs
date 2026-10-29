@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_common::DeclaredName;
-use campfire_script::{NameTables, UnknownName};
+use campfire_names::{NameTables, UnknownName};
 use campfire_values::{NameId, NameKey, Named, PackageIndex, Param};
 
 /// The match's ids of the names an action's effect lists give, by the match's name tables, and

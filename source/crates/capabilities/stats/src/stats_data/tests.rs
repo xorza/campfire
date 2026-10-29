@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use campfire_script::UnknownName;
+use campfire_names::UnknownName;
 use campfire_units::StatId;
 use campfire_values::{NameId, Named, UnitType};
 

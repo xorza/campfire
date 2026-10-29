@@ -300,6 +300,9 @@ impl Declarations for Installer<'_> {
 
     fn loaded<R: Resource>(&mut self) {}
 
+    fn package_data<R: Resource + Default>(&mut self) {
+        self.world.insert_resource(R::default());
+    }
     /// Each stage checks `condition` once, as it starts, with `SimEdgeSystems::Start` before them
     /// all, so the stage it turns false in is the last to run, its closing set with it.
     fn stages_run_if<M>(&mut self, condition: impl SystemCondition<M> + Clone) {

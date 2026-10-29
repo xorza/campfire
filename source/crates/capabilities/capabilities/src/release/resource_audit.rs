@@ -214,6 +214,10 @@ impl Declarations for DeclaredResources {
         self.ids.push(TypeId::of::<R>());
     }
 
+    fn package_data<R: Resource + Default>(&mut self) {
+        self.ids.push(TypeId::of::<R>());
+    }
+
     fn stages_run_if<M>(&mut self, _: impl SystemCondition<M> + Clone) {}
 }
 

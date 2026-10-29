@@ -10,7 +10,7 @@ use campfire_values::{
     ActionId, DamageKind, ModifierId, NameId, Rank, RelationSet, Speed, Tag, TagSet,
 };
 
-use campfire_script::Filter;
+use campfire_names::Filter;
 
 use crate::armor::Armor;
 use crate::attack_data::{ClipRefill, PreAttackEach};

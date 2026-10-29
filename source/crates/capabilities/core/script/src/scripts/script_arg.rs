@@ -1,5 +1,6 @@
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
+use campfire_names::Filter;
 use campfire_values::{EngineEnum, Relation};
 use campfire_values::{NameKind, Named};
 use rhai::{Array, Dynamic, ImmutableString, Map, Variant};
@@ -13,7 +14,6 @@ use crate::scripts::script_text::ScriptText;
 use crate::scripts::script_value::ScriptValue;
 use crate::scripts::script_value::script_list::ScriptList;
 use crate::scripts::script_value::script_map::ScriptMap;
-use crate::scripts::view::filter::Filter;
 use crate::scripts::view::unit::Unit;
 
 /// An argument of a call or a method of the script API: what Rhai passes, and what the member

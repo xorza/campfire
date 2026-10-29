@@ -1,5 +1,5 @@
 use campfire_common::DeclaredName;
-use campfire_script::UnknownName;
+use campfire_names::UnknownName;
 use thiserror::Error;
 
 use crate::list_hook::ListHook;

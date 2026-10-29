@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_declarations::{Book, BookCx, BookError, ById};
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_units::Variations;
 use campfire_values::UnitType;
 

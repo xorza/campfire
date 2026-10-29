@@ -169,7 +169,7 @@ pub mod internals {
     use campfire_common::DeclaredName;
     use campfire_declarations::ById;
     use campfire_declarations::internals::BookLoad;
-    use campfire_script::UnknownName;
+    use campfire_names::UnknownName;
     use campfire_sim::MatchRate;
     use campfire_stats::Stats;
     use campfire_units::{UnitTypeBook, Units};

@@ -28,7 +28,7 @@ pub use crate::scripts::ctx_fn::{CtxFn, Fallible, GetFn, MethodFn, Plain, WithCt
 pub use crate::scripts::data_section::DataSection;
 pub use crate::scripts::data_table::DataTable;
 pub use crate::scripts::error::{
-    ApiError, CallError, Checked, CtxMisuse, FailureKind, ParamProblem, Refusal, UnknownName,
+    ApiError, CallError, Checked, CtxMisuse, FailureKind, ParamProblem, Refusal,
 };
 pub use crate::scripts::event_phase::EventPhase;
 pub use crate::scripts::frame::Frame;
@@ -65,7 +65,6 @@ pub use crate::scripts::script_facts::{
 pub use crate::scripts::script_failures::{FailureText, ScriptFailure, ScriptFailures};
 pub use crate::scripts::script_lasting::ScriptLasting;
 pub use crate::scripts::script_limits::ScriptLimits;
-pub use crate::scripts::script_names::ScriptNames;
 pub use crate::scripts::script_position::ScriptPosition;
 pub use crate::scripts::script_radius::ScriptRadius;
 pub use crate::scripts::script_role::{ParamScope, ScriptRole};
@@ -84,17 +83,11 @@ pub use crate::scripts::state_type::StateType;
 pub use crate::scripts::state_value::StateValue;
 pub use crate::scripts::status::Status;
 pub use crate::scripts::view::View;
-pub use crate::scripts::view::filter::Filter;
-pub use crate::scripts::view::filters::Filters;
 pub use crate::scripts::view::kept_rows::{AnyKeptRows, ColumnRows, KeptRows, RunMove};
 pub use crate::scripts::view::listing::Listing;
 pub use crate::scripts::view::living_unit::LivingUnit;
-pub use crate::scripts::view::match_names::MatchNames;
-pub use crate::scripts::view::name_tables::NameTables;
 pub use crate::scripts::view::row_fill::RowFill;
 pub use crate::scripts::view::row_reads::RowReads;
-pub use crate::scripts::view::tag_names::TagNames;
-pub use crate::scripts::view::teams::Teams;
 pub use crate::scripts::view::unit::{Unit, UnitAt};
 pub use crate::scripts::view::unit_row::UnitRow;
 pub use crate::scripts::view::view_column::{ViewColumn, ViewColumns};

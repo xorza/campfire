@@ -4,7 +4,7 @@ use bevy_ecs::resource::Resource;
 use campfire_declarations::Book;
 use campfire_geometry::{Bounds, Placed, Polygon};
 use campfire_math::Num;
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 
 use crate::layer::Layer;
 use crate::wall::Wall;

@@ -1,10 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_common::DeclaredName;
-use campfire_stats::{HeldSources, UpgradeData};
+use campfire_stats::{HeldSources, UpgradeData, UpgradesData};
 use campfire_values::{FilterData, Number, Stat};
 use serde::Serialize;
 
+use crate::zero_hour::additions::Additions;
 use crate::zero_hour::dropped::Losses;
 use crate::zero_hour::error::{NameError, ZeroHourError};
 use crate::zero_hour::format::error::FloatError;
@@ -19,12 +20,12 @@ use crate::zero_hour::upgrade_drop_cause::UpgradeDropCause;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// Zero Hour's propaganda towers as auras (riders-and-upgrades.md, A propaganda tower is an
-/// aura): the entries of the upgrades of each type of a `PropagandaTowerBehavior` of its own or
-/// whose upgrade makes a portable tower inside it, the upgrades their entries name, and the
-/// modifiers of the auras and of their heals; and the towers it drops, by their object's name.
+/// aura): the upgrades the entries of the towers' upgrades name, and the modifiers of the auras
+/// and of their heals; and the towers it drops, by their object's name. It gives each type of a
+/// `PropagandaTowerBehavior` of its own or whose upgrade makes a portable tower inside it the
+/// entries of its tower's upgrades, after its own, as additions.
 #[derive(Debug, Default)]
 pub(crate) struct PropagandaImport {
-    pub(crate) upgrades: BTreeMap<TypeName, Vec<UpgradeData>>,
     pub(crate) named: BTreeSet<DeclaredName>,
     pub(crate) modifiers: BTreeMap<DeclaredName, PropagandaModifier>,
     pub(crate) dropped: Losses<UpgradeDropCause>,
@@ -80,6 +81,7 @@ impl PropagandaImport {
     pub(crate) fn of<'n, 'r>(
         rules: &'r ZeroHourRules,
         types: impl IntoIterator<Item = NamedType<'n, 'r>>,
+        additions: &mut Additions,
     ) -> Result<Self, ZeroHourError> {
         let mut import = Self::default();
         let game = &rules.game_data;
@@ -110,7 +112,7 @@ impl PropagandaImport {
                     when: Some(rules.names.built.clone()),
                     modifier: modifier.clone(),
                 };
-                let entries = import.upgrades.entry(name.clone()).or_default();
+                let entries = Self::entries(additions, name);
                 entries.push(built(Vec::new(), &names.aura));
                 if let Some(required) = &tower.upgrade {
                     let required = ImportName::latin(required).declared()?;
@@ -136,15 +138,17 @@ impl PropagandaImport {
                     continue;
                 };
                 let entries = import.carried(module, tower, &names)?;
-                import
-                    .upgrades
-                    .entry(name.clone())
-                    .or_default()
-                    .extend(entries);
+                Self::entries(additions, name).extend(entries);
                 import.modifiers.extend(modifiers);
             }
         }
         Ok(import)
+    }
+
+    /// The entries of the upgrades of the type of `name` in `additions`, after those it holds.
+    fn entries<'a>(additions: &'a mut Additions, name: &TypeName) -> &'a mut Vec<UpgradeData> {
+        let upgrades = &mut additions.type_mut(name).upgrades;
+        &mut upgrades.get_or_insert_with(|| UpgradesData(Vec::new())).0
     }
 
     /// The entries of the upgrades of a carrier whose module `module` makes the portable tower

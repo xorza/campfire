@@ -7,7 +7,7 @@ use campfire_production::{DropOffData, EmptyNode, GatherData, NodeData, SpawnsDa
 use campfire_values::{Distance, Scalar};
 
 use super::*;
-use crate::zero_hour::contain_import::ContainImport;
+use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::format::ini::locomotor_ini::samples::LOCOMOTORS;
 use crate::zero_hour::format::ini::object_ini::ObjectIni;
@@ -18,6 +18,35 @@ use crate::zero_hour::skirmish_start::FactionStart;
 use crate::zero_hour::supply_drop_cause::SupplyDropCause;
 use crate::zero_hour::supply_import::ImportedGather;
 use crate::zero_hour::variation_drop_cause::VariationDropCause;
+
+/// A production's import of the types `names` holds, and what it gave them.
+#[derive(Debug)]
+struct Produced {
+    import: ProductionImport,
+    additions: Additions,
+}
+
+impl Produced {
+    /// The production of `rules` from the types of `names`, of the points `bones` gives.
+    fn of<'r>(rules: &'r ZeroHourRules, names: ImportNames<'r>, bones: ProductionBones) -> Self {
+        let mut additions = Additions::default();
+        let mut names = names.into_production();
+        let cx = ProductionCx {
+            rules,
+            names: &mut names,
+            additions: &mut additions,
+        };
+        Self {
+            import: ProductionImport::of(cx, bones),
+            additions,
+        }
+    }
+
+    /// What it gave the type of `name`, or none.
+    fn added(&self, name: &TypeName) -> TypeAdditions {
+        self.additions.get(name).cloned().unwrap_or_default()
+    }
+}
 
 #[test]
 fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction_building() {
@@ -66,6 +95,7 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         }),
     };
     let mut import = ProductionImport::default();
+    let mut additions = Additions::default();
     for (id, action) in [
         ("build_center", build("center")),
         ("build_barracks", build("barracks")),
@@ -107,7 +137,7 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         ("truck", &["gather"]),
     ] {
         let ids = ids.iter().map(|&id| name(id)).collect();
-        import.commands.insert(TypeName::named(producer), ids);
+        additions.type_mut(&TypeName::named(producer)).commands = ids;
     }
     import
         .supply
@@ -118,10 +148,7 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         dock: None,
     };
     for drop_off in ["center", "factory"] {
-        import
-            .supply
-            .drop_offs
-            .insert(TypeName::named(drop_off), money.clone());
+        additions.type_mut(&TypeName::named(drop_off)).drop_off = Some(money.clone());
     }
     for (unit, led) in [("mob", true), ("rabble", false)] {
         let spawns = SpawnsData {
@@ -130,17 +157,13 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
             replace_ms: 30_000,
             led,
         };
-        import.supply.spawns.insert(TypeName::named(unit), spawns);
+        additions.type_mut(&TypeName::named(unit)).spawns = Some(spawns);
     }
-    // The mortar's one weapon is of its upgrade set alone, which arms it after an upgrade.
+    // The mortar's one weapon is of its upgrade set alone, which arms it after an upgrade, so
+    // its starting set arms it not.
     let mut combat = CombatImport::default();
-    for (unit, weapon, starting) in [
-        ("ranger", "weapon_rifle", true),
-        ("mortar", "weapon_mortar_upgraded", false),
-        ("tank", "weapon_cannon", true),
-        ("technical", "weapon_gun", true),
-    ] {
-        combat.give(TypeName::named(unit), name(weapon), starting);
+    for unit in ["ranger", "tank", "technical"] {
+        combat.arm(TypeName::named(unit));
     }
     let start = |units: &[&str]| FactionStart {
         name: name("faction"),
@@ -151,7 +174,6 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
     };
     // The scout, unarmed, assaults by its riders, so it fights in the army too
     // (04-capabilities/interaction.md, A transport may assault).
-    let mut contains = ContainImport::default();
     let assault = EnterData {
         action: name("enter"),
         capacity: 4,
@@ -169,11 +191,11 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         open: None,
         assault: Some(Share::billionths(500_000_000).unwrap()),
     };
-    contains.enters.insert(TypeName::named("scout"), assault);
+    additions.type_mut(&TypeName::named("scout")).enter = Some(assault);
     let sources = BaseSources {
         production: &import,
         combat: &combat,
-        contains: &contains,
+        additions: &additions,
     };
     let base = FactionBase::of(sources, &start(&["dozer", "worker"]), &[]);
     let names = |names: &[&str]| names.iter().map(|&text| name(text)).collect::<Vec<_>>();
@@ -361,7 +383,8 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         ]),
         ..ProductionBones::default()
     };
-    let import = ProductionImport::of(&rules, &mut names.into_production(), bones);
+    let produced = Produced::of(&rules, names, bones);
+    let (import, additions) = (&produced.import, &produced.additions);
     let supply = &import.supply;
     let name = |name: &str| TypeName::new(&ImportName::of(name.as_bytes())).unwrap();
     let frame = |x: i64, z: i64| FramePoint::new([Num::int(x), Num::int(z)]);
@@ -375,10 +398,9 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         empty,
         dock,
     };
-    let nodes: Vec<(&str, &NodeData)> = supply
-        .nodes
+    let nodes: Vec<(&str, &NodeData)> = additions
         .iter()
-        .map(|(name, node)| (name.as_str(), node))
+        .filter_map(|(name, added)| Some((name.as_str(), added.node.as_ref()?)))
         .collect();
     assert_eq!(
         nodes,
@@ -393,9 +415,12 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         resources: vec![declared("money")],
         dock: frame(-5, 0),
     };
-    assert_eq!(supply.drop_offs.get(&name("Center")), Some(&money));
-    assert_eq!(supply.drop_offs.len(), 1);
-    let center = &import.sections[&name("Center")];
+    let drop_offs: Vec<(&str, &DropOffData)> = additions
+        .iter()
+        .filter_map(|(name, added)| Some((name.as_str(), added.drop_off.as_ref()?)))
+        .collect();
+    assert_eq!(drop_offs, [("center", &money)]);
+    let center = produced.added(&name("Center")).production.unwrap();
     assert_eq!(
         (center.gathers, &center.free),
         (true, &vec![declared("truck")])
@@ -403,7 +428,10 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
     // The truck gathers 4 boxes of 75 a trip, a box each 1,000 ms, 30 frames, standing
     // 400 ms, 12 frames, at the center, within 10 m of a dock, and looking 700 m round its
     // dock for another; its gather is the last of its command slots.
-    assert_eq!(import.commands[&name("Truck")], [declared("gather_truck")]);
+    assert_eq!(
+        additions.commands(&name("Truck")),
+        [declared("gather_truck")]
+    );
     let keys = ActionKeys {
         windup_ms: Some(Ranked::One(Number::from(1000))),
         range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
@@ -428,7 +456,10 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
     // 60 frames, and makes an order wait its pack, 2,100 ms, 63 frames. The lamer, of no unpack,
     // no pack and no cash, pays 1, as the original falls through its levels to it, and spreads
     // nothing, as its windup is none.
-    assert_eq!(import.commands[&name("Hacker")], [declared("hack_hacker")]);
+    assert_eq!(
+        additions.commands(&name("Hacker")),
+        [declared("hack_hacker")]
+    );
     let hack = |windup_ms: Option<i64>, tick_ms: i64, wind_down_ms: Option<i64>, cash| {
         let ms = |ms: Option<i64>| ms.map(|ms| Ranked::One(Number::from(ms)));
         ActionKeys {
@@ -486,11 +517,9 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         replace_ms: 30_000,
         led: false,
     };
-    assert_eq!(import.supply.spawns.get(&name("Site")), Some(&spawns));
-    assert_eq!(
-        import.sections[&name("Site")].free,
-        Vec::<DeclaredName>::new()
-    );
+    let site = produced.added(&name("Site"));
+    assert_eq!(site.spawns, Some(spawns.clone()));
+    assert_eq!(site.production.unwrap().free, Vec::<DeclaredName>::new());
     // The mob, which the center trains, walks and leads its 3 spawns of a guard and a watch in
     // turn, of no production section, as they bud from each other, and its train converts, as
     // it walks by them (09-zero-hour.md, The import converts a mob).
@@ -498,17 +527,18 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
         led: true,
         ..spawns
     };
-    assert_eq!(import.supply.spawns.get(&name("Mob")), Some(&led));
-    assert!(!import.sections.contains_key(&name("Mob")));
+    let mob = produced.added(&name("Mob"));
+    assert_eq!((mob.spawns, mob.production), (Some(led), None));
     let MadeSection::Train(made) = &import.actions[&declared("train_mob")].made else {
         panic!("train_mob");
     };
     assert_eq!(made.unit_type, declared("mob"));
     // The burrow, which trains nothing, frees its two guards by the production of its update,
     // and keeps none.
-    let burrow = &import.sections[&name("Burrow")];
-    assert_eq!(burrow.free, [declared("guard"), declared("guard")]);
-    assert_eq!(import.supply.spawns.get(&name("Burrow")), None);
+    let burrow = produced.added(&name("Burrow"));
+    let free = burrow.production.unwrap().free;
+    assert_eq!(free, [declared("guard"), declared("guard")]);
+    assert_eq!(burrow.spawns, None);
     // The drop zone, whose objects come over time, the dock of no box, the helicopter, which
     // flies, the guard of a tunnel and of a shelter, of no production, once for its cause, the
     // guard a crowd keeps none of, the ghoul a crypt keeps, whose locomotor no file defines, so
@@ -580,11 +610,8 @@ fn a_variation_and_a_prerequisite_convert_their_own_command_sets_and_a_sale_its_
     let mut names = ImportNames::default();
     let center = rules.objects.object(b"Center").unwrap();
     names.unit_type(center, &rules).unwrap();
-    let import = ProductionImport::of(
-        &rules,
-        &mut names.into_production(),
-        ProductionBones::default(),
-    );
+    let produced = Produced::of(&rules, names, ProductionBones::default());
+    let import = &produced.import;
     let declared = |name: &str| DeclaredName::new(name).unwrap();
     for train in ["train_jeep", "train_rover", "train_wisp", "train_ghost"] {
         assert!(
@@ -596,7 +623,8 @@ fn a_variation_and_a_prerequisite_convert_their_own_command_sets_and_a_sale_its_
     }
     let wisp = [declared("train_wisp")];
     for parent in ["jeep", "rover"] {
-        assert_eq!(import.commands[&TypeName::named(parent)], wisp, "{parent}");
+        let commands = produced.additions.commands(&TypeName::named(parent));
+        assert_eq!(commands, wisp, "{parent}");
     }
     // The center's sale gives back half of its 1001, 500.5 rounded down to 500; the lab's its
     // refund of 300, whatever its cost; each over 6 seconds. The scout's set holds no sale.
@@ -604,13 +632,12 @@ fn a_variation_and_a_prerequisite_convert_their_own_command_sets_and_a_sale_its_
         refund: BTreeMap::from([(rules.names.money.clone(), refund)]),
         time_ms: 6_000,
     };
-    assert_eq!(
-        import.sells,
-        BTreeMap::from([
-            (TypeName::named("center"), sale(500)),
-            (TypeName::named("lab"), sale(300)),
-        ])
-    );
+    let sells: Vec<(&str, &SellData)> = produced
+        .additions
+        .iter()
+        .filter_map(|(name, added)| Some((name.as_str(), added.sell.as_ref()?)))
+        .collect();
+    assert_eq!(sells, [("center", &sale(500)), ("lab", &sale(300))]);
 }
 
 #[test]
@@ -672,8 +699,9 @@ fn an_airfield_of_no_exit_module_makes_its_trains_at_its_helipad_and_its_jets_at
         approach_height: 50.0,
         ..IniParking::default()
     };
+    let mut additions = Additions::default();
+    additions.type_mut(&name).production = Some(section);
     let import = ProductionImport {
-        sections: BTreeMap::from([(name.clone(), section)]),
         bones: ProductionBones {
             airfields: BTreeMap::from([(name.declared().clone(), bones)]),
             ..ProductionBones::default()
@@ -685,8 +713,9 @@ fn an_airfield_of_no_exit_module_makes_its_trains_at_its_helipad_and_its_jets_at
         prep: frame(25, z),
         runway: 0,
     };
+    import.airfields(&mut additions);
     assert_eq!(
-        import.airfields()[&name],
+        additions.get(&name).unwrap().airfield.clone().unwrap(),
         AirfieldData {
             places: vec![prep(-30), prep(30)],
             runways: vec![RunwayData {
@@ -758,15 +787,12 @@ fn a_power_of_a_marker_s_burst_is_a_cast_of_its_building_and_its_sciences_raise_
     let mut names = ImportNames::default();
     let center = rules.objects.object(b"Center").unwrap();
     names.unit_type(center, &rules).unwrap();
-    let import = ProductionImport::of(
-        &rules,
-        &mut names.into_production(),
-        ProductionBones::default(),
-    );
+    let produced = Produced::of(&rules, names, ProductionBones::default());
+    let import = &produced.import;
     let declared = |name: &str| DeclaredName::new(name).unwrap();
     let id = declared("power_repair");
     assert_eq!(
-        import.commands[&TypeName::named("center")],
+        produced.additions.commands(&TypeName::named("center")),
         std::slice::from_ref(&id)
     );
     let heal = Stat::named("power_repair_heal").unwrap();
@@ -820,16 +846,16 @@ fn a_power_of_a_marker_s_burst_is_a_cast_of_its_building_and_its_sciences_raise_
         ])
     );
     assert_eq!(import.power_stats, BTreeSet::from([heal]));
-    assert_eq!(
-        import.areas,
-        BTreeMap::from([(
-            TypeName::named("marker1"),
-            AreaWrite {
-                radius: Num::int(100),
-                affects: FilterData::parse("allies:vehicle").unwrap(),
-            }
-        )])
-    );
+    let areas: Vec<(&str, &AreaWrite)> = produced
+        .additions
+        .iter()
+        .filter_map(|(name, added)| Some((name.as_str(), added.area.as_ref()?)))
+        .collect();
+    let area = AreaWrite {
+        radius: Num::int(100),
+        affects: FilterData::parse("allies:vehicle").unwrap(),
+    };
+    assert_eq!(areas, [("marker1", &area)]);
     let sciences = ["SCIENCE_Repair1", "SCIENCE_Repair2", "SCIENCE_Repair3"];
     assert!(
         sciences

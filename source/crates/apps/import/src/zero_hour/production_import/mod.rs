@@ -12,11 +12,11 @@ use campfire_production::{
 };
 use campfire_values::{FilterData, Number, Ranked, Share, Stat, TextId};
 
+use crate::zero_hour::additions::{Additions, TypeAdditions};
 use crate::zero_hour::airfield_bones::{AirfieldBones, PlaceBones};
 use crate::zero_hour::area_write::AreaWrite;
 use crate::zero_hour::axes;
 use crate::zero_hour::button_drop_cause::ButtonDropCause;
-use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::dropped::Losses;
 use crate::zero_hour::error::NameError;
 use crate::zero_hour::format::csf::string_table::StringTable;
@@ -29,11 +29,12 @@ use crate::zero_hour::format::ini::object_ini::ini_power::IniAutoHeal;
 use crate::zero_hour::format::ini::upgrade_ini::UpgradeKind;
 use crate::zero_hour::game_time;
 use crate::zero_hour::import_name::ImportName;
-use crate::zero_hour::import_names::{NamedObject, ProductionNames};
+use crate::zero_hour::import_names::NamedObject;
 use crate::zero_hour::imported_type::ImportedType;
 use crate::zero_hour::panel_import::PanelButtons;
 use crate::zero_hour::power_drop_cause::PowerDropCause;
 use crate::zero_hour::production_bones::ProductionBones;
+use crate::zero_hour::production_cx::ProductionCx;
 use crate::zero_hour::production_import::power_cast::{PowerCast, PowerModifier, PowerNames};
 use crate::zero_hour::supply_import::{DOCK_RANGE, Spawning, SupplyImport};
 use crate::zero_hour::type_name::TypeName;
@@ -44,21 +45,14 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 /// each `UNIT_BUILD`, `DOZER_CONSTRUCT`, `PLAYER_UPGRADE` and `OBJECT_UPGRADE` button of the
 /// command set of each unit type, and of each type a converted button makes, once for the whole
 /// import; the names of their actions, as the string table gives their labels; the buttons dropped,
-/// each once for each cause, in the order the sets are read; what it gives each producer, its
-/// actions of the slot kind `command` and its `production` section; and the supply of each type it
-/// visits.
+/// each once for each cause, in the order the sets are read; and the supply of each type it
+/// visits. It gives each producer its actions of the slot kind `command`, its `production` and
+/// its `sell`, each airfield its `airfield`, and each marker its area, as additions.
 #[derive(Debug, Default)]
 pub(crate) struct ProductionImport {
     pub(crate) actions: BTreeMap<DeclaredName, ImportedAction>,
     pub(crate) texts: BTreeMap<String, String>,
     pub(crate) dropped: Losses<ButtonDropCause>,
-    /// Each producer's and builder's actions of its slot kind `command`, by its type's name, in
-    /// its command set's order.
-    pub(crate) commands: BTreeMap<TypeName, Vec<DeclaredName>>,
-    /// Each producer's `production` section, by its type's name.
-    pub(crate) sections: BTreeMap<TypeName, ProductionData>,
-    /// The `sell` section of each type whose command set holds a sale, by its type's name.
-    pub(crate) sells: BTreeMap<TypeName, SellData>,
     /// The docks, supply centers, gatherers and free units of the types it visits.
     pub(crate) supply: SupplyImport,
     /// The places of each producer's buttons on its panel, and their faces.
@@ -68,19 +62,22 @@ pub(crate) struct ProductionImport {
     bones: ProductionBones,
     /// The `ParkingPlaceBehavior` of each producer of one it visits.
     parkings: BTreeMap<TypeName, IniParking>,
-    /// The `airfield` of each airfield whose production makes its jets at places (09-zero-hour.md,
-    /// The import flies a winged locomotor).
-    pub(crate) airfields: BTreeMap<TypeName, AirfieldData>,
     /// The sciences its trains, builds and researches need, by their names in the game, whose perks
     /// give their modifiers (04-capabilities/progression.md, A perk's modifier is a player
     /// modifier).
     pub(crate) sciences: BTreeSet<String>,
     /// The powers it converts to casts: what each perk's modifier gives for them, by the perk's
-    /// name, the stats of their heals, each marker type's area, and the powers' buttons dropped.
+    /// name, the stats of their heals, and the powers' buttons dropped.
     pub(crate) power_modifiers: BTreeMap<DeclaredName, PowerModifier>,
     pub(crate) power_stats: BTreeSet<Stat>,
-    pub(crate) areas: BTreeMap<TypeName, AreaWrite>,
     pub(crate) powers_dropped: Losses<PowerDropCause>,
+}
+
+/// A button of a command set, by its name in `CommandButton.ini`.
+#[derive(Debug, Clone, Copy)]
+struct NamedButton<'b> {
+    name: &'b str,
+    button: &'b CommandButton,
 }
 
 /// Where a producer's units leave it: its helipad, and its airfield's places and runways.
@@ -152,81 +149,17 @@ impl ProductionImport {
     /// `ParkingPlaceBehavior::calcPPInfo`'s `APPROACH_DIST` places it.
     const APPROACH_PAST: Num = Num::from_bits(3 << (Num::FRAC_BITS - 2));
 
-    /// Whether `unit`'s command set holds a gather.
-    fn gathers(&self, unit: &DeclaredName) -> bool {
-        let commands = self.commands.get(unit);
-        commands
-            .into_iter()
-            .flatten()
-            .any(|id| self.supply.gathers.contains_key(id))
-    }
-
-    /// Whether a weapon of `combat` arms `unit`, or, for a leader, one of its spawns, which fight
-    /// in its place (09-zero-hour.md, A leader of armed spawns is armed).
-    fn armed(&self, unit: &DeclaredName, combat: &CombatImport) -> bool {
-        let led = self.supply.spawns.get(unit).filter(|spawns| spawns.led);
-        combat.arms(unit)
-            || led.is_some_and(|spawns| spawns.unit_types.iter().any(|spawn| combat.arms(spawn)))
-    }
-
-    /// Whether `unit`'s command set holds trains and researches alone: none of its actions
-    /// builds or gathers.
-    fn fights(&self, unit: &DeclaredName) -> bool {
-        let commands = self.commands.get(unit);
-        commands.into_iter().flatten().all(|id| {
-            let action = self.actions.get(id);
-            action.is_some_and(|action| !matches!(action.made, MadeSection::Build(_)))
-        })
-    }
-
-    /// The unit types the actions of `kind` of `producer`'s command set make, in its order, but a
-    /// jet, made at a place of its airfield, which a base start does not hold.
-    fn made<'a>(
-        &'a self,
-        producer: &DeclaredName,
-        kind: ActionKind,
-        held: &'a [DeclaredName],
-    ) -> impl Iterator<Item = &'a DeclaredName> {
-        let commands = self.commands.get(producer);
-        let holds = move |requires: &Option<RequiresData>| {
-            requires.iter().all(|requires| {
-                requires
-                    .modifiers
-                    .iter()
-                    .all(|modifier| held.contains(modifier))
-            })
-        };
-        commands
-            .into_iter()
-            .flatten()
-            .filter_map(|id| self.actions.get(id))
-            .filter_map(move |action| match (&action.made, kind) {
-                (MadeSection::Train(train), ActionKind::Train)
-                    if !train.at_place && holds(&train.requires) =>
-                {
-                    Some(&train.unit_type)
-                }
-                (MadeSection::Build(build), ActionKind::Build) if holds(&build.requires) => {
-                    Some(&build.unit_type)
-                }
-                _ => None,
-            })
-    }
-
-    /// The trains, builds and supply of `rules`, from the unit types `names` holds, each type a
-    /// converted button makes or its variations hold, a building frees, or its object's
+    /// The trains, builds and supply of `cx`'s rules, from the unit types its names hold, each type
+    /// a converted button makes or its variations hold, a building frees, or its object's
     /// prerequisites name, named there, and its own command set's buttons and supply converted in
-    /// turn.
-    pub(crate) fn of<'r>(
-        rules: &'r ZeroHourRules,
-        names: &mut ProductionNames<'r>,
-        bones: ProductionBones,
-    ) -> Self {
+    /// turn, of the points `bones` gives.
+    pub(crate) fn of<'r>(mut cx: ProductionCx<'r, '_>, bones: ProductionBones) -> Self {
+        let rules = cx.rules;
         let mut import = Self {
             bones,
             ..Self::default()
         };
-        let mut queued: VecDeque<NamedObject<'r>> = names.typed_objects().into();
+        let mut queued: VecDeque<NamedObject<'r>> = cx.names.typed_objects().into();
         // A type is visited once, by its name, as several parents may field one variation.
         let mut seen: BTreeSet<TypeName> = queued.iter().map(|named| named.name.clone()).collect();
         while let Some(producer) = queued.pop_front() {
@@ -237,17 +170,16 @@ impl ProductionImport {
             let buttons = set.and_then(|set| rules.sets.buttons(set));
             let mut made: Vec<NamedObject<'r>> = Vec::new();
             for (place, button_name) in buttons.into_iter().flatten() {
-                let converted =
-                    |import: &Self| import.commands.get(&producer.name).map_or(0, Vec::len);
-                let before = converted(&import);
-                made.extend(import.button(rules, &producer, button_name, names));
+                let before = cx.additions.commands(&producer.name).len();
+                made.extend(import.button(&mut cx, &producer, button_name));
                 // The action the button made, when it made one its producer did not hold.
-                let action = (converted(&import) > before)
-                    .then(|| import.commands[&producer.name].last().cloned())
+                let after = cx.additions.commands(&producer.name);
+                let action = (after.len() > before)
+                    .then(|| after.last().cloned())
                     .flatten();
                 if let Some(button) = rules.buttons.get(button_name) {
                     if button.command == ButtonCommand::Sell {
-                        import.sell(rules, &producer);
+                        import.sell(&mut cx, &producer);
                     }
                     import.panel.place(
                         &rules.strings,
@@ -258,15 +190,15 @@ impl ProductionImport {
                     );
                 }
             }
-            made.extend(import.supply_of(rules, &producer, names));
-            made.extend(names.take_fresh());
+            made.extend(import.supply_of(&mut cx, &producer));
+            made.extend(cx.names.take_fresh());
             for named in made {
                 if seen.insert(named.name.clone()) {
                     queued.push_back(named);
                 }
             }
         }
-        import.airfields = import.airfields();
+        import.airfields(cx.additions);
         import
     }
 
@@ -274,7 +206,8 @@ impl ProductionImport {
     /// money, or else its cost times the game's `SellPercentage`, rounded down, as
     /// `BuildAssistant::update` pays it, over `SELL_MS` (04-capabilities/production.md, A building
     /// may be sold).
-    fn sell(&mut self, rules: &ZeroHourRules, seller: &NamedObject<'_>) {
+    fn sell(&self, cx: &mut ProductionCx<'_, '_>, seller: &NamedObject<'_>) {
+        let rules = cx.rules;
         let build = seller.object.build();
         #[expect(
             clippy::cast_sign_loss,
@@ -290,7 +223,7 @@ impl ProductionImport {
             refund: money.into_iter().collect(),
             time_ms: Self::SELL_MS,
         };
-        self.sells.insert(seller.name.clone(), sale);
+        cx.additions.type_mut(&seller.name).sell = Some(sale);
     }
 
     /// Converts the supply of `producer`, a unit type of `names`, its buttons converted: its
@@ -300,41 +233,45 @@ impl ProductionImport {
     /// update); the names of the objects it frees and keeps.
     fn supply_of<'r>(
         &mut self,
-        rules: &'r ZeroHourRules,
+        cx: &mut ProductionCx<'r, '_>,
         named: &NamedObject<'r>,
-        names: &mut ProductionNames<'r>,
     ) -> Vec<NamedObject<'r>> {
+        let rules = cx.rules;
         let dock = self.bones.docks.get(named.name.declared()).copied();
-        self.supply.dock(rules, named, dock.and_then(Self::frame));
+        self.supply.dock(cx, named, dock.and_then(Self::frame));
         let NamedObject {
             name,
             object: producer,
         } = named;
-        let gather = self.supply.gather(rules, producer, names);
-        let hack = self.supply.hack(rules, producer, names);
+        let gather = self.supply.gather(rules, producer, cx.names);
+        let hack = self.supply.hack(rules, producer, cx.names);
         for command in [gather, hack].into_iter().flatten() {
-            self.commands.entry(name.clone()).or_default().push(command);
+            cx.additions.type_mut(name).commands.push(command);
         }
         // A leader keeps its spawns with no production section, as they bud from each other
         // (04-capabilities/production.md, A later spawn buds from the nearest spawn).
-        let spawning = if names.imported(name).leads() {
+        let spawning = if cx.names.imported(name).leads() {
             Spawning::Led
         } else {
             Spawning::ByExit
         };
         let supply = producer.supply();
         let kept = supply.kept().is_some() && spawning == Spawning::ByExit;
+        let produces = |additions: &Additions| {
+            let added = additions.get(name);
+            added.is_some_and(|added| added.production.is_some())
+        };
         if (kept || supply.one_shots().next().is_some())
-            && !self.sections.contains_key(name)
+            && !produces(cx.additions)
             && let Some(section) = Self::section(producer.build(), self.points(name))
         {
-            self.sections.insert(name.clone(), section);
+            cx.additions.type_mut(name).production = Some(section);
         }
-        let section = self.sections.get_mut(name);
-        let exits = section.is_some();
-        let mut freed = if let Some(section) = section {
-            let freed = self.supply.free(rules, producer, names);
-            section.free = freed
+        let exits = produces(cx.additions);
+        let mut freed = if exits {
+            let freed = self.supply.free(rules, producer, cx.names);
+            let section = cx.additions.type_mut(name).production.as_mut();
+            section.expect("a producer exits by its section").free = freed
                 .iter()
                 .map(|unit| unit.name.declared().clone())
                 .collect();
@@ -344,7 +281,7 @@ impl ProductionImport {
             Vec::new()
         };
         if exits || spawning == Spawning::Led {
-            freed.extend(self.supply.keep(rules, named, spawning, names));
+            freed.extend(self.supply.keep(cx, named, spawning));
         }
         freed
     }
@@ -354,11 +291,11 @@ impl ProductionImport {
     /// button is no train or build.
     fn button<'r>(
         &mut self,
-        rules: &'r ZeroHourRules,
+        cx: &mut ProductionCx<'r, '_>,
         producer: &NamedObject<'r>,
         button_name: &str,
-        names: &mut ProductionNames<'r>,
     ) -> Option<NamedObject<'r>> {
+        let rules = cx.rules;
         // A button in several sets is reported once for each cause it drops by.
         let points = self.points(&producer.name);
         let mut drop = |cause| {
@@ -372,11 +309,19 @@ impl ProductionImport {
             ButtonCommand::UnitBuild => Making::Train,
             ButtonCommand::DozerConstruct => Making::Build,
             ButtonCommand::PlayerUpgrade | ButtonCommand::ObjectUpgrade => {
-                self.research(rules, producer, button_name, button);
+                let named = NamedButton {
+                    name: button_name,
+                    button,
+                };
+                self.research(cx, producer, named);
                 return None;
             }
             ButtonCommand::SpecialPower => {
-                return self.power(rules, producer, button_name, button, names);
+                let named = NamedButton {
+                    name: button_name,
+                    button,
+                };
+                return self.power(cx, producer, named);
             }
             // The panel's commands make nothing; the panel places them, and drops a purchase.
             ButtonCommand::Sell
@@ -429,14 +374,14 @@ impl ProductionImport {
         for line in requires {
             let mut any = Vec::with_capacity(line.len());
             for required in line {
-                let Ok(typed) = names.unit_type(required, rules) else {
+                let Ok(typed) = cx.names.unit_type(required, rules) else {
                     return drop(ButtonDropCause::NoType);
                 };
                 any.push(typed.name.declared().clone());
             }
             units.push(RequiredUnit::any_of(any).expect("a prerequisite line names an object"));
         }
-        let Ok(typed) = names.unit_type(made, rules) else {
+        let Ok(typed) = cx.names.unit_type(made, rules) else {
             return drop(ButtonDropCause::NoType);
         };
         let kind = match making {
@@ -495,12 +440,10 @@ impl ProductionImport {
                 made: made_section,
             }
         });
-        let commands = self.commands.entry(producer.name.clone()).or_default();
-        if !commands.contains(&id) {
-            commands.push(id);
-        }
+        let added = cx.additions.type_mut(&producer.name);
+        Self::command(added, id);
         if let Some(section) = section {
-            self.sections.insert(producer.name.clone(), section);
+            added.production = Some(section);
         }
         Some(NamedObject {
             name: typed.name.clone(),
@@ -508,7 +451,7 @@ impl ProductionImport {
         })
     }
 
-    /// Converts the special power button `button_name`, `button`, of the set of `producer` to a
+    /// Converts the special power button `named` of the set of `producer` to a
     /// cast of its producer, made once (09-zero-hour.md, A power is a cast of its building): of an
     /// `OCLSpecialPower` of its power made where its player aims, each of whose lists makes one
     /// object of a single-burst `AutoHealBehavior` of vehicles, the first list's object the area
@@ -517,14 +460,13 @@ impl ProductionImport {
     /// marker's object, which the cast's area is, unless it drops the button.
     fn power<'r>(
         &mut self,
-        rules: &'r ZeroHourRules,
+        cx: &mut ProductionCx<'r, '_>,
         producer: &NamedObject<'r>,
-        button_name: &str,
-        button: &CommandButton,
-        names: &mut ProductionNames<'r>,
+        named: NamedButton<'_>,
     ) -> Option<NamedObject<'r>> {
+        let (rules, button) = (cx.rules, named.button);
         let mut drop = |cause| {
-            self.powers_dropped.drop(button_name, cause);
+            self.powers_dropped.drop(named.name, cause);
             None
         };
         let power = button.power.as_deref();
@@ -588,7 +530,7 @@ impl ProductionImport {
         let Ok(radius) = game_float::to_num(first.radius) else {
             return drop(PowerDropCause::NoBurst);
         };
-        let Ok(typed) = names.unit_type(object, rules) else {
+        let Ok(typed) = cx.names.unit_type(object, rules) else {
             return drop(PowerDropCause::NoBurst);
         };
         self.sciences.insert(science.to_owned());
@@ -604,13 +546,10 @@ impl ProductionImport {
             .entry(message.clone())
             .or_insert_with(|| Self::text(&rules.strings, button, name));
         let area = typed.name.declared().clone();
-        self.areas.insert(
-            typed.name.clone(),
-            AreaWrite {
-                radius,
-                affects: FilterData::parse("allies:vehicle").expect("a filter the import gives"),
-            },
-        );
+        cx.additions.type_mut(typed.name).area = Some(AreaWrite {
+            radius,
+            affects: FilterData::parse("allies:vehicle").expect("a filter the import gives"),
+        });
         self.power_modifiers.extend(PowerModifier::of(
             &power_names,
             (first_perk, first),
@@ -623,28 +562,25 @@ impl ProductionImport {
                 keys: PowerCast::keys(&power_names, power.reload_ms, &message),
                 made: MadeSection::Cast(PowerCast::new(area)),
             });
-        let commands = self.commands.entry(producer.name.clone()).or_default();
-        if !commands.contains(&id) {
-            commands.push(id);
-        }
+        Self::command(cx.additions.type_mut(&producer.name), id);
         Some(NamedObject {
             name: typed.name.clone(),
             object: typed.object,
         })
     }
 
-    /// Converts the research button `button_name`, `button`, of the set of `producer`: its action,
+    /// Converts the research button `named` of the set of `producer`: its action,
     /// made once, of the modifier its upgrade's name gives, for its producer's player or for its
     /// producer as the upgrade's type says, at its cost and after its time, and the producer's
     /// slot, unless it drops the button (04-capabilities/production.md, Research is an action kind
     /// of production).
     fn research(
         &mut self,
-        rules: &ZeroHourRules,
+        cx: &mut ProductionCx<'_, '_>,
         producer: &NamedObject<'_>,
-        button_name: &str,
-        button: &CommandButton,
+        named: NamedButton<'_>,
     ) {
+        let (rules, button_name, button) = (cx.rules, named.name, named.button);
         let named = button.upgrade.as_deref();
         let upgrade = named.and_then(|name| Some((name, rules.upgrades.get(name)?)));
         let Some((name, upgrade)) = upgrade else {
@@ -697,11 +633,16 @@ impl ProductionImport {
                     }),
                 }),
             });
-        let commands = self.commands.entry(producer.name.clone()).or_default();
-        if !commands.contains(&id) {
-            commands.push(id);
+        let added = cx.additions.type_mut(&producer.name);
+        Self::command(added, id);
+        added.production = Some(section);
+    }
+
+    /// Gives `added`, a producer's, the action `id` of its slot kind `command`, once.
+    fn command(added: &mut TypeAdditions, id: DeclaredName) {
+        if !added.commands.contains(&id) {
+            added.commands.push(id);
         }
-        self.sections.insert(producer.name.clone(), section);
     }
 
     /// The objects `build`'s prerequisites require, each line the objects any one of which passes
@@ -843,19 +784,20 @@ impl ProductionImport {
         })
     }
 
-    /// The `airfield` of each producer whose production makes units at places, of its bones.
-    fn airfields(&self) -> BTreeMap<TypeName, AirfieldData> {
-        let parks = self
-            .sections
-            .iter()
-            .filter(|(_, data)| !data.places.is_empty());
-        parks
-            .filter_map(|(name, _)| {
-                let bones = self.bones.airfields.get(name.declared())?;
-                let parking = self.parkings.get(name).copied().unwrap_or_default();
-                Some((name.clone(), Self::airfield(bones, parking)?))
-            })
-            .collect()
+    /// Gives each producer of `additions` whose production makes units at places its `airfield`
+    /// (09-zero-hour.md, The import flies a winged locomotor), of its bones.
+    fn airfields(&self, additions: &mut Additions) {
+        for (name, added) in additions.iter_mut() {
+            let parks = added.production.as_ref();
+            if parks.is_none_or(|data| data.places.is_empty()) {
+                continue;
+            }
+            let Some(bones) = self.bones.airfields.get(name.declared()) else {
+                continue;
+            };
+            let parking = self.parkings.get(name).copied().unwrap_or_default();
+            added.airfield = Self::airfield(bones, parking);
+        }
     }
 
     /// The share of a life of `most` that is 1 life, as the original's site starts at 1 hit point

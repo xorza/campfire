@@ -3,6 +3,7 @@ use std::num::NonZeroU64;
 use campfire_actions::SlotKind;
 use campfire_capabilities::Release;
 use campfire_mode::{ChoiceId, MarkerTag, TimerId};
+use campfire_names::Filter;
 use campfire_navigation::PathEnd;
 use campfire_script::internals::Undefined;
 use campfire_script::*;

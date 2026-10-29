@@ -15,10 +15,10 @@ use campfire_declarations::internals::BookLoad;
 use campfire_deliveries::Deliveries;
 use campfire_geometry::{BodyBox, Bounds, Metric};
 use campfire_math::{Num, Vec3};
+use campfire_names::{Filter, MatchNames};
 use campfire_navigation::OnPath;
 use campfire_script::{
-    ApiError, CapabilityRefusal, FailureKind, Filter, MatchNames, NumError, ScriptList,
-    ScriptValue, Unit, View,
+    ApiError, CapabilityRefusal, FailureKind, NumError, ScriptList, ScriptValue, Unit, View,
 };
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{

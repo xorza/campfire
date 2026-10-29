@@ -148,9 +148,11 @@ impl Fliers {
                 continue;
             }
             let cells = clearance.grid();
-            let landing = planner.nearest_open_where(walkable, ground, &mut 0, |cell| {
+            let mut work = 0;
+            let landing = planner.nearest_open_where(walkable, ground, &mut work, |cell| {
                 clear(cells.center(cell, Num::ZERO))
             });
+            planner.count(work);
             if let Some(cell) = landing {
                 walk.to(Some(cells.center(cell, Num::ZERO)));
             }

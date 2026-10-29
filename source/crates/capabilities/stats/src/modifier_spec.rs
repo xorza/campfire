@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use campfire_common::{DeclaredName, Ticks};
 use campfire_math::Num;
-use campfire_script::{Audience, Filter, StateSchema, TagNames, UnknownName};
+use campfire_names::{Filter, TagNames, UnknownName};
+use campfire_script::{Audience, StateSchema};
 use campfire_sim::MatchRate;
 use campfire_units::StatId;
 use campfire_values::{FilterData, ModifierId, Names, Number, Param, Stat};

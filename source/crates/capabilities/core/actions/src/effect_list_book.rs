@@ -4,7 +4,8 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_declarations::Book;
-use campfire_script::{CallError, Ctx, MatchNames};
+use campfire_names::MatchNames;
+use campfire_script::{CallError, Ctx};
 use campfire_values::{ActionId, NameId};
 
 use crate::action_data::ActionData;

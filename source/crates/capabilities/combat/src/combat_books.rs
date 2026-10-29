@@ -5,7 +5,7 @@ use campfire_actions::{ActionBook, ActionKind, ActionsData, LoadedAction, RangeB
 use campfire_declarations::{
     BookCx, BookError, BookPlace, ById, ByIdBuilder, NamesListError, Section,
 };
-use campfire_script::UnknownName;
+use campfire_names::UnknownName;
 use campfire_stats::{LifePool, ModifierBook, StatBook, TypePoolsData, UnitStartError};
 use campfire_units::{PoolId, UnitTypes};
 use campfire_values::{ActionId, DamageKind, Names, NamesError, PackageIndex, UnitType};

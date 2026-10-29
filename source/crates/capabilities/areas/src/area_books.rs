@@ -3,7 +3,7 @@ use std::mem;
 use campfire_actions::{ActionsData, DeliveryAim, DeliveryAims, Targeting};
 use campfire_common::DeclaredName;
 use campfire_declarations::{BookCx, BookError, BookPlace, Section, TypePlace};
-use campfire_script::UnknownName;
+use campfire_names::UnknownName;
 use campfire_stats::{ModifierAppliers, ModifiersData, Way};
 use campfire_values::{ModifierId, Named};
 

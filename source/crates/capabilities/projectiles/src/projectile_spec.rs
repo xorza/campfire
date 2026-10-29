@@ -4,7 +4,7 @@ use campfire_common::Ticks;
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
 use campfire_geometry::Radius;
 use campfire_math::{Num, Rounding, SinCos};
-use campfire_script::{Filters, TagNames, UnknownName};
+use campfire_names::{Filters, TagNames, UnknownName};
 use campfire_sim::MatchRate;
 use campfire_units::UnitTypes;
 use campfire_values::UnitType;

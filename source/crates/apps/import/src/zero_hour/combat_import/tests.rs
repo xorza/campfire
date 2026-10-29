@@ -33,6 +33,7 @@ use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, OBJECT
 use crate::zero_hour::format::ini::weapon_ini::RadiusAffects;
 use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
 use crate::zero_hour::import_names::ImportNames;
+use crate::zero_hour::model_bones::ModelBones;
 use crate::zero_hour::object_flight::samples::shell_projectile;
 
 /// A rocket of a `MissileAIUpdate` and no locomotor that thrusts, which the import flies not.
@@ -608,7 +609,15 @@ fn weapons_of_one_name_but_case_share_an_action_only_of_the_same_numbers() {
             let object = rules.objects.object(object.as_bytes()).unwrap();
             names.unit_type(object, &rules).unwrap();
         }
-        CombatImport::of(&rules, &mut names.into_production().into_projectiles())
+        let mut additions = Additions::default();
+        let mut names = names.into_production().into_projectiles();
+        let import = CombatImport::of(&rules, &mut names, &mut additions)?;
+        let armed: Vec<String> = additions
+            .iter()
+            .filter(|(_, added)| !added.weapons.is_empty())
+            .map(|(name, _)| name.as_str().to_owned())
+            .collect();
+        Ok::<_, ZeroHourError>((import, armed))
     };
     let gun = |name: &str, damage: u8| {
         format!("Weapon {name}\n  PrimaryDamage = {damage}\n  DelayBetweenShots = 100\nEnd\n")
@@ -616,10 +625,9 @@ fn weapons_of_one_name_but_case_share_an_action_only_of_the_same_numbers() {
     // Of the same numbers, both soldiers take the one action; the sniper's body, of no most
     // life, gives none. The mob, which fights and lives by its spawns, takes no weapon and is no
     // unliving body (09-zero-hour.md, The import converts a mob).
-    let same = import(&(gun("Gun", 5) + gun("GUN", 5).as_str())).unwrap();
+    let (same, armed) = import(&(gun("Gun", 5) + gun("GUN", 5).as_str())).unwrap();
     let ids: Vec<&str> = same.actions.keys().map(DeclaredName::as_str).collect();
     assert_eq!(ids, ["weapon_gun"]);
-    let armed: Vec<&str> = same.weapons.keys().map(TypeName::as_str).collect();
     assert_eq!(armed, ["gunner", "sniper"]);
     assert_eq!(same.unliving, ["Sniper"]);
     // Of other numbers, the second, by the types' names, is refused.
@@ -666,7 +674,8 @@ fn a_slots_preference_is_its_weapons_filter_of_all_its_kinds_and_a_locked_slot_d
         let object = rules.objects.object(object.as_bytes()).unwrap();
         names.unit_type(object, &rules).unwrap();
     }
-    let import = CombatImport::of(&rules, &mut names.into_production().into_projectiles()).unwrap();
+    let mut names = names.into_production().into_projectiles();
+    let import = CombatImport::of(&rules, &mut names, &mut Additions::default()).unwrap();
     let prefers = |weapon: &str| {
         let weapon = import.actions.get(&DeclaredName::new(weapon).unwrap());
         weapon.map(|weapon| {
@@ -713,7 +722,8 @@ fn a_living_type_takes_its_armor_by_the_name_of_its_case() {
         let object = rules.objects.object(b"Guard").unwrap();
         names.unit_type(object, &rules).unwrap();
         let mut names = names.into_production().into_projectiles();
-        CombatImport::of(&rules, &mut names).map(|import| import.armors.len())
+        CombatImport::of(&rules, &mut names, &mut Additions::default())
+            .map(|import| import.armors.len())
     };
     // The fixture's two armors are written whatever the types name; an armor of another
     // case is none the game finds.
@@ -758,7 +768,7 @@ fn a_shell_takes_its_objects_name_when_its_weapons_fire_it_alike_and_else_one_of
             names.unit_type(object, &rules).unwrap();
         }
         let mut names = names.into_production().into_projectiles();
-        let combat = CombatImport::of(&rules, &mut names)?;
+        let combat = CombatImport::of(&rules, &mut names, &mut Additions::default())?;
         let deliveries: Vec<(String, String)> = combat
             .actions
             .iter()
@@ -826,12 +836,15 @@ fn a_shell_takes_its_objects_name_when_its_weapons_fire_it_alike_and_else_one_of
     // at the place of the slot; its projectiles' looks, copied before, take none.
     let cannon = DeclaredName::new("weapon_cannon").unwrap();
     let slots = vec![Vec::new(), vec![cannon]];
+    let mut additions = Additions::default();
+    additions
+        .type_mut(&TypeName::named("tankshell"))
+        .weapon_slots = slots.clone();
     CombatImport {
         projectile_looks: looks,
-        weapon_slots: BTreeMap::from([(TypeName::named("tankshell"), slots.clone())]),
         ..CombatImport::default()
     }
-    .complete_looks(&mut client);
+    .complete_looks(&additions, &mut client);
     let named: Vec<&str> = client.keys().map(DeclaredName::as_str).collect();
     assert_eq!(
         named,
@@ -880,12 +893,12 @@ fn a_types_weapons_that_fire_a_projectile_take_their_slots_barrels() {
             delivered("BuggyRocket", true),
             delivered("OneShot", false),
         ]),
-        weapon_slots: BTreeMap::from([
-            (TypeName::named("hunter"), slots.clone()),
-            (TypeName::named("bare"), slots),
-        ]),
         ..CombatImport::default()
     };
+    let mut additions = Additions::default();
+    for unit in ["hunter", "bare"] {
+        additions.type_mut(&TypeName::named(unit)).weapon_slots = slots.clone();
+    }
     let barrel = |x: i64| {
         let at = UnitOffset::new([x, 2, 0].map(Num::int)).unwrap();
         BarrelData::new(at, [Num::ONE, Num::ZERO, Num::ZERO]).unwrap()
@@ -894,15 +907,17 @@ fn a_types_weapons_that_fire_a_projectile_take_their_slots_barrels() {
         barrels: [vec![barrel(1)], vec![barrel(2)], vec![barrel(3)]],
         ..ModelBones::default()
     };
-    let barrels = combat.barrels(&BTreeMap::from([(TypeName::named("hunter"), bones)]));
+    additions.type_mut(&TypeName::named("hunter")).bones = Some(bones);
+    combat.barrels(&mut additions);
     let hunter = BarrelsData(BTreeMap::from([
         (id("BuggyRocket"), vec![barrel(1)]),
         (id("TankHunter"), vec![barrel(1)]),
     ]));
-    assert_eq!(
-        barrels,
-        BTreeMap::from([(TypeName::named("hunter"), hunter)])
-    );
+    let barrels: Vec<(&str, &BarrelsData)> = additions
+        .iter()
+        .filter_map(|(name, added)| Some((name.as_str(), added.barrels.as_ref()?)))
+        .collect();
+    assert_eq!(barrels, [("hunter", &hunter)]);
 }
 
 /// A weapon's rate bonus of every weapon's stats, the veterancy's and the propaganda towers'.
@@ -960,11 +975,16 @@ End
     let mut names = ImportNames::default();
     let carrier = rules.objects.object(b"Carrier").unwrap();
     names.unit_type(carrier, &rules).unwrap();
-    let import = CombatImport::of(&rules, &mut names.into_production().into_projectiles()).unwrap();
+    let mut additions = Additions::default();
+    let mut names = names.into_production().into_projectiles();
+    let import = CombatImport::of(&rules, &mut names, &mut additions).unwrap();
     // Its own cannon in its first slot, then the turret's two in the slots of a second set, each
     // named for the turret and armed while it holds the upgrade's tag.
     let declared = |name: &str| DeclaredName::new(name).unwrap();
-    let slots = &import.weapon_slots[&TypeName::named("carrier")];
+    let slots = &additions
+        .get(&TypeName::named("carrier"))
+        .unwrap()
+        .weapon_slots;
     let named = |names: &[&str]| names.iter().map(|&name| declared(name)).collect::<Vec<_>>();
     assert_eq!(
         *slots,

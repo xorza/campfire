@@ -151,6 +151,7 @@ impl Declarations for BookCells<'_, '_> {
 
     fn loaded<R: Resource>(&mut self) {}
 
+    fn package_data<R: Resource + Default>(&mut self) {}
     fn stages_run_if<M>(&mut self, _: impl SystemCondition<M> + Clone) {}
 
     fn server_part<H: Component, C: Component + Default>(&mut self) {}

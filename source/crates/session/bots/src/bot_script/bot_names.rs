@@ -9,8 +9,8 @@ use campfire_geometry::{Bounds, GridSearch};
 use campfire_items::ItemBook;
 use campfire_math::{Num, Vec3};
 use campfire_mode::{InputBook, InputType, MarkerSpec};
+use campfire_names::{Filter, UnknownName};
 use campfire_progression::PerkBook;
-use campfire_script::{Filter, UnknownName};
 use campfire_units::{GroundPoint, MapBook, RefMap, UnitTypeBook};
 use campfire_values::{
     ActionId, Article, FilterData, ItemId, NameKind, NameScope, Named as _, PerkId, TypeScope,

@@ -4,7 +4,7 @@ use bevy_ecs::resource::Resource;
 use campfire_declarations::{Book, BookCx, BookError, BookPlace, Sections};
 use campfire_geometry::{Grid, GridSearch};
 use campfire_math::Vec3;
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_units::{MapBook, MapPoint};
 use campfire_values::{Names, PackageIndex, PathId};
 

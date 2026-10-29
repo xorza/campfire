@@ -10,15 +10,17 @@ use campfire_stats::Level;
 use campfire_values::{Number, Scalar, Stat};
 use serde::{Serialize, Serializer};
 
+use crate::zero_hour::additions::Additions;
 use crate::zero_hour::error::{NameError, ZeroHourError};
 use crate::zero_hour::format::error::FloatError;
 use crate::zero_hour::format::game_float;
-use crate::zero_hour::format::ini::game_data_ini::{GameDataIni, VeterancyBonus};
+use crate::zero_hour::format::ini::game_data_ini::VeterancyBonus;
 use crate::zero_hour::format::ini::object_ini::ini_experience::IniExperience;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::NamedType;
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::type_name::TypeName;
+use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// The names of the modifiers of a veteran, an elite and a heroic unit, levels 2 to 4 of the
 /// track, as `TheVeterancyNames` names the levels.
@@ -29,18 +31,16 @@ const LEVEL_MODIFIERS: [&str; 3] = ["veteran", "elite", "heroic"];
 /// its modifier and none giving a point, and its share, to a hostile killer that has the track, of
 /// every death but a site's, as `Object::scoreTheKill` gives none to an ally or the neutral player
 /// and none for a victim `UNDER_CONSTRUCTION`; the modifiers of its levels, of `GameData.ini`'s
-/// bonuses; each trainable type's entry on it, of its own thresholds where they are not the track's
-/// and the levels its `VeterancyGainCreate` modules start it at, each always or by its science's
-/// perk's modifier (04-capabilities/progression.md, A start level by a modifier); each type's
-/// `experience`, its `ExperienceValue` by level; and the trainable objects of thresholds that do
-/// not ascend from 0, which gain no level, by name.
+/// bonuses; and the trainable objects of thresholds that do not ascend from 0, which gain no
+/// level, by name. It gives each trainable type its entry on the track, of its own thresholds where
+/// they are not the track's and the levels its `VeterancyGainCreate` modules start it at, each
+/// always or by its science's perk's modifier (04-capabilities/progression.md, A start level by a
+/// modifier), and each type its `experience`, its `ExperienceValue` by level, as additions.
 #[derive(Debug, Default)]
 pub(crate) struct VeterancyImport {
     pub(crate) track: Option<(DeclaredName, TrackData)>,
     pub(crate) share: Option<ShareData>,
     pub(crate) modifiers: BTreeMap<DeclaredName, LevelModifier>,
-    pub(crate) tracks: BTreeMap<TypeName, TypeTracksData>,
-    pub(crate) experience: BTreeMap<TypeName, ExperienceData>,
     pub(crate) untrainable: Vec<String>,
     /// The sciences the starts need, by their names in the game, whose perks give their
     /// modifiers.
@@ -75,13 +75,15 @@ impl Serialize for Change {
 }
 
 impl VeterancyImport {
-    /// The veterancy of `types`, of `game_data`'s bonuses, its stats and its life `names`'.
-    /// An error for a bonus of `game_data` that is no number the engine holds.
+    /// The veterancy of `types`, of the bonuses of `rules`' game data, its stats and its life its
+    /// names', each type's track and experience given it in `additions`. An error for a bonus of
+    /// the game data that is no number the engine holds.
     pub(crate) fn of<'n, 'r: 'n>(
-        game_data: &GameDataIni,
+        rules: &ZeroHourRules,
         types: impl Iterator<Item = NamedType<'n, 'r>>,
-        names: &RulesNames,
+        additions: &mut Additions,
     ) -> Result<Self, ZeroHourError> {
+        let (game_data, names) = (&rules.game_data, &rules.names);
         let mut import = Self::default();
         let mut trained = BTreeMap::<TypeName, (Thresholds, Vec<StartData>)>::new();
         for NamedType {
@@ -99,9 +101,7 @@ impl VeterancyImport {
                     .values
                     .map(|value| Num::int(i64::from(value.max(0))));
                 let gives = Gives::ByLevel(values.to_vec());
-                import
-                    .experience
-                    .insert(name.clone(), ExperienceData { gives });
+                additions.type_mut(name).experience = Some(ExperienceData { gives });
             }
             if !experience.trainable {
                 continue;
@@ -130,7 +130,7 @@ impl VeterancyImport {
                 starts,
                 ..TypeTrackData::from(track.clone())
             };
-            import.tracks.insert(name, TypeTracksData(vec![entry]));
+            additions.type_mut(&name).tracks = Some(TypeTracksData(vec![entry]));
         }
         let modifiers: Vec<DeclaredName> = LEVEL_MODIFIERS
             .map(|name| DeclaredName::new(name).expect("a modifier's name"))

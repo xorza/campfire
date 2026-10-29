@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use campfire_math::{Num, Vec3};
-use campfire_script::Filter;
+use campfire_names::Filter;
 use campfire_units::{GroundPoint, OrderRefs};
 use campfire_values::{ActionId, ItemId, PerkId};
 

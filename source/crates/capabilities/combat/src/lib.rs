@@ -94,7 +94,7 @@ pub use crate::barrel_turns::BarrelTurns;
 pub use crate::barrels::Barrels;
 pub use crate::barrels::barrels_data::{BarrelData, BarrelsData};
 pub use crate::bonus_stats::{BonusData, BonusStats};
-pub use crate::clip_shots::{ClipShots, HomeClip};
+pub use crate::clip_shots::{ClipShots, HomeClip, HomeReload};
 pub use crate::combat_api::CombatApi;
 pub use crate::combat_book::CombatBook;
 pub use crate::combat_column::CombatColumn;
@@ -405,8 +405,8 @@ pub mod internals {
     use campfire_common::{DeclaredName, Tick, Ticks};
     use campfire_declarations::{ById, ServerForm};
     use campfire_math::{Num, Rounding};
+    use campfire_names::{Filter, MatchNames};
     use campfire_players::ResourceAmount;
-    use campfire_script::{Filter, MatchNames};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{MatchRate, StableId};
     use campfire_stats::{ModifierBook, PoolBook, StatBook, StatRule, Stats};
@@ -547,7 +547,8 @@ pub mod internals {
         }
 
         /// Resolves the weapon of `action`, which the action book of `world` loaded from `data` of
-        /// the mode's package, into the match's weapon book, as the load resolves it.
+        /// the mode's package, into the match's weapon book and its range bonus into theirs, as the
+        /// load resolves them.
         pub fn load_weapon(
             world: &mut World,
             action: ActionId,
@@ -573,6 +574,9 @@ pub mod internals {
                 modifiers: world.get_resource::<ModifierBook>(),
             };
             let weapon = names.weapon(attack).expect("a test's weapon resolves");
+            if let Some(bonus) = weapon.range_bonus.clone() {
+                ById::<ActionId, RangeBonus>::amend(world, |_, book| book.set(action, bonus));
+            }
             ById::<ActionId, Weapon>::amend(world, |_, book| book.set(action, weapon));
         }
 

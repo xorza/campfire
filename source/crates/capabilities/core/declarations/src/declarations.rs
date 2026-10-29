@@ -157,6 +157,10 @@ pub trait Declarations: StateTypes + KindVisitor + OwnResources {
     /// mode's load puts in the mode it runs.
     fn loaded<R: Resource>(&mut self);
 
+    /// The resource `R` of the packages' data, which the install puts in empty and each book fills
+    /// as it installs, as the match's names: no state and no cache, so a load keeps it.
+    fn package_data<R: Resource + Default>(&mut self);
+
     /// `condition`, on which every stage of the tick and its start run: once it turns false, each
     /// stage from the next on runs no system, as the match's end stops them.
     fn stages_run_if<M>(&mut self, condition: impl SystemCondition<M> + Clone);

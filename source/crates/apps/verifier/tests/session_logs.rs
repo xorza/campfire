@@ -31,7 +31,7 @@ use campfire_runner::{
     ServerInputRefusal, Session, SessionSource, SessionWorld, SnapshotCheckError, StartError,
     TermsError, UncheckedSource,
 };
-use campfire_sim::{EntityIndex, SimWorld, StableId, StateRegistry};
+use campfire_sim::{EntityIndex, SimRng, SimWorld, StableId, StateRegistry};
 use campfire_store::internals::{PinnedFile, TestDir};
 use campfire_store::{AppendWriter, PathError, ReadError};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
@@ -564,23 +564,28 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
 #[test]
 fn a_3v3_log_with_learn_orders_verifies_from_the_store() {
     // The scripted 3v3 to tick 1900, Rime's learn, the last of its learn orders, checkpointed
-    // before tick 40, and again without the checkpoint.
+    // before tick 40, and again to tick 40 without the checkpoint, with the draws each opens in
+    // ticks 39 and 40.
     let moba = Moba3v3::load();
     let mut snapshot = Vec::new();
-    let play = |checkpoint: bool, snapshot: &mut Vec<u8>| {
+    let play = |checkpoint: bool, last: u64, snapshot: &mut Vec<u8>| {
         let mut fixed = moba.start();
         let mut trail = HashTrail::default();
-        for tick in 0..=1900 {
+        let mut draws = Vec::new();
+        for tick in 0..=last {
             if checkpoint && tick == 40 {
                 fixed.checkpoint(snapshot);
             }
             moba.play_tick(&mut fixed);
             trail.record(fixed.game());
+            if (39..=40).contains(&tick) {
+                draws.push(fixed.game().resource::<SimRng>().opener());
+            }
         }
         fixed.end();
-        (fixed, trail)
+        (fixed, trail, draws)
     };
-    let (fixed, live) = play(true, &mut snapshot);
+    let (fixed, live, draws) = play(true, 1900, &mut snapshot);
     let decoded = SessionLog::decode(&encoded(fixed.game().session().log())).unwrap();
     let named = from_store(&decoded);
     let mut replay = Replay::of(decoded, &named).unwrap();
@@ -597,15 +602,13 @@ fn a_3v3_log_with_learn_orders_verifies_from_the_store() {
         replayed.record(replay.game());
     }
     live.assert_same(&replayed);
-    // From tick 40 the match draws from segment 1's seed: its crits land otherwise than the
-    // same match's without the checkpoint, which draws from segment 0's to the end.
-    let (_, unbroken) = play(false, &mut Vec::new());
-    let (live, unbroken) = (live.totals(), unbroken.totals());
-    let first_difference = live.iter().zip(unbroken).position(|(a, b)| a != b);
-    assert!(
-        first_difference.is_some_and(|tick| tick >= 40),
-        "{first_difference:?}"
-    );
+    // From tick 40 the match draws from segment 1's seed: the same match without the
+    // checkpoint, which draws from segment 0's to the end, plays the same ticks and draws the
+    // same through tick 39, and draws otherwise in tick 40.
+    let (_, unbroken, unbroken_draws) = play(false, 40, &mut Vec::new());
+    assert_eq!(live.totals()[..=40], *unbroken.totals());
+    assert_eq!(draws[0], unbroken_draws[0]);
+    assert_ne!(draws[1], unbroken_draws[1]);
     // The replay learned what the match did: Cinder's and Veil's first basic ability, and Rime's
     // second.
     let world = replay.game();

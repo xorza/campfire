@@ -11,6 +11,7 @@ kind = "glue"
 internals = [
     "campfire-codec/internals",
     "campfire-math/internals",
+    "campfire-names/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
     "campfire-states/internals",
@@ -18,6 +19,7 @@ internals = [
 ]
 
 [dependencies]
+campfire-names.workspace = true
 campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-math.workspace = true

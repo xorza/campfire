@@ -13,14 +13,15 @@ use campfire_actions::{ActionSlots, ActionsSystems};
 use campfire_combat::{Weigh, Weighers};
 use campfire_common::{EnumAll, PlayerSlot};
 use campfire_declarations::{ById, Declarations, InstallCx, Module, ModuleSystems, SetPlace};
+use campfire_names::MatchNames;
 use campfire_navigation::{ModeNavigationData, NavigationBook, OnPath, WalkerOnPath};
 use campfire_players::{
     MatchEntity, Player, PlayerSlotHolder, Players, PlayersWorld, StartingPlayerSlot,
 };
 use campfire_production::ProductionSystems;
 use campfire_script::{
-    ApiVersion, CallError, Ctx, Hook, HookSet, MatchNames, ModeEvents, PlannedCapability,
-    ScriptRole, ScriptText, Status,
+    ApiVersion, CallError, Ctx, Hook, HookSet, ModeEvents, PlannedCapability, ScriptRole,
+    ScriptText, Status,
 };
 use campfire_sim::{Breach, Capability, IdAllocator, SimSystems, SimTick};
 use campfire_units::{
@@ -519,12 +520,12 @@ pub mod internals {
     use campfire_combat::{Damage, DamageCause, DamagePass, PassEntry};
     use campfire_common::PlayerSlot;
     use campfire_math::{Num, Vec3};
+    use campfire_names::MatchNames;
     use campfire_navigation::{PathEnd, PathWalker};
     use campfire_players::PlayerSlotHolder;
     use campfire_script::FailureKind;
     use campfire_script::{
-        ActionCast, CallError, CallStart, Ctx, MatchNames, ScriptFailures, ScriptRole, ScriptValue,
-        StateValue,
+        ActionCast, CallError, CallStart, Ctx, ScriptFailures, ScriptRole, ScriptValue, StateValue,
     };
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{

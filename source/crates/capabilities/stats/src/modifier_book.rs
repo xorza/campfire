@@ -4,9 +4,8 @@ use bevy_ecs::resource::Resource;
 use campfire_common::DeclaredName;
 use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section};
 use campfire_math::Num;
-use campfire_script::{
-    HookSet, MatchNames, ParamProblem, ScriptId, ScriptRole, StateValue, TagNames, UnknownName,
-};
+use campfire_names::{MatchNames, TagNames, UnknownName};
+use campfire_script::{HookSet, ParamProblem, ScriptId, ScriptRole, StateValue};
 use campfire_sim::MatchRate;
 use campfire_units::{ScriptBook, StatId, StatusTags, UnitTypes};
 use campfire_values::{
@@ -435,7 +434,8 @@ pub(crate) mod internals {
     use std::sync::Arc;
 
     use campfire_math::Num;
-    use campfire_script::{HookSet, UnknownName};
+    use campfire_names::UnknownName;
+    use campfire_script::HookSet;
     use campfire_units::StatId;
     use campfire_values::{ModifierId, NameId, PackageIndex, Stat, TagSet};
 

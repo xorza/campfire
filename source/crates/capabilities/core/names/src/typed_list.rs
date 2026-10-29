@@ -4,7 +4,7 @@ use std::slice;
 
 /// A value a list by type holds, seen as `Any`, so the list finds the item of its own type. A
 /// trait object whose trait has it as a supertrait gives its item's own `Any` through its table.
-pub(crate) trait TypedItem: Any {
+pub trait TypedItem: Any {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
@@ -21,14 +21,14 @@ impl<T: Any> TypedItem for T {
 
 /// Items of distinct types, in the order added, each found by a search of the list of their
 /// types, which reads no item.
-pub(crate) struct TypedList<T: ?Sized> {
+pub struct TypedList<T: ?Sized> {
     types: Vec<TypeId>,
     items: Vec<Box<T>>,
 }
 
 impl<T: ?Sized + TypedItem> TypedList<T> {
     /// Adds `item`, of a type the list holds none of yet. Its place.
-    pub(crate) fn add(&mut self, item: Box<T>) -> usize {
+    pub fn add(&mut self, item: Box<T>) -> usize {
         let ty = (*item).as_any().type_id();
         debug_assert!(!self.types.contains(&ty), "one item of each type");
         self.types.push(ty);
@@ -37,25 +37,25 @@ impl<T: ?Sized + TypedItem> TypedList<T> {
     }
 
     /// The place of the item of type `U`, when one was added.
-    pub(crate) fn index_of<U: Any>(&self) -> Option<usize> {
+    pub fn index_of<U: Any>(&self) -> Option<usize> {
         let ty = TypeId::of::<U>();
         self.types.iter().position(|&held| held == ty)
     }
 
     /// The item of type `U`, when one was added.
-    pub(crate) fn get<U: Any>(&self) -> Option<&U> {
+    pub fn get<U: Any>(&self) -> Option<&U> {
         let at = self.index_of::<U>()?;
         (*self.items[at]).as_any().downcast_ref()
     }
 
     /// The item of type `U`, to change, when one was added.
-    pub(crate) fn get_mut<U: Any>(&mut self) -> Option<&mut U> {
+    pub fn get_mut<U: Any>(&mut self) -> Option<&mut U> {
         let at = self.index_of::<U>()?;
         Some(self.typed_mut(at))
     }
 
     /// The item at `at`, of type `U`.
-    pub(crate) fn typed_mut<U: Any>(&mut self, at: usize) -> &mut U {
+    pub fn typed_mut<U: Any>(&mut self, at: usize) -> &mut U {
         (*self.items[at])
             .as_any_mut()
             .downcast_mut()
@@ -63,22 +63,22 @@ impl<T: ?Sized + TypedItem> TypedList<T> {
     }
 
     /// The item at `at`.
-    pub(crate) fn at(&self, at: usize) -> &T {
+    pub fn at(&self, at: usize) -> &T {
         &self.items[at]
     }
 
     /// The item at `at`, to change.
-    pub(crate) fn at_mut(&mut self, at: usize) -> &mut T {
+    pub fn at_mut(&mut self, at: usize) -> &mut T {
         &mut self.items[at]
     }
 
     /// Every item, in the order added.
-    pub(crate) fn iter(&self) -> impl ExactSizeIterator<Item = &T> {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &T> {
         self.items.iter().map(|item| &**item)
     }
 
     /// Every item, in the order added, to change.
-    pub(crate) fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut T> {
+    pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut T> {
         self.items.iter_mut().map(|item| &mut **item)
     }
 }

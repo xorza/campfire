@@ -63,7 +63,7 @@ tracing = { workspace = true, features = ["attributes", "std"] }
 campfire-host = { workspace = true, features = ["internals"] }
 campfire-orders = { workspace = true, features = ["internals"] }
 campfire-progression = { workspace = true, features = ["internals"] }
-campfire-script = { workspace = true, features = ["internals"] }
+campfire-names = { workspace = true, features = ["internals"] }
 # Its tests read the workspace's test packages from disk.
 campfire-test-packages.workspace = true
 campfire-visibility.workspace = true

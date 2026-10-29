@@ -4,7 +4,7 @@ use bevy_ecs::resource::Resource;
 use campfire_actions::LoadedAction;
 use campfire_common::DeclaredName;
 use campfire_declarations::{Book, BookCx, BookError};
-use campfire_script::{MatchNames, UnknownName};
+use campfire_names::{MatchNames, UnknownName};
 use campfire_stats::ModifierBook;
 use campfire_values::{ActionId, ModifierId, Named, TypeScope, UnitType};
 

@@ -8,11 +8,11 @@ use campfire_capabilities::BotFacts;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_interaction::Using;
 use campfire_items::{Inventory, Shopping};
+use campfire_names::Filter;
 use campfire_players::OnMatch;
 use campfire_production::{
     Activity, ActivityParts, BuildPlaces, Builder, GatherView, Gatherer, PlaceSearch, StartChecks,
 };
-use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 use campfire_units::{AtWork, Commanded, Dead, Destination, GroundPoint, MapBook, PlayerUnits};
 use campfire_values::{Block, ItemId, Relations, TagSet, Team, UnitTags, UnitType};

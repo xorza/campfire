@@ -201,7 +201,7 @@ mod tests {
     use std::sync::Arc;
 
     use campfire_math::Num;
-    use campfire_script::MatchNames;
+    use campfire_names::MatchNames;
     use campfire_sim::IdAllocator;
     use campfire_values::Names;
 

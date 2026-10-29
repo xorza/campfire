@@ -4,6 +4,7 @@ use campfire_client_files::{DeathFall, DeathLook, FallStage, GroundDeath};
 use campfire_math::Num;
 
 use super::*;
+use crate::zero_hour::additions::Additions;
 use crate::zero_hour::format::ini::audio_ini::AudioIni;
 use crate::zero_hour::format::ini::fx_list_ini::samples::FX_LISTS;
 use crate::zero_hour::format::ini::object_ini::ObjectFiles;
@@ -439,10 +440,9 @@ fn a_projectile_s_trail_plays_and_each_weapon_and_death_names_the_effects_the_fi
         units,
         conditions: BTreeMap::new(),
         objects: BTreeMap::new(),
-        bones: BTreeMap::new(),
         track_widths: BTreeMap::from([(name("tank"), 17.5)]),
         points: ProductionBones::default(),
-        fire_points: BTreeMap::new(),
+        additions: Additions::default(),
     };
     let units = &mut looks.units;
     let fall = DeathFall {

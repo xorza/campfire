@@ -1,6 +1,6 @@
 use campfire_actions::{ActionsData, LoadedAction};
 use campfire_declarations::{BookCx, BookError, ById, ByIdBuilder, PerId};
-use campfire_script::UnknownName;
+use campfire_names::UnknownName;
 use campfire_stats::{ModifierAppliers, ModifierBook, Way};
 use campfire_values::{ActionId, ModifierId, Named};
 
@@ -24,24 +24,33 @@ impl ResearchSpec {
         let modifiers = cx.book_if::<ModifierBook>()?;
         let mut book = ByIdBuilder::default();
         for action in LoadedAction::all(cx)? {
-            let Some(data) = action.section::<ResearchData>() else {
-                continue;
-            };
-            let named = modifiers.and_then(|modifiers| {
-                modifiers
-                    .names()
-                    .named((action.package, data.modifier.as_str()))
-            });
-            let modifier = named.ok_or_else(|| {
-                action.unknown(UnknownName::new(ModifierId::NAMES, &data.modifier))
-            })?;
-            let spec = Self {
-                modifier,
-                holder: data.holder,
-            };
-            book.set(action.action, spec);
+            if let Some(spec) = Self::of(&action, modifiers)? {
+                book.set(action.action, spec);
+            }
         }
         Ok(book.build())
+    }
+
+    /// What `action` gives, of the modifiers `modifiers`, when it is a research; an error for a
+    /// modifier of its package it does not have.
+    pub(crate) fn of(
+        action: &LoadedAction<'_>,
+        modifiers: Option<&ModifierBook>,
+    ) -> Result<Option<Self>, BookError> {
+        let Some(data) = action.section::<ResearchData>() else {
+            return Ok(None);
+        };
+        let named = modifiers.and_then(|modifiers| {
+            modifiers
+                .names()
+                .named((action.package, data.modifier.as_str()))
+        });
+        let modifier = named
+            .ok_or_else(|| action.unknown(UnknownName::new(ModifierId::NAMES, &data.modifier)))?;
+        Ok(Some(Self {
+            modifier,
+            holder: data.holder,
+        }))
     }
 
     /// Adds the modifier each research gives as applied by no action, as its player and its

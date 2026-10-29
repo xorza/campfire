@@ -1,6 +1,7 @@
+use core::fmt;
+
 #[cfg(feature = "reflect")]
 use bevy_reflect::Reflect;
-use core::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::app_code::AppCode;

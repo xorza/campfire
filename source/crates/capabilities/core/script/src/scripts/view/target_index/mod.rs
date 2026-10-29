@@ -2,11 +2,11 @@ use std::ops::ControlFlow;
 
 use campfire_geometry::{BodyGrid, Indexed, Placed, Shape};
 use campfire_math::{Num, Vec3};
+use campfire_names::Filter;
 use campfire_sim::StableId;
 use campfire_values::{TagSet, Team};
 
 use crate::script_host::call_charge::CallCharge;
-use crate::scripts::view::filter::Filter;
 use crate::scripts::view::unit_row::UnitRow;
 use crate::scripts::view::view_column::ViewColumns;
 use crate::scripts::view::view_rows::ViewRows;

@@ -1,6 +1,7 @@
 use campfire_math::Num;
+use campfire_names::Filter;
 use campfire_players::ResourceAmount;
-use campfire_script::{Filter, Hook, HookSet, ScriptId};
+use campfire_script::{Hook, HookSet, ScriptId};
 use campfire_sim::StableId;
 use campfire_values::{ModifierId, PackageIndex, Rank, Relation, TagSet};
 

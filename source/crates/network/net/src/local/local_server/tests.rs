@@ -21,6 +21,7 @@ use campfire_host::JoinState;
 use campfire_host::JournalCommand;
 use campfire_host::Os;
 use campfire_host::Pace;
+use campfire_host::PaceSpeed;
 use campfire_host::ReceivedTick;
 use campfire_host::ReportKey;
 use campfire_host::ServerDir;
@@ -32,7 +33,7 @@ use campfire_net_connection::Connect;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Entropy, Outcome, SessionLog};
 use campfire_runner::{Replay, SessionWorld, TermsError};
-use campfire_sim::{SimTick, SimWorld};
+use campfire_sim::{MatchRate, SimTick, SimWorld};
 use campfire_store::internals::TestDir;
 use campfire_test_packages::TestMode;
 use campfire_values::TeamSet;
@@ -40,6 +41,7 @@ use campfire_values::TeamSet;
 use crate::local::local_server::{
     LocalLobby, LocalReplay, LocalServer, LocalServerSetup, LocalSession,
 };
+use crate::local_pace::LocalPacePlugin;
 use crate::sim_client::{PendingJournalCommands, SimClientPlugin};
 
 /// How long the client gets to join and play.
@@ -52,7 +54,10 @@ const FRAME: Duration = Duration::from_millis(2);
 fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let test_dir = TestDir::new();
     let packages = Arc::new(TestMode::Lane.packages());
+    // The match plays at four times its rate, the server and the client following one pace, as
+    // a local match's player may speed it, so the waits on the server's clock are short.
     let pace = Arc::new(Pace::default());
+    pace.set_speed(PaceSpeed::Quadruple);
     let mut server = LocalServer::start(LocalServerSetup {
         packages: Arc::clone(&packages),
         data: test_dir.path("data"),
@@ -62,7 +67,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
             options: Vec::new(),
             player_slot_picks: Vec::new(),
         }),
-        pace,
+        pace: Arc::clone(&pace),
         os: Os {
             clock: UnixClock::manual(TestKey::NOW),
             entropy: Entropy::Fixed(7),
@@ -108,7 +113,13 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         bot: None,
     };
     assert_eq!(at_20.check(), Err(TermsError::TickRate(elsewhere.tick_hz)));
-    client.add_plugins(setup);
+    client.add_plugins((
+        setup,
+        LocalPacePlugin {
+            pace,
+            tick_rate: MatchRate::new(server.pin().tick_hz).rate(),
+        },
+    ));
     client.finish();
     client.cleanup();
     let entity = SimClientPlugin::spawn(client.world_mut());
@@ -184,7 +195,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         played += usize::from(playing(&client));
     }
 
-    // A report of a tick a fifth of a second past the one the client draws, which the server
+    // A report of a tick six ticks past the one the client draws, which the server
     // runs later: the server writes its log so far into the report's folder of the client's data,
     // once the log ran the tick and its journal synced the records.
     let tick = (client.world().resource::<SimTick>().start()).after(Ticks::new(6));
@@ -253,6 +264,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     // paused, its client watching from the tick after; played on, it runs the log's last five
     // ticks and holds paused again at its end.
     let pace = Arc::new(Pace::default());
+    pace.set_speed(PaceSpeed::Quadruple);
     let mut server = LocalServer::start(LocalServerSetup {
         packages: Arc::new(TestMode::Lane.packages()),
         data: test_dir.path("data"),
@@ -287,6 +299,10 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         },
         data: None,
         bot: None,
+    });
+    watcher.add_plugins(LocalPacePlugin {
+        pace: Arc::clone(&pace),
+        tick_rate: MatchRate::new(server.pin().tick_hz).rate(),
     });
     watcher.finish();
     watcher.cleanup();
@@ -331,8 +347,8 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     }
     assert_eq!(test_dir.read(file), report_bytes);
     // The replay holds at the log's end, where the watcher stands, never past it, as the server
-    // runs no step past the last tick; a play there runs none either, for 200 ms, six of the
-    // lane's ticks, past the server's next frame and a send.
+    // runs no step past the last tick; a play there runs none either, for 50 ms, six of the
+    // lane's ticks at the pace, past the server's next frame and a send.
     pace.set_paused(false);
     while !pace.is_paused() || next(&watcher) != end {
         frame(&mut watcher, "the replay's end");
@@ -343,7 +359,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     }
     pace.set_paused(false);
     let played = Instant::now();
-    while played.elapsed() < Duration::from_millis(200) {
+    while played.elapsed() < Duration::from_millis(50) {
         frame(&mut watcher, "a play at the end");
         assert!(next(&watcher) <= end, "a play at the end runs a step");
     }

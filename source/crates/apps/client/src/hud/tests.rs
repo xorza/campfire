@@ -9,7 +9,7 @@ use campfire_client_files::HudFile;
 use campfire_common::DeclaredName;
 use campfire_common::Ticks;
 use campfire_math::Num;
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_sim::{IdAllocator, Position};
 use campfire_units::{Avatar, BodyUnit};
 use campfire_values::{ActionId, UnitType};

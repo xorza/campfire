@@ -32,7 +32,7 @@ use campfire_combat::TurretAim;
 use campfire_common::DeclaredName;
 use campfire_declarations::ById;
 use campfire_math::Num;
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_sim::Unpredicted;
 use campfire_units::{TypeOriginBook, Variations};
 use campfire_values::{PackageIndex, Team, UnitType};

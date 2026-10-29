@@ -1,3 +1,5 @@
+use campfire_actions::{ActionData, Actions, Targeting};
+use campfire_common::DeclaredName;
 use campfire_stats::{ModifierData, PlayerModifiers, Stats, StatsWorld, TypeUpgrade, TypeUpgrades};
 use campfire_values::{ModifierId, PackageIndex};
 
@@ -328,5 +330,35 @@ fn a_research_is_refused_while_its_player_holds_or_queues_one_its_upgrade_confli
             .chain(upgrades.withheld(gunned))
             .count(),
         0
+    );
+}
+
+#[test]
+fn a_fixture_loads_a_research_as_the_load_resolves_it() {
+    // A research of `drill` held by its producer, loaded as a test loads an action, holds the
+    // spec the load's book gives it: the modifier, and its holder.
+    let mut game = ordering_match();
+    Stats::load_modifier(
+        &mut game,
+        PackageIndex::MODE,
+        "drill",
+        &ModifierData::default(),
+        None,
+    );
+    let drill = Stats::modifier(&game, PackageIndex::MODE, "drill").unwrap();
+    let research = ResearchData {
+        modifier: DeclaredName::new("drill").unwrap(),
+        holder: ResearchHolder::Producer,
+        requires: None,
+    };
+    let data = ActionData::of(Targeting::None, research);
+    let action = Actions::load(&mut game, PackageIndex::MODE, "study", &data, None, 1).unwrap();
+    let spec = ResearchSpec {
+        modifier: drill,
+        holder: ResearchHolder::Producer,
+    };
+    assert_eq!(
+        game.resource::<ById<ActionId, ResearchSpec>>().get(action),
+        Some(&spec)
     );
 }

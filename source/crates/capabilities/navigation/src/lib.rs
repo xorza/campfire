@@ -379,7 +379,9 @@ impl Navigation {
         let widest = walkers.iter().map(|walker| walker.radius).max();
         world.insert_resource(BodyIndex::new(widest.unwrap_or(Num::ZERO)));
         world.insert_resource(RoutePlanner::new(&grid));
-        world.insert_resource(CrowdCosts::new(grid, &walkers));
+        let teams = world.resource::<CrowdBook>().teams.iter().copied();
+        let crowd = CrowdCosts::new(grid, &walkers, teams);
+        world.insert_resource(crowd);
         world.insert_resource(PathingGrid::new(grid, walkers, &terrain));
         world.resource_mut::<UnitTracker<StaticBodies>>().mark();
     }
@@ -415,8 +417,10 @@ impl Navigation {
         let planner = world.get_resource::<RoutePlanner>()?;
         let clearance = grid.serving(walker)?;
         let walkable = Walkable::of(clearance, world.resource::<BodyIndex>());
-        let cell = planner.nearest_open(walkable, point, &mut 0)?;
-        Some(clearance.grid().center(cell, point.y))
+        let mut work = 0;
+        let cell = planner.nearest_open(walkable, point, &mut work);
+        planner.count(work);
+        Some(clearance.grid().center(cell?, point.y))
     }
 }
 
@@ -541,7 +545,11 @@ pub mod internals {
         /// Gives the match the rule that a walker moves the units `moves` names, as its mode's
         /// navigation would.
         pub fn load_moves(world: &mut World, moves: Moves) {
-            CrowdBook { moves }.load_into(world);
+            let book = CrowdBook {
+                moves,
+                ..world.resource::<CrowdBook>().clone()
+            };
+            book.load_into(world);
         }
 
         /// Gives the units of `unit_type` the flight `flight`, as their type's section would; units

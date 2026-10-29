@@ -1,4 +1,5 @@
 use std::ops::Range;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
@@ -48,9 +49,12 @@ pub struct RoutePlanner {
     overlay: Vec<u64>,
     /// The buffers of the search for the nearest reachable cell to a goal.
     nearest: NearestScratch,
-    /// The work a tick may do, and the work done since the tick began.
+    /// The work a tick may do, and the work done since the tick began: a counter that a scan of
+    /// a reader of the planner adds to too, as a spawn's or a landing's scan must answer at once
+    /// but its cells count against the routes after it (04-capabilities/navigation.md, One work
+    /// limit for every route).
     limit: u64,
-    spent: u64,
+    spent: AtomicU64,
 }
 
 /// Where a route may go: the clearance of its walker with the static bodies it was marked from;
@@ -219,19 +223,24 @@ impl RoutePlanner {
             overlay: Vec::new(),
             nearest: NearestScratch::default(),
             limit: u64::try_from(cells).expect("a grid has at most 2²² cells"),
-            spent: 0,
+            spent: AtomicU64::new(0),
         }
     }
 
     /// Starts a tick's work.
-    pub(crate) const fn begin_tick(&mut self) {
-        self.spent = 0;
+    pub(crate) fn begin_tick(&mut self) {
+        *self.spent.get_mut() = 0;
     }
 
     /// Whether this tick did all the work it may: the plan that met the limit finished, and the
     /// rest wait for a later tick.
-    pub(crate) const fn is_spent(&self) -> bool {
-        self.spent >= self.limit
+    pub(crate) fn is_spent(&self) -> bool {
+        self.spent.load(Ordering::Relaxed) >= self.limit
+    }
+
+    /// Counts `work`, a scan's, against the tick's.
+    pub(crate) fn count(&self, work: u32) {
+        self.spent.fetch_add(u64::from(work), Ordering::Relaxed);
     }
 
     /// Plans the route from `start` to `goal`, both taken to the nearest point of the bounds, on
@@ -250,7 +259,7 @@ impl RoutePlanner {
         waypoints: &mut Vec<Vec3>,
     ) -> Planned {
         let planned = self.search(walkable, start, goal, waypoints);
-        self.spent += u64::from(planned.work);
+        self.count(planned.work);
         planned
     }
 
@@ -393,10 +402,10 @@ impl RoutePlanner {
 
     /// Whether a walker on `walkable` goes along `segment` with nothing in its way, as a route's
     /// smoothing tests a line; the test's work counts against the tick's.
-    pub(crate) fn sees(&mut self, walkable: Walkable<'_>, segment: Segment) -> bool {
+    pub(crate) fn sees(&self, walkable: Walkable<'_>, segment: Segment) -> bool {
         let mut work = 1;
         let blocked = walkable.blocks_counting(segment, &mut work);
-        self.spent += u64::from(work);
+        self.count(work);
         !blocked
     }
 
@@ -576,8 +585,10 @@ impl RoutePlanner {
         if !walkable.blocks(Segment::new(position, position)) {
             return Some(position);
         }
-        let cell = self.nearest_open(walkable, position, &mut 0)?;
-        Some(walkable.clearance.grid().center(cell, position.y))
+        let mut work = 0;
+        let cell = self.nearest_open(walkable, position, &mut work);
+        self.count(work);
+        Some(walkable.clearance.grid().center(cell?, position.y))
     }
 
     /// Where `body`, a unit of `walkable`, steps aside to so that it clears `passage`, as Zero
@@ -607,7 +618,7 @@ impl RoutePlanner {
             ..walkable
         };
         if !open.blocks_counting(Segment::new(to, to), &mut work) && passage.clears(at(to)) {
-            self.spent += u64::from(work);
+            self.count(work);
             return Some(to);
         }
         self.mark_blockers(walkable);
@@ -647,7 +658,7 @@ impl RoutePlanner {
             }
             self.expand(walkable, cell, search);
         }
-        self.spent += u64::from(work);
+        self.count(work);
         place
     }
 

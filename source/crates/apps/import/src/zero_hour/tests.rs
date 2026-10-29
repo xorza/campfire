@@ -1,6 +1,9 @@
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
+use std::num::NonZeroU8;
+
+use bevy_math::UVec2;
 use campfire_actions::{
     ActionData, ActionKeys, ActionRange, ActionsData, RangeField, SlotKinds, Targeting,
     TypeSlotsData,
@@ -11,11 +14,17 @@ use campfire_client_files::{
     ModelScale, ModelTop, NodeUpgrade, ObjectLook, PanelButton, PanelCommand, PanelPlace, Press,
     StateAnimation, StateClip, StatePlay,
 };
+use campfire_client_files::{
+    CameraFile, ClientUnits, HitMark, HudFile, KeysFile, PanelPlaces, PerkPage, PerkPlace,
+    PerksFile, PlaceOrder, RadarShown, ShownBars, TeamColors,
+};
+use campfire_codec::Toml;
 use campfire_combat::{
     ArmorShare, AttackData, BonusData, ClipData, ClipRefill, CombatData, ModeCombatData, OnDeath,
     PitchData, ScatterData, SplashData, TurretData, UnitOffset, WeaponValue,
 };
-use campfire_math::Rounding;
+use campfire_common::DeclaredName;
+use campfire_math::{Num, Rounding};
 use campfire_mode::{ChoiceData, ListEntry, ModeParam, Offers, OptionData, RelationData};
 use campfire_navigation::ModeNavigationData;
 use campfire_orders::AcquireData;
@@ -33,15 +42,19 @@ use campfire_stats::{
 use campfire_store::internals::TestDir;
 use campfire_store::{DirEntries, PathError, ReadError};
 use campfire_units::TypeTagsData;
+use campfire_values::Speed;
 use campfire_values::{
     FilterData, Number, Ranked, Relation, RelationSet, Scalar, Share, Stat, TextId,
 };
 
 use super::*;
 use crate::texture::samples::ktx2;
+use crate::zero_hour::additions::Additions;
 use crate::zero_hour::animation_drop_cause::AnimationDropCause;
 use crate::zero_hour::animation_import::ConvertedAnimation;
 use crate::zero_hour::button_drop_cause::ButtonDropCause;
+use crate::zero_hour::combat_import::CombatImport;
+use crate::zero_hour::contain_import::ContainImport;
 use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::error::{NameClash, NameError, VersionDifference};
 use crate::zero_hour::format::big::big_archive::samples::big;
@@ -59,19 +72,33 @@ use crate::zero_hour::format::ini::object_ini::samples::{DEFAULT_OBJECTS, MORE_O
 use crate::zero_hour::format::ini::player_template_ini::samples::PLAYER_TEMPLATES;
 use crate::zero_hour::format::ini::upgrade_ini::samples::UPGRADES;
 use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
+use crate::zero_hour::format::map::map_file::ZeroHourMap;
 use crate::zero_hour::format::map::map_file::samples::map;
+use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::install::samples::{FixtureInstall, fixture, packed_map};
 use crate::zero_hour::look_flags::FlagCondition;
+use crate::zero_hour::look_flags::LookFlags;
+use crate::zero_hour::map_import::{MapImport, MapSources};
+use crate::zero_hour::map_roads::MapRoads;
+use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_bones::ModelBones;
 use crate::zero_hour::model_converter::SkipReason;
 use crate::zero_hour::model_converter::SkippedModel;
 use crate::zero_hour::model_import::{Converted, ModelImport};
 use crate::zero_hour::model_writer::DroppedStates;
+use crate::zero_hour::model_writer::ModelWriter;
 use crate::zero_hour::object_flight::samples::shell_projectile;
 use crate::zero_hour::production_bones::ProductionBones;
+use crate::zero_hour::production_cx::ProductionCx;
+use crate::zero_hour::production_import::ProductionImport;
 use crate::zero_hour::rules_names::RulesNames;
+use crate::zero_hour::skirmish_start::SkirmishStart;
 use crate::zero_hour::state_drop_cause::StateDropCause;
+use crate::zero_hour::terrain_atlas::PackageTexture;
+use crate::zero_hour::unit_types::TypeModifiers;
 use crate::zero_hour::upgrade_drop_cause::UpgradeDropCause;
+use crate::zero_hour::upgrade_import::{UpgradeImport, UpgradeSources};
+use crate::zero_hour::veterancy_import::VeterancyImport;
 use crate::zero_hour::weapon_drop_cause::WeaponDropCause;
 
 /// The fixture install's version, as its archives hold their bytes now.
@@ -81,24 +108,70 @@ fn version_of(test_dir: &TestDir) -> &'static [GameVersion] {
     GameVersion::fixture("fixture", archives)
 }
 
+/// The fixture install, imported into `one/` of its test directory.
+#[derive(Debug)]
+struct FixtureImport {
+    test_dir: TestDir,
+    zero_hour: ZeroHour,
+    imported: Imported,
+}
+
+impl FixtureImport {
+    /// The fixture install of the version it is, imported.
+    fn new() -> Self {
+        let test_dir = TestDir::new();
+        fixture(&test_dir);
+        let known = version_of(&test_dir);
+        let zero_hour = ZeroHour::open_among(&test_dir.path("zh"), known).unwrap();
+        assert_eq!(zero_hour.version().name(), "fixture");
+        let imported = zero_hour.write(&test_dir.path("one")).unwrap();
+        Self {
+            test_dir,
+            zero_hour,
+            imported,
+        }
+    }
+
+    /// The imported mode, as the package's own reader takes it on the fixture map.
+    fn mode(&self) -> ModePackages {
+        let place = PackageDir::new(self.test_dir.path("one/game"));
+        ModePackages::at(&place, Some(&fixture_map())).unwrap()
+    }
+}
+
+/// The fixture's one map, in its directory `Fixture Map`.
+fn fixture_map() -> MapName {
+    MapName::parse("fixture_map").unwrap()
+}
+
+fn declared(name: &str) -> DeclaredName {
+    DeclaredName::new(name).unwrap()
+}
+
+fn all_declared(names: &[&str]) -> Vec<DeclaredName> {
+    names.iter().map(|&name| declared(name)).collect()
+}
+
+fn one(value: i64) -> Ranked<Number> {
+    Ranked::One(Number::from(value))
+}
+
 #[test]
 fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
-    let test_dir = TestDir::new();
-    fixture(&test_dir);
-    let known = version_of(&test_dir);
-    let zero_hour = ZeroHour::open_among(&test_dir.path("zh"), known).unwrap();
-    assert_eq!(zero_hour.version().name(), "fixture");
-
+    let FixtureImport {
+        test_dir,
+        zero_hour,
+        imported,
+    } = FixtureImport::new();
     // The fixture map, in its directory `Fixture Map`, is `fixture_map`: its files are the ones
     // its import gives, and the unit types it places the package's.
-    let imported = zero_hour.write(&test_dir.path("one")).unwrap();
     let fingerprint = imported.fingerprint;
     // Its terrain's sand of 2 × 1 texels holds no tile, and its grass has no texture, so each
     // of the 3 × 2 cells the game draws is untextured.
-    let named = MapName::parse("fixture_map").unwrap();
+    let named = fixture_map();
     assert_eq!(imported.maps, std::slice::from_ref(&named));
     let untextured = ImportLoss::UntexturedCells {
-        map: named.clone(),
+        map: named,
         cells: 6,
     };
     assert!(imported.losses.contains(&untextured));
@@ -126,11 +199,45 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         test_dir.read("one/zero-hour/package.index"),
         include_bytes!("../../../../../packages/zero-hour/package.index")
     );
+    assert_eq!(test_dir.names("one/game/map"), ["fixture_map"]);
+    assert_eq!(
+        test_dir.names("one/game/map/fixture_map"),
+        ["heights.bin", "map.toml"]
+    );
+    assert_eq!(
+        test_dir.names("one/game/client/maps/fixture_map"),
+        [
+            "conditions.toml",
+            "lights.toml",
+            "objects.toml",
+            "terrain.bin"
+        ]
+    );
+    // Two imports write the same bytes, and the package reads as the fingerprint names it.
+    assert_eq!(
+        zero_hour.write(&test_dir.path("two")).unwrap().fingerprint,
+        fingerprint
+    );
+    assert_eq!(
+        test_dir.read("two/game/package.index"),
+        test_dir.read("one/game/package.index")
+    );
+    assert_eq!(
+        PackageDir::new(test_dir.path("one/game"))
+            .files()
+            .unwrap()
+            .fingerprint(),
+        fingerprint
+    );
+}
+
+#[test]
+fn an_imported_mode_reads_its_types_its_start_and_its_choices() {
+    let mode = FixtureImport::new().mode();
     // The package's own reader takes its units file: the tank, the wall and the rocks the map
     // places, America's start objects, the barracks, the power plant, the ranger and the pathfinder
     // their command sets make, and the shell the tank's cannon fires. Its units drive, by stats,
     // orders and navigation, no faster than the tank's 30.5 m a second.
-    let mode = ModePackages::at(&PackageDir::new(test_dir.path("one/game")), Some(&named)).unwrap();
     let types: Vec<String> = mode
         .content()
         .units
@@ -159,10 +266,6 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // 10,000 by default.
     // Its mode data lies over the rules package's, as the load lays them.
     let data = mode.data();
-    let declared = |name: &str| DeclaredName::new(name).unwrap();
-    let all_declared =
-        |names: &[&str]| names.iter().map(|&name| declared(name)).collect::<Vec<_>>();
-    let one = |value: i64| Ranked::One(Number::from(value));
     let navigation = data.section::<ModeNavigationData>().unwrap();
     assert_eq!(navigation.spawn_tags, all_declared(&["start", "rally"]));
     // Its base, as the dozer builds the power plant, which America's science lets it, and the
@@ -267,6 +370,38 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let slots = data.section::<SlotKinds>().unwrap().kinds();
     let slots: Vec<&str> = slots.iter().map(|kind| kind.name.as_str()).collect();
     assert_eq!(slots, ["weapon", "command", "use"]);
+    let manifest = mode.manifest();
+    assert_eq!(manifest.max_move_speed.get(), Num::int(61) / Num::int(2));
+    let drives = [
+        Capability::Stats,
+        Capability::Orders,
+        Capability::Navigation,
+        Capability::Abilities,
+        Capability::Production,
+        Capability::Combat,
+        Capability::Vision,
+    ];
+    // Eight players, each a team of one slot, and the neutral team of none.
+    assert_eq!(manifest.teams.len(), 9);
+    assert!(
+        manifest.teams[..8]
+            .iter()
+            .all(|team| team.player_slots == 1)
+    );
+    assert!(
+        drives
+            .iter()
+            .all(|&capability| manifest.capabilities.contains(capability))
+    );
+}
+
+#[test]
+fn an_imported_mode_holds_the_command_sets_actions_and_the_starting_weapons() {
+    let fixture = FixtureImport::new();
+    let mode = fixture.mode();
+    let FixtureImport {
+        test_dir, imported, ..
+    } = fixture;
     // The command sets' trains and builds: the center's dozer, the dozer's barracks, which
     // starts as it is ordered and its builder builds within 10 m, and the barracks' ranger,
     // which needs a barracks; each its object's cost, and the milliseconds of its frames, 5 s
@@ -480,6 +615,55 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
             (declared("weapon_tankcannon"), cannon),
         ])
     );
+    // The names, of the string table's labels, their hotkeys' markers dropped and `&&` an
+    // `&`, braces escaped as Fluent reads them; the power plant's, the ranger's and the
+    // pathfinder's labels the table lacks, so their objects' names.
+    assert_eq!(
+        test_dir.read_text("one/game/locale/en.ftl"),
+        "mode-name = Zero Hour\nchoice-faction = Faction\nchoice-start = Start\nteam-player-1 = Player 1\nteam-player-2 = Player 2\n\
+         team-player-3 = Player 3\nteam-player-4 = Player 4\nteam-player-5 = Player 5\n\
+         team-player-6 = Player 6\nteam-player-7 = Player 7\nteam-player-8 = Player 8\n\
+         team-neutral = Neutral\n\
+         action-build-americabarracks = Barracks & {\"{\"}Yard{\"}\"}\n\
+         action-build-americapowerplant = AmericaPowerPlant\n\
+         action-research-upgrade-americabarrackswalls = Upgrade_AmericaBarracksWalls\n\
+         action-research-upgrade-americacompositearmor = Upgrade_AmericaCompositeArmor\n\
+         action-research-upgrade-americarangerflashbang = Upgrade_AmericaRangerFlashBang\n\
+         action-train-americainfantrypathfinder = AmericaInfantryPathfinder\n\
+         action-train-americainfantryranger = AmericaInfantryRanger\n\
+         action-train-americavehicledozer = Dozer\n"
+    );
+    // The buttons dropped, each by its cause, in the order the sets are read: the dozer's, then
+    // the barracks', which the dozer's set makes, the research of no upgrade last.
+    let dropped: Vec<(&str, ButtonDropCause)> = imported
+        .losses
+        .iter()
+        .filter_map(|loss| match loss {
+            ImportLoss::Button(dropped) => Some((dropped.name.as_str(), dropped.cause)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        dropped,
+        [
+            ("Command_ConstructAmericaFireBase", ButtonDropCause::NoBody),
+            (
+                "Command_ConstructAmericaInfantryRanger",
+                ButtonDropCause::NoQueue
+            ),
+            ("Command_ConstructFortressWall", ButtonDropCause::NoWalker),
+            ("Command_ConstructGhost", ButtonDropCause::NoObject),
+            ("Command_UpgradeLost", ButtonDropCause::NoObject),
+        ]
+    );
+}
+
+#[test]
+fn an_imported_type_holds_its_combat_its_slots_and_its_production() {
+    let fixture = FixtureImport::new();
+    let mode = fixture.mode();
+    let data = mode.data();
+    let imported = fixture.imported;
     // The game's 38 damage types, in its order, as the mode's kinds; life the pool `life`;
     // every armor, of each kind it does not take whole: the soldier's crushing and sniping
     // twice, the building's every kind by `DEFAULT` at half and small arms at a quarter, but
@@ -720,47 +904,16 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         })
     );
     assert_eq!(production("americavehicledozer"), None);
-    // The names, of the string table's labels, their hotkeys' markers dropped and `&&` an
-    // `&`, braces escaped as Fluent reads them; the power plant's, the ranger's and the
-    // pathfinder's labels the table lacks, so their objects' names.
-    assert_eq!(
-        test_dir.read_text("one/game/locale/en.ftl"),
-        "mode-name = Zero Hour\nchoice-faction = Faction\nchoice-start = Start\nteam-player-1 = Player 1\nteam-player-2 = Player 2\n\
-         team-player-3 = Player 3\nteam-player-4 = Player 4\nteam-player-5 = Player 5\n\
-         team-player-6 = Player 6\nteam-player-7 = Player 7\nteam-player-8 = Player 8\n\
-         team-neutral = Neutral\n\
-         action-build-americabarracks = Barracks & {\"{\"}Yard{\"}\"}\n\
-         action-build-americapowerplant = AmericaPowerPlant\n\
-         action-research-upgrade-americabarrackswalls = Upgrade_AmericaBarracksWalls\n\
-         action-research-upgrade-americacompositearmor = Upgrade_AmericaCompositeArmor\n\
-         action-research-upgrade-americarangerflashbang = Upgrade_AmericaRangerFlashBang\n\
-         action-train-americainfantrypathfinder = AmericaInfantryPathfinder\n\
-         action-train-americainfantryranger = AmericaInfantryRanger\n\
-         action-train-americavehicledozer = Dozer\n"
-    );
-    // The buttons dropped, each by its cause, in the order the sets are read: the dozer's, then
-    // the barracks', which the dozer's set makes, the research of no upgrade last.
-    let dropped: Vec<(&str, ButtonDropCause)> = imported
-        .losses
-        .iter()
-        .filter_map(|loss| match loss {
-            ImportLoss::Button(dropped) => Some((dropped.name.as_str(), dropped.cause)),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(
-        dropped,
-        [
-            ("Command_ConstructAmericaFireBase", ButtonDropCause::NoBody),
-            (
-                "Command_ConstructAmericaInfantryRanger",
-                ButtonDropCause::NoQueue
-            ),
-            ("Command_ConstructFortressWall", ButtonDropCause::NoWalker),
-            ("Command_ConstructGhost", ButtonDropCause::NoObject),
-            ("Command_UpgradeLost", ButtonDropCause::NoObject),
-        ]
-    );
+}
+
+#[test]
+fn an_imported_type_takes_its_upgrades_by_their_modifiers() {
+    let fixture = FixtureImport::new();
+    let mode = fixture.mode();
+    let data = mode.data();
+    let imported = fixture.imported;
+    let units = &mode.content().units;
+    let unit = |name: &str| &units[&declared(name)];
     // Each type's upgrades: the crusader's armor and its 100 more life by the composite armor;
     // the ranger's weapon set by the flash bang, and its weapon bonus by both, unless its
     // barracks walls, as a conflict no file defines goes; the barracks' 200 more life by its
@@ -887,43 +1040,11 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
             ("TankShell WeaponBonusUpgrade", UpgradeDropCause::Projectile),
         ]
     );
-    let manifest = mode.manifest();
-    assert_eq!(manifest.max_move_speed.get(), Num::int(61) / Num::int(2));
-    let drives = [
-        Capability::Stats,
-        Capability::Orders,
-        Capability::Navigation,
-        Capability::Abilities,
-        Capability::Production,
-        Capability::Combat,
-        Capability::Vision,
-    ];
-    // Eight players, each a team of one slot, and the neutral team of none.
-    assert_eq!(manifest.teams.len(), 9);
-    assert!(
-        manifest.teams[..8]
-            .iter()
-            .all(|team| team.player_slots == 1)
-    );
-    assert!(
-        drives
-            .iter()
-            .all(|&capability| manifest.capabilities.contains(capability))
-    );
-    assert_eq!(test_dir.names("one/game/map"), ["fixture_map"]);
-    assert_eq!(
-        test_dir.names("one/game/map/fixture_map"),
-        ["heights.bin", "map.toml"]
-    );
-    assert_eq!(
-        test_dir.names("one/game/client/maps/fixture_map"),
-        [
-            "conditions.toml",
-            "lights.toml",
-            "objects.toml",
-            "terrain.bin"
-        ]
-    );
+}
+
+#[test]
+fn an_imported_map_and_units_file_are_their_stages_own() {
+    let test_dir = FixtureImport::new().test_dir;
     // The class whose type's texture the install holds names it, the sign's TGA of 2 × 1
     // texels; the other names none.
     let file = ZeroHourMap::read(&map(8)).unwrap();
@@ -990,37 +1111,36 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // of the templates adds, those the command sets make, as the import adds them, their
     // weapons, and the shell the crusader's cannon fires.
     SkirmishStart::of(&rules, &mut names).unwrap();
+    let mut additions = Additions::default();
     let mut names = names.into_production();
-    let production = ProductionImport::of(&rules, &mut names, ProductionBones::default());
+    let cx = ProductionCx {
+        rules: &rules,
+        names: &mut names,
+        additions: &mut additions,
+    };
+    let production = ProductionImport::of(cx, ProductionBones::default());
     let mut names = names.into_projectiles();
-    let combat = CombatImport::of(&rules, &mut names).unwrap();
-    let upgrades = UpgradeImport::of(&rules, names.types(), &production, &combat).unwrap();
-    let veterancy = VeterancyImport::of(&rules.game_data, names.types(), &rules.names).unwrap();
-    let contains = ContainImport::of(&rules, names.types(), &BTreeMap::new()).unwrap();
+    let combat = CombatImport::of(&rules, &mut names, &mut additions).unwrap();
+    let sources = UpgradeSources {
+        rules: &rules,
+        production: &production,
+        combat: &combat,
+    };
+    UpgradeImport::of(sources, names.types(), &mut additions).unwrap();
+    VeterancyImport::of(&rules, names.types(), &mut additions).unwrap();
+    ContainImport::of(&rules, names.types(), &mut additions).unwrap();
     let types = names.close();
-    let additions = TypeAdditions {
-        weapon: &combat.weapons,
-        weapon_slots: &combat.weapon_slots,
-        command: &production.commands,
-        production: &production.sections,
-        sells: &production.sells,
-        airfields: &production.airfields,
-        nodes: &production.supply.nodes,
-        drop_offs: &production.supply.drop_offs,
-        spawns: &production.supply.spawns,
-        upgrades: &upgrades.types,
-        barrels: &BTreeMap::new(),
-        bones: &BTreeMap::new(),
-        tracks: &veterancy.tracks,
-        experience: &veterancy.experience,
-        areas: &production.areas,
-        enters: &contains.enters,
-        rides: &contains.rides,
+    let modifiers = TypeModifiers {
         movers: &types.movers(),
         second_lives: &types.second_lives(&rules.names),
     };
-    let units = types.units_file(additions, &rules.names);
+    let units = types.units_file(&additions, modifiers, &rules.names);
     assert_eq!(test_dir.read_text("one/game/data/units.toml"), units.text);
+}
+
+#[test]
+fn an_import_writes_the_client_files_and_each_drawn_texture_once() {
+    let test_dir = FixtureImport::new().test_dir;
     let camera = Toml::parse::<CameraFile>(&test_dir.read_text("one/game/client/camera.toml"));
     assert_eq!(camera.unwrap().field_of_view, 50.0);
     // A press drags past `Mouse.ini`'s 4 pixels and clicks within its 167 ms.
@@ -1088,22 +1208,6 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     assert_eq!(
         test_dir.read("one/game/client/textures/art/terrain/tsand.ktx2"),
         sign
-    );
-    // Two imports write the same bytes, and the package reads as the fingerprint names it.
-    assert_eq!(
-        zero_hour.write(&test_dir.path("two")).unwrap().fingerprint,
-        fingerprint
-    );
-    assert_eq!(
-        test_dir.read("two/game/package.index"),
-        test_dir.read("one/game/package.index")
-    );
-    assert_eq!(
-        PackageDir::new(test_dir.path("one/game"))
-            .files()
-            .unwrap()
-            .fingerprint(),
-        fingerprint
     );
 }
 
@@ -1651,29 +1755,6 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
 }
 
 #[test]
-fn each_drawn_texture_goes_once_and_two_that_share_a_file_clash() {
-    // A texture drawn twice goes once; a DDS and a TGA of one name in one directory both go to
-    // `x.ktx2`, which the import refuses, naming both.
-    let path = ArchivePath::of;
-    let files =
-        texture_files([path("art\\a.dds"), path("art\\b.tga"), path("art\\a.dds")]).unwrap();
-    let at = |text: &str| PackagePath::parse(text).unwrap();
-    assert_eq!(
-        files.into_iter().collect::<Vec<_>>(),
-        [
-            (at("client/textures/art/a.ktx2"), path("art\\a.dds")),
-            (at("client/textures/art/b.ktx2"), path("art\\b.tga")),
-        ]
-    );
-    let clash = texture_files([path("art\\x.dds"), path("art\\x.tga")]).unwrap_err();
-    assert!(matches!(
-        clash,
-        ZeroHourError::TextureClash { first, second }
-            if first == path("art\\x.dds") && second == path("art\\x.tga")
-    ));
-}
-
-#[test]
 fn a_types_bones_stand_as_its_first_variations_first_animation_places_them() {
     // The tank's turret bone, `(1, 2, 3)` turned a half turn about `z`, which its aim's first
     // frame leaves as it is: on glTF's axes `(x, z, −y)`, `(1, 3, −2)`. It names no `Barrel`
@@ -1694,9 +1775,9 @@ fn a_types_bones_stand_as_its_first_variations_first_animation_places_them() {
         ..ModelBones::default()
     };
     let bones: Vec<(&str, &ModelBones)> = looks
-        .bones
+        .additions
         .iter()
-        .map(|(name, bones)| (name.declared().as_str(), bones))
+        .filter_map(|(name, added)| Some((name.declared().as_str(), added.bones.as_ref()?)))
         .collect();
     assert_eq!(
         bones,

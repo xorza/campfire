@@ -13,6 +13,7 @@ use campfire_values::PackagePath;
 use serde::{Deserialize, Serialize};
 
 use crate::pose::RigidPose;
+use crate::zero_hour::additions::Additions;
 use crate::zero_hour::airfield_bones::{AirfieldBones, PlaceBones};
 use crate::zero_hour::animation_drop_cause::AnimationDropCause;
 use crate::zero_hour::animation_import::AnimationEnds;
@@ -47,7 +48,6 @@ use crate::zero_hour::model_nodes::NodeChanges;
 use crate::zero_hour::portable_structure;
 use crate::zero_hour::production_bones::ProductionBones;
 use crate::zero_hour::state_drop_cause::StateDropCause;
-use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::upgrade_import;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
@@ -76,19 +76,18 @@ pub(crate) struct ModelWriter<'i> {
 }
 
 /// The looks of an import's `client/units.toml`, which later stages complete before the import
-/// writes them, the bones each unit type's turret and weapons read of its model, the width of the
-/// track each look's treads lay, of the looks whose model names its treads' bones, the points
-/// production reads of each model, and the fire points of each garrison whose model names one, on
-/// the ground in its object's frame, the game's axes.
+/// writes them, the width of the track each look's treads lay, of the looks whose model names its
+/// treads' bones, the points production reads of each model, and what each type reads of its
+/// model, as its first additions.
 #[derive(Debug)]
 pub(crate) struct ImportedLooks {
     pub(crate) units: BTreeMap<DeclaredName, ClientUnit>,
     pub(crate) conditions: BTreeMap<DeclaredName, ConditionTest>,
     pub(crate) objects: BTreeMap<DeclaredName, ObjectLook>,
-    pub(crate) bones: BTreeMap<TypeName, ModelBones>,
     pub(crate) track_widths: BTreeMap<DeclaredName, f32>,
     pub(crate) points: ProductionBones,
-    pub(crate) fire_points: BTreeMap<DeclaredName, Vec<[f32; 2]>>,
+    /// The first additions of the types: each one's bones, and a garrison's fire points.
+    pub(crate) additions: Additions,
 }
 
 /// What a unit reads of its model at rest: its turret's and weapons' bones, the width of the
@@ -215,10 +214,9 @@ impl ModelWriter<'_> {
         let ini = &rules.objects;
         let mut units = BTreeMap::new();
         let mut objects = BTreeMap::new();
-        let mut bones = BTreeMap::new();
+        let mut additions = Additions::default();
         let mut track_widths = BTreeMap::new();
         let mut points = ProductionBones::default();
-        let mut fire_points = BTreeMap::new();
         let shown = StateLook::default();
         for object in ini.objects() {
             let scale = object.scale();
@@ -301,7 +299,7 @@ impl ModelWriter<'_> {
                 objects.insert(declared.clone(), object_look);
             }
             if of_model != ModelBones::default() {
-                bones.insert(type_name, of_model);
+                additions.type_mut(&type_name).bones = Some(of_model);
             }
             if let Some(width) = track_width {
                 track_widths.insert(declared.clone(), width);
@@ -316,7 +314,7 @@ impl ModelWriter<'_> {
                 points.docks.insert(declared.clone(), dock);
             }
             if let Some(points) = garrisoned {
-                fire_points.insert(declared.clone(), points);
+                additions.type_mut(&type_name).fire_points = points;
             }
             units.insert(declared, unit_look);
         }
@@ -324,10 +322,9 @@ impl ModelWriter<'_> {
             units,
             conditions: std::mem::take(&mut self.conditions),
             objects,
-            bones,
             track_widths,
             points,
-            fire_points,
+            additions,
         })
     }
 

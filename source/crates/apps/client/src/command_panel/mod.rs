@@ -40,6 +40,7 @@ use campfire_common::{Tick, Ticks};
 use campfire_declarations::ById;
 use campfire_interaction::Riders;
 use campfire_math::Num;
+use campfire_names::{Filter, MatchNames};
 use campfire_net::PendingOrders;
 use campfire_orders::OrdersDirective;
 use campfire_players::{PlayerRows, ResourceAmount};
@@ -47,7 +48,6 @@ use campfire_production::{
     BuildBook, HeldPlaces, ProductionDirective, RequirementBook, ResearchHolder, ResearchSpec,
     SellSpec, Site, SiteProgress, TrainQueue, TrainSpec,
 };
-use campfire_script::{Filter, MatchNames};
 use campfire_sim::{EntityIndex, MatchRate, SimTick, StableId, Unpredicted};
 use campfire_stats::{Modifiers, TypeUpgrades};
 use campfire_units::{Dead, Owner, TypeOriginBook};

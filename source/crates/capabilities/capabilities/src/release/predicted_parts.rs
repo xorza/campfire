@@ -126,6 +126,7 @@ impl Declarations for PredictedParts<'_> {
 
     fn loaded<R: Resource>(&mut self) {}
 
+    fn package_data<R: Resource + Default>(&mut self) {}
     fn stages_run_if<M>(&mut self, _: impl SystemCondition<M> + Clone) {}
 
     fn part_with<H: Component, C: Component + Default>(&mut self) {}

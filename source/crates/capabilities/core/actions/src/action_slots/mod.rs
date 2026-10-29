@@ -7,7 +7,7 @@ use bevy_ecs::query::QueryData;
 use bevy_ecs::world::World;
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
 use campfire_math::Num;
-use campfire_script::UnknownName;
+use campfire_names::UnknownName;
 use campfire_sim::{SimComponent, StableId};
 use campfire_states::{Replication, SentPredicted};
 use campfire_units::UnitEntity;

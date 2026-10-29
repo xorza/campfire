@@ -131,7 +131,7 @@ impl Doors {
 
     /// Holds open the door of the place `place` at `now`, of `times`, while a unit holds the place:
     /// a closed door begins to open, as Zero Hour's `setHoldDoorOpen` opens one.
-    pub fn hold(&mut self, place: u8, now: Tick, times: DoorTimes) {
+    pub(crate) fn hold(&mut self, place: u8, now: Tick, times: DoorTimes) {
         let slot = self.of_place(place);
         *slot = Some(match *slot {
             Some(door) if door.phase(now, times) != DoorPhase::Closed => {

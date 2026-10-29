@@ -5,7 +5,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, ProgressDues, SlotKind, SlotKindBook, SlotsMutItem, UseGroup};
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
-use campfire_script::UnknownName;
+use campfire_names::UnknownName;
 use campfire_sim::SimComponent;
 use campfire_states::{Replication, SentOnChange};
 use campfire_units::UnitEntity;

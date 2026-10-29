@@ -21,23 +21,20 @@ use crate::zero_hour::format::ini::object_ini::ini_supply::{
 use crate::zero_hour::game_time;
 use crate::zero_hour::import_names::{NamedObject, ProductionNames};
 use crate::zero_hour::imported_type::ImportedType;
+use crate::zero_hour::production_cx::ProductionCx;
 use crate::zero_hour::supply_drop_cause::SupplyDropCause;
-use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// Zero Hour's supply, of the unit types production visits (09-zero-hour.md, A box is
 /// money): each dock a node of money, its boxes' worth; each supply center a drop-off of money;
 /// each gatherer that walks a gather of its own numbers; the free units of each producer, its
 /// one-shot spawns that walk; each hacker's hack; and what it drops, each once for each cause, in
-/// the order the types are visited.
+/// the order the types are visited. It gives each dock its `node`, each supply center its
+/// `drop_off` and each building that keeps spawns its `spawns`, as additions.
 #[derive(Debug, Default)]
 pub(crate) struct SupplyImport {
     pub(crate) gathers: BTreeMap<DeclaredName, ImportedGather>,
     pub(crate) hacks: BTreeMap<DeclaredName, ActionKeys>,
-    pub(crate) nodes: BTreeMap<TypeName, NodeData>,
-    pub(crate) drop_offs: BTreeMap<TypeName, DropOffData>,
-    /// The spawns each building of a production section keeps, by its type's name.
-    pub(crate) spawns: BTreeMap<TypeName, SpawnsData>,
     pub(crate) dropped: Losses<SupplyDropCause>,
 }
 
@@ -65,16 +62,17 @@ pub(crate) enum Spawning {
 pub(crate) const DOCK_RANGE: Num = Num::int(10);
 
 impl SupplyImport {
-    /// Adds the node of `producer` when it is a dock, and its drop-off when it is a supply
-    /// center, by the box value of `rules`, each docked at `dock`, its model's `DockAction`, or at
+    /// Gives `producer` its node when it is a dock, and its drop-off when it is a supply center,
+    /// by the box value of `cx`'s rules, each docked at `dock`, its model's `DockAction`, or at
     /// its body for none (04-capabilities/production.md, A dock has its point); drops what it
     /// creates over time.
     pub(crate) fn dock(
         &mut self,
-        rules: &ZeroHourRules,
+        cx: &mut ProductionCx<'_, '_>,
         producer: &NamedObject<'_>,
         dock: Option<FramePoint>,
     ) {
+        let rules = cx.rules;
         let object = producer.object;
         let supply = object.supply();
         if supply.creates_over_time {
@@ -86,7 +84,7 @@ impl SupplyImport {
                 resources: vec![money],
                 dock,
             };
-            self.drop_offs.insert(producer.name.clone(), drop_off);
+            cx.additions.type_mut(&producer.name).drop_off = Some(drop_off);
         }
         let Some(supplied) = supply.dock else {
             return;
@@ -94,7 +92,7 @@ impl SupplyImport {
         match Self::node(supplied, rules) {
             Ok(node) => {
                 let node = NodeData { dock, ..node };
-                self.nodes.insert(producer.name.clone(), node);
+                cx.additions.type_mut(&producer.name).node = Some(node);
             }
             Err(cause) => self.drop(object, cause),
         }
@@ -210,7 +208,7 @@ impl SupplyImport {
     }
 
     /// Keeps the spawns of `producer`, a building that trains or, by `spawning`, their leader:
-    /// its kept spawn's templates in turn, each a walker typed in `names`, its number and its
+    /// its kept spawn's templates in turn, each a walker typed in `cx`'s names, its number and its
     /// replace delay as the import converts a time (09-zero-hour.md, A kept `SpawnBehavior`
     /// converts to spawns; 04-capabilities/production.md, Spawns take their types in turn), led
     /// when it leads them (09-zero-hour.md, The import converts a mob); the objects of its spawns'
@@ -219,11 +217,11 @@ impl SupplyImport {
     /// or no life.
     pub(crate) fn keep<'r>(
         &mut self,
-        rules: &'r ZeroHourRules,
+        cx: &mut ProductionCx<'r, '_>,
         producer: &NamedObject<'r>,
         spawning: Spawning,
-        names: &mut ProductionNames<'r>,
     ) -> Vec<NamedObject<'r>> {
+        let rules = cx.rules;
         let Some(kept) = producer.object.supply().kept() else {
             return Vec::new();
         };
@@ -247,7 +245,7 @@ impl SupplyImport {
         };
         let mut units: Vec<NamedObject<'r>> = Vec::with_capacity(walkers.len());
         for spawned in walkers {
-            let Ok(typed) = names.unit_type(spawned, rules) else {
+            let Ok(typed) = cx.names.unit_type(spawned, rules) else {
                 self.drop(spawned, SupplyDropCause::NoType);
                 return Vec::new();
             };
@@ -270,7 +268,7 @@ impl SupplyImport {
         if spawning == Spawning::Led {
             self.drop(producer.object, SupplyDropCause::LedSpawns);
         }
-        self.spawns.insert(producer.name.clone(), spawns);
+        cx.additions.type_mut(&producer.name).spawns = Some(spawns);
         units
     }
 

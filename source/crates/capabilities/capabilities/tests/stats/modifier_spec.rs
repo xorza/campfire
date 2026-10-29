@@ -5,7 +5,7 @@ use std::sync::Arc;
 use campfire_capabilities::{Match, Release};
 use campfire_common::Ticks;
 use campfire_math::Num;
-use campfire_script::{Filter, UnknownName};
+use campfire_names::{Filter, UnknownName};
 use campfire_stats::*;
 use campfire_units::{StatId, UnitTypes};
 use campfire_values::{

@@ -7,8 +7,8 @@ use campfire_actions::{
 use campfire_common::DeclaredName;
 use campfire_interaction::{EnterError, UseError};
 use campfire_items::ItemsDataError;
+use campfire_names::Filter;
 use campfire_package::{LoadError, LoadProblem, ModePackages, Place};
-use campfire_script::Filter;
 use campfire_sim::Capability;
 use campfire_test_packages::Edit;
 use campfire_values::PackageName;

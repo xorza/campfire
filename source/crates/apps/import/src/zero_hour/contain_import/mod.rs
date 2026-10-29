@@ -13,6 +13,7 @@ use campfire_values::{
 };
 use serde::Serialize;
 
+use crate::zero_hour::additions::Additions;
 use crate::zero_hour::axes;
 use crate::zero_hour::contain_drop_cause::ContainDropCause;
 use crate::zero_hour::dropped::Losses;
@@ -35,16 +36,14 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 /// Zero Hour's transports and garrisons, of the unit types the import makes
 /// (04-capabilities/interaction.md, A container says who rides; 04-capabilities/combat.md, A
 /// container may let its riders fire; 04-capabilities/interaction.md, A garrison's riders see from
-/// it; 04-capabilities/combat.md, A container's modifier holds on its riders): the `enter` of each
-/// type of a `TransportContain` or a `GarrisonContain`, the `rides` of each type that walks and
-/// takes room of a transport, the entry they name, the garrison's modifier of `GameData.ini`'s
-/// `GARRISONED` bonuses, and what it drops, each once for each cause, in the order of the types'
-/// names.
+/// it; 04-capabilities/combat.md, A container's modifier holds on its riders): the entry the
+/// containers name, the garrison's modifier of `GameData.ini`'s `GARRISONED` bonuses, and what it
+/// drops, each once for each cause, in the order of the types' names. It gives each type of a
+/// `TransportContain` or a `GarrisonContain` its `enter`, and each type that walks and takes room
+/// of a transport its `rides`, as additions.
 #[derive(Debug, Default)]
 pub(crate) struct ContainImport {
-    pub(crate) enters: BTreeMap<TypeName, EnterData>,
     pub(crate) entries: BTreeMap<DeclaredName, ActionKeys>,
-    pub(crate) rides: BTreeMap<TypeName, RidesData>,
     pub(crate) modifiers: BTreeMap<DeclaredName, GarrisonModifier>,
     pub(crate) dropped: Losses<ContainDropCause>,
 }
@@ -56,21 +55,23 @@ pub(crate) struct GarrisonModifier {
 }
 
 /// A container's riders, of its object's `contain`, as `of` converts them: the import's riders,
-/// by their types' names, and each one's kinds, which a container's filters are tested on.
+/// the types whose additions hold their `rides`, and each one's kinds, which a container's
+/// filters are tested on.
 #[derive(Debug, Clone, Copy)]
 struct RiderTypes<'a> {
-    rides: &'a BTreeMap<TypeName, RidesData>,
+    rides: &'a Additions,
     kinds: &'a [ObjectKinds],
 }
 
 impl ContainImport {
     /// The containers and the riders of `types`, by the names, the thresholds and the bonuses of
-    /// `rules`, a garrison's fire points of `fire_points`, by its type's name; an error for a
-    /// garrison's bonus that is no number the engine holds.
+    /// `rules`, a garrison's fire points those its additions hold, each type's `enter` and
+    /// `rides` given it in `additions`; an error for a garrison's bonus that is no number the
+    /// engine holds.
     pub(crate) fn of<'n, 'r: 'n>(
         rules: &ZeroHourRules,
         types: impl Iterator<Item = NamedType<'n, 'r>>,
-        fire_points: &BTreeMap<DeclaredName, Vec<[f32; 2]>>,
+        additions: &mut Additions,
     ) -> Result<Self, ZeroHourError> {
         let names = &rules.names;
         let types: Vec<NamedType<'n, 'r>> = types.collect();
@@ -84,7 +85,7 @@ impl ContainImport {
             if typed.imported.is_projectile() || !typed.imported.walks() {
                 continue;
             }
-            import.rides.insert(typed.name.clone(), RidesData { size });
+            additions.type_mut(typed.name).rides = Some(RidesData { size });
             kinds.push(typed.object.kinds());
         }
         let mut by_object = BTreeMap::new();
@@ -92,7 +93,7 @@ impl ContainImport {
             by_object.insert(typed.object.name.as_str(), typed.name);
         }
         let riders = RiderTypes {
-            rides: &import.rides,
+            rides: additions,
             kinds: &kinds,
         };
         let mut enters = BTreeMap::new();
@@ -102,7 +103,10 @@ impl ContainImport {
             let Some(contain) = object.contain() else {
                 continue;
             };
-            let points = fire_points.get(typed.name.declared());
+            let points = additions
+                .get(typed.name)
+                .map(|added| &added.fire_points)
+                .filter(|points| !points.is_empty());
             let mut drop = |cause| dropped.drop(&object.name, cause);
             // An Overlord's riders are its battle bunker's, which its upgrade makes inside it,
             // open once it holds the upgrade's tag (04-capabilities/interaction.md, A bunker is an
@@ -167,7 +171,9 @@ impl ContainImport {
         if !enters.is_empty() {
             import.entries.insert(names.enter.clone(), Self::entry());
         }
-        import.enters = enters;
+        for (name, enter) in enters {
+            additions.type_mut(&name).enter = Some(enter);
+        }
         import.dropped = dropped;
         let modifier = GarrisonModifier::of(rules.game_data.garrison, names)
             .map_err(|_| ZeroHourError::GarrisonBonus)?;
@@ -343,7 +349,7 @@ impl ContainImport {
         riders: RiderTypes<'_>,
     ) -> Option<PayloadData> {
         let count = u32::try_from(count).ok()?;
-        let size = riders.rides.get(rider)?.size.get();
+        let size = riders.rides.get(rider)?.rides.as_ref()?.size.get();
         let each = match enter.counts {
             RiderCount::Size => size,
             RiderCount::One => 1,

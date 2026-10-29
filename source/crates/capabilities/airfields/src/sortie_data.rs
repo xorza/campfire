@@ -5,8 +5,9 @@ use campfire_declarations::{
     BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId, Section, SectionTable,
 };
 use campfire_math::{Num, Rounding};
+use campfire_names::UnknownName;
 use campfire_navigation::FlightData;
-use campfire_script::{ApiVersion, DataSection, DataTable, Status, UnknownName};
+use campfire_script::{ApiVersion, DataSection, DataTable, Status};
 use campfire_sim::MatchRate;
 use campfire_values::{DamageKind, Named, UnitType};
 use serde::{Deserialize, Serialize};

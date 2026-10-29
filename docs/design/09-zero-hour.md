@@ -54,6 +54,7 @@ Command & Conquer: Generals – Zero Hour, imported from the player's own copy a
 
 ## The importer
 
+- **The stages give a type's sections to one store.** Each stage of the import sets what it gives a unit type, its slots' actions, its production, its upgrades and the rest, in the one `Additions` of the import as it runs, and a later stage reads an earlier one's there; the units file writes each type's with its own fields, and the write runs stage by stage, so each stage's data drops as it ends. Refused: a map by type for each kind of section, kept by its stage and joined at the units file, under which 19 maps passed through one function of some 500 lines and held the converted models and the sounds to its end (decided 2026-10-29).
 - **Files resolve as the original resolves them.** Every archive under the install in case-insensitive order of path, the first that holds a path keeping it, base Generals last.
 - **Axes stay right-handed.** The original's `x` east, `y` north and `z` up are the engine's `x`, `−z` and `y`; an `f32` becomes the `Num` of its exact value.
 - **Names become declared names,** and two that collide fail the import.

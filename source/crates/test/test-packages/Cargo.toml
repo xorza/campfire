@@ -23,6 +23,7 @@ campfire-package-format = { workspace = true, features = ["internals"] }
 campfire-store.workspace = true
 
 [dev-dependencies]
+campfire-names = { workspace = true, features = ["internals"] }
 # The tests that load each test package, or a package edited from one, and check what the load
 # reads and refuses.
 campfire-actions = { workspace = true, features = ["internals"] }

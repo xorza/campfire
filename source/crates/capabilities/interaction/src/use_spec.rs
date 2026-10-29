@@ -1,6 +1,6 @@
 use campfire_actions::ActionBook;
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
-use campfire_script::{Filter, UnknownName};
+use campfire_names::{Filter, UnknownName};
 use campfire_units::UnitTypes;
 use campfire_values::{ActionId, Named, Relation, TagSet, UnitType};
 

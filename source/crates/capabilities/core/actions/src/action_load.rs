@@ -1,6 +1,6 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{BookCx, BookError, BookPlace, Fact, Section};
-use campfire_script::{NameTables, TagNames, UnknownName};
+use campfire_names::{NameTables, TagNames, UnknownName};
 use campfire_units::{ScriptBook, StatId, UnitTypes};
 use campfire_values::{ActionId, Named, PackageIndex, Param};
 

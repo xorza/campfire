@@ -3,16 +3,17 @@ use std::sync::Arc;
 use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionData, ActionError, ActionNames, ActionParts, Actions, DeliveryAim,
-    DeliveryAims, PackageAction,
+    DeliveryAims, LoadedAction, PackageAction,
 };
 use campfire_areas::AreaSpec;
 use campfire_combat::Combat;
 use campfire_common::DeclaredName;
 use campfire_declarations::internals::BookLoad;
 use campfire_declarations::{Book, ById, ByIdBuilder};
+use campfire_names::MatchNames;
 use campfire_production::Production;
 use campfire_projectiles::ProjectileSpec;
-use campfire_script::{MatchNames, ScriptId};
+use campfire_script::ScriptId;
 use campfire_sim::MatchRate;
 use campfire_stats::{ModifierBook, Stats};
 use campfire_units::ScriptBook;
@@ -76,7 +77,13 @@ impl ActionsFixtures for Actions {
         });
         let id_name = DeclaredName::new(name).expect("a test's action is named as data names it");
         Combat::load_weapon(world, id, data, &id_name);
-        Production::load_train(world, id, data, package);
+        let loaded = LoadedAction {
+            package,
+            name: &id_name,
+            action: id,
+            data,
+        };
+        Production::load_action(world, &loaded);
         let places = Stats::stat_places(world, data.keys.params.values().flat_map(Param::stats));
         Stats::load_action_params(world, id, &data.keys.params, |stat| places[stat]);
         ActionBook::share_in(world);

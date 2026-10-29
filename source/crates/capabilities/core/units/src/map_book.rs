@@ -2,7 +2,7 @@ use bevy_ecs::resource::Resource;
 use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section, SectionTable, Sections};
 use campfire_geometry::{Bounds, Metric};
 use campfire_math::{Num, Vec3};
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_script::{ApiVersion, Status};
 use campfire_values::PackageIndex;
 use serde::{Deserialize, Serialize};

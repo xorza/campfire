@@ -10,8 +10,8 @@ use campfire_combat::internals::{Armed, TestWeapon};
 use campfire_combat::{
     ClipRefill, ClipRule, ClipShots, Combat, DamageCause, OnDeath, Rate, WeaponDamage,
 };
+use campfire_names::MatchNames;
 use campfire_navigation::{FlightData, Navigation, WingsData};
-use campfire_script::MatchNames;
 use campfire_sim::MatchRate;
 use campfire_sim::Position;
 use campfire_stats::Stats;

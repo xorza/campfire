@@ -6,7 +6,8 @@ use campfire_declarations::{
     BookCx, BookError, BookPlace, Fact, NamedScripts, ScriptParams, Section,
 };
 use campfire_math::Num;
-use campfire_script::{ParamProblem, ScriptRole, ScriptUses, UnknownName};
+use campfire_names::UnknownName;
+use campfire_script::{ParamProblem, ScriptRole, ScriptUses};
 use campfire_sim::MatchRate;
 use campfire_values::{Named, PackageIndex, Param};
 

@@ -5,7 +5,8 @@ use campfire_declarations::{
     BookCx, BookError, BookPlace, NamedScripts, NamedTexts, ScriptParams, Section, SourceKind,
     UnitTypeData,
 };
-use campfire_script::{ScriptRole, UnknownName};
+use campfire_names::UnknownName;
+use campfire_script::ScriptRole;
 use campfire_sim::Capability;
 use campfire_units::PoolId;
 use campfire_values::{

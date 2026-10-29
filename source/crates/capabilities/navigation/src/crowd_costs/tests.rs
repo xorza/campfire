@@ -10,14 +10,34 @@ use super::*;
 fn counts_kept_through_moves_are_those_counted_afresh() {
     // 30 units of three teams or none, of radii 0.3 to 1.5 m, on a grid of 0.5 m cells over
     // 20 by 12 m, for walkers of two radii: 40 updates move, turn and change units, and the
-    // counts each leaves are those a new count of its stamps makes.
+    // counts each leaves are those a new count of its stamps makes. The kept counts start with
+    // the three teams' made, given out of order and one twice, so no update makes one; the new
+    // counts make each as its first unit stands.
     let bounds = Bounds::new([Num::ZERO; 2], [Num::int(20), Num::int(12)]).unwrap();
     let grid = Grid::new(Num::HALF, bounds).unwrap();
     let walkers = [Num::ZERO, Num::int(3) / 4].map(|radius| Walker {
         layer: Layer::FIRST,
         radius,
     });
-    let mut costs = CrowdCosts::new(grid, &WalkerKinds::from(walkers));
+    let teams = [2, 0, 1, 0].map(Team::new);
+    let mut costs = CrowdCosts::new(grid, &WalkerKinds::from(walkers), teams);
+    let made = |costs: &CrowdCosts| -> Vec<Vec<(Team, *const u16)>> {
+        let kinds = costs.kinds.iter();
+        kinds
+            .map(|kind| {
+                let teams = kind.teams.iter();
+                teams
+                    .map(|team| (team.team, team.movable.as_ptr()))
+                    .collect()
+            })
+            .collect()
+    };
+    let before = made(&costs);
+    let order: Vec<Vec<Team>> = before
+        .iter()
+        .map(|kind| kind.iter().map(|&(team, _)| team).collect())
+        .collect();
+    assert_eq!(order, vec![[0, 1, 2].map(Team::new).to_vec(); 2]);
     let mut ids = IdAllocator::default();
     let mut rng = Rng::new(&SegmentSeed::ZERO, RngStream::new("crowd"), 3, Tick::ZERO);
     let tenths = |rng: &mut Rng, low: usize, high: usize| {
@@ -64,7 +84,7 @@ fn counts_kept_through_moves_are_those_counted_afresh() {
             .copied()
             .filter(|unit| unit.body.id.get() % 7 != 0);
         costs.update(standing.clone());
-        let mut fresh = CrowdCosts::new(costs.grid, &WalkerKinds::from(walkers));
+        let mut fresh = CrowdCosts::new(costs.grid, &WalkerKinds::from(walkers), []);
         fresh.update(standing);
         for (kept, made) in costs.kinds.iter().zip(&fresh.kinds) {
             assert_eq!(
@@ -90,6 +110,42 @@ fn counts_kept_through_moves_are_those_counted_afresh() {
             assert_eq!(teams(kept), teams(made));
         }
     }
+    assert_eq!(made(&costs), before);
+    costs.clear();
+    assert_eq!(made(&costs), before);
+    let counts = |costs: &CrowdCosts| -> Vec<_> {
+        let kinds = costs.kinds.iter();
+        kinds
+            .map(|kind| {
+                let teams = kind.teams.iter().map(|team| {
+                    let TeamCosts {
+                        team,
+                        units,
+                        movable,
+                        held,
+                        hemmed,
+                        stood,
+                    } = team;
+                    (
+                        *team,
+                        *units,
+                        movable.clone(),
+                        held.clone(),
+                        hemmed.clone(),
+                        stood.clone(),
+                    )
+                });
+                (
+                    kind.units,
+                    kind.standing.clone(),
+                    kind.stood.clone(),
+                    teams.collect::<Vec<_>>(),
+                )
+            })
+            .collect()
+    };
+    let made_now = CrowdCosts::new(grid, &WalkerKinds::from(walkers), teams);
+    assert_eq!(counts(&costs), counts(&made_now));
 }
 
 #[test]
@@ -103,7 +159,7 @@ fn the_cells_units_hold_are_marked_column_by_column() {
         layer: Layer::FIRST,
         radius: Num::ZERO,
     };
-    let mut costs = CrowdCosts::new(grid, &WalkerKinds::from([walker]));
+    let mut costs = CrowdCosts::new(grid, &WalkerKinds::from([walker]), []);
     let mut ids = IdAllocator::default();
     let radius = Radius::new(Num::int(6) / 5).unwrap();
     let stamp = |id, x: i64, z: i64| Stamp {
@@ -148,7 +204,7 @@ fn a_cell_costs_by_whether_its_walker_may_move_the_units_of_its_team_in_it() {
         layer: Layer::FIRST,
         radius: Num::ZERO,
     };
-    let mut costs = CrowdCosts::new(grid, &WalkerKinds::from([walker]));
+    let mut costs = CrowdCosts::new(grid, &WalkerKinds::from([walker]), []);
     let mut ids = IdAllocator::default();
     let at =
         |x: i64, z: i64| Vec3::new(Num::int(x) + Num::HALF, Num::ZERO, Num::int(z) + Num::HALF);

@@ -3,8 +3,8 @@ use campfire_common::DeclaredName;
 use campfire_declarations::{
     BookCx, BookError, BookPlace, ById, ByIdBuilder, Section, SourceType, UnitTypeData,
 };
+use campfire_names::UnknownName;
 use campfire_players::ResourceBook;
-use campfire_script::UnknownName;
 use campfire_stats::{LifePool, StatsData, TypePoolsData};
 use campfire_units::{BodyForm, PoolId, UnitTypes};
 use campfire_values::{Named, ResourceId, TimeTooLarge, TypeScope, UnitType};

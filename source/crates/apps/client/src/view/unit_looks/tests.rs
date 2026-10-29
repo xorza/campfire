@@ -1,7 +1,7 @@
 use campfire_client_files::{ClientUnit, ClientUnits, LookVariation, ModelScale, NodeUpgrade};
 use campfire_codec::Toml;
 use campfire_declarations::ByIdBuilder;
-use campfire_script::TagNames;
+use campfire_names::TagNames;
 use campfire_units::{BodyForm, BodyShape, Layer, TypeOrigin};
 use campfire_values::PackagePath;
 

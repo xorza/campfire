@@ -17,6 +17,7 @@ internals = [
     "campfire-items/internals",
     "campfire-math/internals",
     "campfire-mode/internals",
+    "campfire-names/internals",
     "campfire-orders/internals",
     "campfire-package/internals",
     "campfire-players/internals",
@@ -30,6 +31,7 @@ internals = [
 ]
 
 [dependencies]
+campfire-names.workspace = true
 campfire-actions.workspace = true
 campfire-capabilities.workspace = true
 campfire-codec.workspace = true

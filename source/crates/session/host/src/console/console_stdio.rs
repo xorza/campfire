@@ -11,7 +11,7 @@ use campfire_console::{
     ConsoleAnswer, ConsoleEvent, ConsoleRefusal, EventLevel, FieldValue, GameRole, Output, Reply,
     Request, RequestId,
 };
-use campfire_log::{LogLevel, LogLine};
+use campfire_log::{LogLevel, LogRecord, LogValue};
 use campfire_logging::LogTap;
 use campfire_threads::{Job, Worker};
 use serde::Deserialize;
@@ -49,12 +49,9 @@ impl ConsoleStdio {
         let seen = Arc::new(Mutex::new(LogSeen::default()));
         tap.start({
             let seen = Arc::clone(&seen);
-            move |text| {
-                let Ok(line) = LogLine::parse(text) else {
-                    return;
-                };
-                seen.lock().expect(SEEN_POISONED).see(&line);
-                Self::write(&Output::Event(Self::event(line)));
+            move |record| {
+                seen.lock().expect(SEEN_POISONED).see(record);
+                Self::write(&Output::Event(Self::event(record)));
             }
         });
         let (queue, lines) = mpsc::channel();
@@ -137,15 +134,23 @@ impl ConsoleStdio {
         None
     }
 
-    /// The console's event of the log's `line`: its message and the tick it names apart from
-    /// its other fields; its fields as one text when they hold a value no field takes.
-    fn event(line: LogLine) -> ConsoleEvent {
-        let mut fields: BTreeMap<String, FieldValue> = line.fields.read().unwrap_or_else(|_| {
-            BTreeMap::from([(
-                "fields".to_owned(),
-                FieldValue::Text(line.fields.to_string()),
-            )])
-        });
+    /// The console's event of `record`: its message and its tick apart from its other fields,
+    /// each a message of text and a tick of no sign.
+    fn event(record: &LogRecord) -> ConsoleEvent {
+        let mut fields: BTreeMap<String, FieldValue> = record
+            .fields
+            .iter()
+            .map(|(name, value)| {
+                let value = match value {
+                    &LogValue::Bool(value) => FieldValue::Bool(value),
+                    &LogValue::Integer(value) => FieldValue::Integer(value),
+                    &LogValue::Unsigned(value) => FieldValue::Unsigned(value),
+                    &LogValue::Float(value) => FieldValue::Float(value),
+                    LogValue::Text(text) => FieldValue::Text(text.clone()),
+                };
+                ((*name).to_owned(), value)
+            })
+            .collect();
         let message = match fields.remove("message") {
             Some(FieldValue::Text(message)) => Some(message),
             Some(other) => {
@@ -163,14 +168,14 @@ impl ConsoleStdio {
             fields.remove("tick");
         }
         ConsoleEvent {
-            level: match line.level {
+            level: match record.level {
                 LogLevel::Trace => EventLevel::Trace,
                 LogLevel::Debug => EventLevel::Debug,
                 LogLevel::Info => EventLevel::Info,
                 LogLevel::Warn => EventLevel::Warn,
                 LogLevel::Error => EventLevel::Error,
             },
-            target: line.target,
+            target: record.target.to_owned(),
             tick,
             message,
             fields,
@@ -196,12 +201,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_log_line_becomes_its_event_with_its_message_and_tick_apart() {
-        let event = |text: &str| ConsoleStdio::event(LogLine::parse(text).unwrap());
+    fn a_record_becomes_its_event_with_its_message_and_tick_apart() {
+        let text = |text: &str| LogValue::Text(text.to_owned());
+        let record = |level, fields| LogRecord {
+            level,
+            target: "campfire_runner",
+            fields,
+        };
+        let failed = record(
+            LogLevel::Warn,
+            vec![
+                ("message", text("a call failed")),
+                ("tick", LogValue::Unsigned(7)),
+                ("unit", LogValue::Unsigned(4)),
+                ("hook", text("on_hit")),
+                ("late", LogValue::Bool(true)),
+                ("share", LogValue::Float(0.5)),
+                ("behind", LogValue::Integer(-2)),
+            ],
+        );
         assert_eq!(
-            event(
-                r#"{"level":"WARN","target":"campfire_runner","fields":{"message":"a call failed","tick":7,"unit":4,"hook":"on_hit","late":true,"share":0.5,"behind":-2}}"#
-            ),
+            ConsoleStdio::event(&failed),
             ConsoleEvent {
                 level: EventLevel::Warn,
                 target: "campfire_runner".to_owned(),
@@ -212,13 +232,19 @@ mod tests {
                     ("hook".to_owned(), FieldValue::Text("on_hit".to_owned())),
                     ("late".to_owned(), FieldValue::Bool(true)),
                     ("share".to_owned(), FieldValue::Float(0.5)),
-                    ("unit".to_owned(), FieldValue::Integer(4)),
+                    ("unit".to_owned(), FieldValue::Unsigned(4)),
                 ]),
             }
         );
-        // A message that is no text and a tick below 0 stay fields; a value no field takes, a
-        // list here, keeps the fields as one text.
-        let odd = event(r#"{"level":"INFO","target":"t","fields":{"message":3,"tick":-1}}"#);
+        // A message that is no text and a tick below 0 stay fields.
+        let odd = record(
+            LogLevel::Info,
+            vec![
+                ("message", LogValue::Integer(3)),
+                ("tick", LogValue::Integer(-1)),
+            ],
+        );
+        let odd = ConsoleStdio::event(&odd);
         assert_eq!((odd.message, odd.tick), (None, None));
         assert_eq!(
             odd.fields,
@@ -226,14 +252,6 @@ mod tests {
                 ("message".to_owned(), FieldValue::Integer(3)),
                 ("tick".to_owned(), FieldValue::Integer(-1)),
             ])
-        );
-        let list = event(r#"{"level":"DEBUG","target":"t","fields":{"ids":[1,2]}}"#);
-        assert_eq!(
-            list.fields,
-            BTreeMap::from([(
-                "fields".to_owned(),
-                FieldValue::Text(r#"{"ids":[1,2]}"#.to_owned())
-            )])
         );
     }
 

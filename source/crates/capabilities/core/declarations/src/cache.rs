@@ -1,7 +1,6 @@
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_script::MatchNames;
 
 /// A resource built again from the match's state, its map or its install, so a restore needs
 /// none of it: no state. The restore tests, which compare a restored match's hashes with the
@@ -16,15 +15,4 @@ pub trait Cache: Resource + Component<Mutability = Mutable> + Sized {
     /// builds it again from the restore as a fresh restore does (08-sessions.md, A load goes back
     /// in place).
     fn clear(&mut self);
-}
-
-/// The install puts in no name: each book shares its own as it installs, and the mode its own as
-/// it loads.
-impl Cache for MatchNames {
-    fn installed(_: &World) -> Option<Self> {
-        Some(Self::default())
-    }
-
-    /// The names are the packages', which a load keeps.
-    fn clear(&mut self) {}
 }

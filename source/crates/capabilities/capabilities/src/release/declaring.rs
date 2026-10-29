@@ -5,13 +5,13 @@ use campfire_declarations::{CapabilitySet, Declarations, Module, ModuleVisitor};
 #[derive(Debug)]
 pub(super) struct Declaring<'a, D> {
     set: CapabilitySet,
-    scripts: Scripts,
+    scripts: ScriptedPart,
     d: &'a mut D,
 }
 
 /// Whether a walk visits the mode's scripted part.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Scripts {
+pub(super) enum ScriptedPart {
     /// Every declaration a match of the set may hold, as the lists of its state types are.
     Visited,
     /// A match that runs no scripts, as one whose callbacks are counted.
@@ -19,7 +19,7 @@ pub(super) enum Scripts {
 }
 
 impl<'a, D: Declarations> Declaring<'a, D> {
-    pub(super) const fn new(set: CapabilitySet, scripts: Scripts, d: &'a mut D) -> Self {
+    pub(super) const fn new(set: CapabilitySet, scripts: ScriptedPart, d: &'a mut D) -> Self {
         Declaring { set, scripts, d }
     }
 
@@ -39,7 +39,7 @@ impl<D: Declarations> ModuleVisitor for Declaring<'_, D> {
     }
 
     fn scripted<M: Module>(&mut self) {
-        if self.scripts == Scripts::Visited {
+        if self.scripts == ScriptedPart::Visited {
             self.declare::<M>();
         }
     }

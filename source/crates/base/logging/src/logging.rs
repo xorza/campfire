@@ -18,7 +18,7 @@ use tracing_subscriber::{EnvFilter, Layer, fmt};
 
 use crate::error::FilterRefused;
 use crate::log_file::{LogFile, LogLines};
-use crate::log_tap::{LogTap, TapLines};
+use crate::log_tap::LogTap;
 
 /// Where a binary logs: to standard error, as text colored only on a terminal, by `RUST_LOG`;
 /// and, when `CAMPFIRE_LOG` names a file, also there as JSON lines with their spans, by
@@ -83,7 +83,7 @@ impl Logging {
         let mut tap_filter = ChosenFilter::of(env::var("CAMPFIRE_LOG_FILTER"), self.file);
         let _ = tap_filter.add(env::var("CAMPFIRE_LOG_FILTER_EXTRA"));
         let tap = LogTap::default();
-        let tap_layer = json_lines(TapLines(tap.clone())).with_filter(
+        let tap_layer = tap.layer().with_filter(
             filter::filter_fn({
                 let tap = tap.clone();
                 move |_| tap.is_started()

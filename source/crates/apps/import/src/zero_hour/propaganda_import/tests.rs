@@ -32,11 +32,13 @@ Object Tower
 End
 ";
 
-/// The rules of a fixture's towers, and their import.
+/// The rules of a fixture's towers, their import, and the entries of the upgrades it gave each
+/// type.
 #[derive(Debug)]
 struct Towers {
     rules: ZeroHourRules,
     import: PropagandaImport,
+    upgrades: BTreeMap<TypeName, Vec<UpgradeData>>,
 }
 
 /// The towers of `towers`, of game data of an `ENTHUSIASTIC` rate of `enthusiastic`.
@@ -55,8 +57,17 @@ fn towers(towers: &str, enthusiastic: f32) -> Result<Towers, ZeroHourError> {
         names.unit_type(object, &rules).unwrap();
     }
     let names = names.into_production().into_projectiles();
-    let import = PropagandaImport::of(&rules, names.types())?;
-    Ok(Towers { rules, import })
+    let mut additions = Additions::default();
+    let import = PropagandaImport::of(&rules, names.types(), &mut additions)?;
+    let upgrades = additions
+        .iter()
+        .filter_map(|(name, added)| Some((name.clone(), added.upgrades.clone()?.0)))
+        .collect();
+    Ok(Towers {
+        rules,
+        import,
+        upgrades,
+    })
 }
 
 #[test]
@@ -64,9 +75,11 @@ fn a_tower_of_a_number_of_no_num_drops_and_the_game_datas_fails() {
     // The speaker's radius of 10⁴⁰ drops the speaker's tower alone, counted, and the carrier's
     // stays; a rate of the game data of no `Num` fails the import.
     let far = TOWERS.replacen("Radius = 150.0", "Radius = 1e40", 1);
-    let Towers { import, .. } = towers(&far, 1.25).unwrap();
+    let Towers {
+        import, upgrades, ..
+    } = towers(&far, 1.25).unwrap();
     assert_eq!(
-        import.upgrades.keys().collect::<Vec<_>>(),
+        upgrades.keys().collect::<Vec<_>>(),
         [&TypeName::named("carrier")]
     );
     assert_eq!(import.modifiers.len(), 4);
@@ -86,7 +99,11 @@ fn a_tower_of_a_number_of_no_num_drops_and_the_game_datas_fails() {
 
 #[test]
 fn a_tower_is_an_aura_of_its_heal_an_upgrade_of_its_own_type_while_built_or_of_its_carrier() {
-    let Towers { rules, import } = towers(TOWERS, 1.25).unwrap();
+    let Towers {
+        rules,
+        import,
+        upgrades,
+    } = towers(TOWERS, 1.25).unwrap();
     let declared = |name: &str| DeclaredName::new(name).unwrap();
     // The speaker's aura is an upgrade of no trigger, its upgraded aura one of `Upgrade_Slogans`,
     // both while it is no site; the carrier's, upgrades of its module's trigger, and of that and
@@ -103,7 +120,7 @@ fn a_tower_is_an_aura_of_its_heal_an_upgrade_of_its_own_type_while_built_or_of_i
         ..entry(triggers, true, &[], modifier)
     };
     assert_eq!(
-        import.upgrades,
+        upgrades,
         BTreeMap::from([
             (
                 TypeName::named("carrier"),

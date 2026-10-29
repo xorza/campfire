@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use campfire_common::DeclaredName;
 use campfire_math::{Num, Rounding};
-use campfire_script::UnknownName;
+use campfire_names::UnknownName;
 use campfire_values::{Article, DamageKind, NameId, NameKind, NameScope, Named, Names};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};

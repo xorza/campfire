@@ -4,7 +4,7 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::world::World;
 use campfire_actions::CostTarget;
 use campfire_common::Tick;
-use campfire_script::{Filter, MatchNames, TagNames};
+use campfire_names::{Filter, MatchNames, TagNames};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimSystems, SimTick, StableId};
 use campfire_stats::{Applier, CarriedMut, ModifierBook, Modifiers, Stats};

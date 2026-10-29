@@ -5,7 +5,7 @@ use bevy_ecs::query::{Changed, Or};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section};
-use campfire_script::{MatchNames, UnknownName};
+use campfire_names::{MatchNames, UnknownName};
 use campfire_sim::StableId;
 use campfire_stats::{GrantFrom, Grants, Hold, Level, ModifierBook, Modifiers};
 use campfire_values::{ModifierId, NameId, Named, PackageIndex, TrackId};

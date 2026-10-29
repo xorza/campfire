@@ -21,7 +21,7 @@ use bevy::picking::pointer::PointerId;
 use bevy::transform::components::GlobalTransform;
 use campfire_client_files::PickingFile;
 use campfire_common::ErrorReport;
-use campfire_script::{Filter, MatchNames, TagNames, UnknownName};
+use campfire_names::{Filter, MatchNames, TagNames, UnknownName};
 use campfire_sim::{StableId, Unpredicted};
 use campfire_units::{Dead, Owner, TagBook};
 use campfire_values::{Relation, TagSet, Team, UnitType};

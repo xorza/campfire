@@ -2,13 +2,13 @@ use std::any::Any;
 use std::fmt;
 
 use bevy_ecs::world::World;
+use campfire_names::{TypedItem, TypedList};
 use campfire_values::{Named, Param, Scalar};
 
 use crate::scripts::call_start::CallStart;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::script_role::ParamScope;
 use crate::scripts::script_value::ScriptValue;
-use crate::scripts::typed_list::{TypedItem, TypedList};
 
 /// A module's own extension of the call frame: what a call reads besides the core's, such as the
 /// mode's state, and what it wrote, which commits once the call succeeds. The core names none of

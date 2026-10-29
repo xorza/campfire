@@ -27,7 +27,7 @@ use campfire_states::{Replication, StateTypes};
 use campfire_values::{EngineTag, MatchScope, NameId, Named, Names};
 
 use crate::release::Release;
-use crate::release::declaring::Scripts;
+use crate::release::declaring::ScriptedPart;
 
 static CATALOG: LazyLock<ReleaseCatalog> = LazyLock::new(ReleaseCatalog::walk);
 
@@ -119,11 +119,11 @@ impl ReleaseCatalog {
     fn running(
         &self,
         set: CapabilitySet,
-        scripts: Scripts,
+        scripts: ScriptedPart,
     ) -> impl Iterator<Item = &CatalogModule> {
         self.modules.iter().filter(move |module| {
             if module.scripted {
-                scripts == Scripts::Visited
+                scripts == ScriptedPart::Visited
             } else {
                 set.runs(module.capability)
             }
@@ -131,7 +131,7 @@ impl ReleaseCatalog {
     }
 
     /// The registries of callbacks the modules of a match of `set` call or declare callbacks in.
-    pub(super) fn called(&self, set: CapabilitySet, scripts: Scripts) -> Vec<TypeId> {
+    pub(super) fn called(&self, set: CapabilitySet, scripts: ScriptedPart) -> Vec<TypeId> {
         self.running(set, scripts)
             .flat_map(|module| &self.called[module.called.clone()])
             .copied()
@@ -142,7 +142,7 @@ impl ReleaseCatalog {
     /// them.
     #[cfg(feature = "internals")]
     pub(super) fn sets(&self, set: CapabilitySet) -> Vec<InternedSystemSet> {
-        self.running(set, Scripts::Visited)
+        self.running(set, ScriptedPart::Visited)
             .flat_map(|module| &self.sets[module.sets.clone()])
             .copied()
             .collect()
@@ -286,6 +286,7 @@ impl Declarations for ReleaseCatalog {
 
     fn loaded<R: Resource>(&mut self) {}
 
+    fn package_data<R: Resource + Default>(&mut self) {}
     fn stages_run_if<M>(&mut self, _: impl SystemCondition<M> + Clone) {}
 
     fn server_part<H: Component, C: Component + Default>(&mut self) {}

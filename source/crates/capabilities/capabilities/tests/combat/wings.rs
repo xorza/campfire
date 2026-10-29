@@ -112,7 +112,7 @@ fn a_clip_that_refills_at_home_starts_nothing_once_empty_until_its_home_refills_
     };
     let action = Combat::add_weapon(&mut game, weapon);
     let slots = ActionSlots::new([(action, SlotKind::new(0), Rank::new(1))]);
-    let shooter = wielder(&mut game, slots, &[]);
+    let shooter = wielder(&mut game, slots.clone(), &[]);
     let [dummy] = load_types(&mut game, [dummy()]);
     let id = Spawn::of(shooter, (0, 0, 0)).place(&mut game);
     let target = Spawn::of(dummy, (2, 0, 0))
@@ -122,7 +122,14 @@ fn a_clip_that_refills_at_home_starts_nothing_once_empty_until_its_home_refills_
     let mut starts = Vec::new();
     for tick in 0..50 {
         if tick == 40 {
-            game.part_mut::<ClipShots>(id).refill(action, 0);
+            // Its home refills its clip whole, as a reload that ran its time does.
+            let weapons = game.resource::<ById<ActionId, Weapon>>().clone();
+            let reload = HomeReload {
+                passed: Ticks::new(1),
+                total: Ticks::new(1),
+            };
+            game.part_mut::<ClipShots>(id)
+                .reload_at_home(&slots, &weapons, reload);
         }
         game.step();
         let started = Attack::of(&game, id).started().map(Tick::get);

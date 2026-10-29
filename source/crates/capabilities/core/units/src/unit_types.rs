@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use campfire_common::DeclaredName;
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, Fact, Section, SourceKind};
-use campfire_script::{StateSchema, TagNames};
+use campfire_names::TagNames;
+use campfire_script::StateSchema;
 use campfire_values::{
     EngineTag, NameId, NameTable, Names, NamesError, PackageIndex, Scalar, Tag, TagProperties,
     TagSet, TypeScope, UnitType,

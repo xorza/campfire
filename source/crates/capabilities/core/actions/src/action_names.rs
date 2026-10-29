@@ -1,5 +1,5 @@
 use campfire_common::DeclaredName;
-use campfire_script::{Filter, NameTables, TagNames, UnknownName};
+use campfire_names::{Filter, NameTables, TagNames, UnknownName};
 use campfire_units::PoolId;
 use campfire_values::{
     FilterData, NameId, NameKey, Named, Names, PackageIndex, ResourceId, TypeScope, UnitType,

@@ -24,13 +24,13 @@ use campfire_interaction::{
     Riding, UseSlot, Using,
 };
 use campfire_math::Num;
+use campfire_names::{Filter, Filters};
 use campfire_navigation::{FlightData, Navigation, Walker};
 use campfire_orders::Orders;
 use campfire_orders::OrdersDirective;
 use campfire_players::Players;
 use campfire_script::ScriptFailures;
 use campfire_script::internals::FailedCall;
-use campfire_script::{Filter, Filters};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, MatchRate, Position, SimWorld, StableId};
 use campfire_stats::ModifierData;

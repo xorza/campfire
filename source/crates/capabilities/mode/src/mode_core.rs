@@ -6,8 +6,9 @@ use campfire_declarations::{
     BookCx, BookError, BookPlace, ById, Declarations, InstallCx, Module, NameSets, NoSystems,
     SourceKind,
 };
+use campfire_names::UnknownName;
 use campfire_navigation::{ModeNavigationData, NavigationBook, WalkCheck, Walker, WalkerBook};
-use campfire_script::{Audience, UnknownName};
+use campfire_script::Audience;
 use campfire_sim::Capability;
 use campfire_units::{BodyForm, MapBook, Variation, Variations, WallBook};
 use campfire_values::{Named, PackageIndex, Team, UnitType};

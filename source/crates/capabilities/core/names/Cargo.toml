@@ -1,0 +1,26 @@
+[package]
+name = "campfire-names"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[package.metadata.campfire]
+kind = "glue"
+
+[features]
+internals = [
+    "campfire-values/internals",
+]
+
+[dependencies]
+campfire-common.workspace = true
+campfire-values = { workspace = true, features = ["ecs"] }
+
+bevy_ecs = { workspace = true, features = ["std"] }
+thiserror = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+campfire-names = { workspace = true, features = ["internals"] }
+
+[lints]
+workspace = true

@@ -1,6 +1,6 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
-use campfire_script::UnknownName;
+use campfire_names::UnknownName;
 use campfire_stats::ModifierBook;
 use campfire_values::{DamageKind, ModifierId, Named, Names, UnitType};
 

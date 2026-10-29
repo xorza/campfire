@@ -11,9 +11,10 @@ use campfire_common::{DeclaredName, Tick, Ticks};
 use campfire_declarations::Role;
 use campfire_deliveries::{Deliveries, Delivering};
 use campfire_math::{Num, Vec3};
+use campfire_names::Filter;
 use campfire_production::Production;
 use campfire_projectiles::Projectiles;
-use campfire_script::{Filter, ScriptLimits};
+use campfire_script::ScriptLimits;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, SimComponent, SimWorld};
 use campfire_stats::{

@@ -108,7 +108,7 @@ impl PlannedBot {
 #[cfg(test)]
 mod tests {
     use campfire_bots::BotScriptError;
-    use campfire_script::UnknownName;
+    use campfire_names::UnknownName;
     use campfire_test_packages::TestMode;
     use campfire_values::{Named as _, UnitType};
 

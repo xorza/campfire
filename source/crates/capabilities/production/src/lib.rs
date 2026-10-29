@@ -116,7 +116,7 @@ pub use crate::gather_loop::gather_view::GatherView;
 pub use crate::gather_spec::GatherSpec;
 pub use crate::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeAt};
 pub use crate::held_places::HeldPlaces;
-pub use crate::made_at::MadeAt;
+pub use crate::made_at::{MadeAt, Rehome};
 pub use crate::mode_supply_data::ModeSupplyData;
 pub use crate::node::Node;
 pub use crate::node_book::{NodeBook, NodeSpec};
@@ -441,19 +441,19 @@ pub mod internals {
     use bevy_ecs::world::World;
     use campfire_actions::internals::TestAction;
     use campfire_actions::{
-        ActionData, ActionKind, ActionRange, ActionTarget, Actions, Aim, ProgressDues,
+        ActionKind, ActionRange, ActionTarget, Actions, Aim, LoadedAction, ProgressDues,
     };
-    use campfire_common::DeclaredName;
     use campfire_common::Ticks;
     use campfire_declarations::internals::BookLoad;
     use campfire_declarations::{ById, ByIdBuilder};
     use campfire_math::Num;
-    use campfire_players::ResourceAmount;
-    use campfire_script::{Filter, MatchNames};
+    use campfire_names::{Filter, MatchNames};
+    use campfire_players::{ResourceAmount, ResourceBook};
     use campfire_sim::internals::SimWorldInternals;
-    use campfire_sim::{IdAllocator, StableId};
+    use campfire_sim::{IdAllocator, MatchRate, StableId};
+    use campfire_stats::ModifierBook;
     use campfire_units::{BuildTarget, Life};
-    use campfire_values::{ActionId, ModifierId, PackageIndex, TypeScope, UnitType};
+    use campfire_values::{ActionId, ModifierId, UnitType};
 
     use crate::Production;
     use crate::build_book::{BuildBook, NewBuild};
@@ -467,7 +467,6 @@ pub mod internals {
     use crate::supply_book::SupplyBook;
     use crate::supply_cost_book::SupplyCostBook;
     use crate::supply_data::SupplyData;
-    use crate::train_data::TrainData;
     use crate::train_spec::TrainSpec;
 
     /// A build tests add: its range in meters, its time, its cost in a player resource, and what
@@ -545,28 +544,27 @@ pub mod internals {
             id
         }
 
-        /// Resolves what the train `action`, which the action book of `world` loaded from `data`
-        /// of `package`, makes, into the match's trains' book, as the load resolves it.
-        pub fn load_train(
-            world: &mut World,
-            action: ActionId,
-            data: &ActionData,
-            package: PackageIndex,
-        ) {
-            let Some(train) = data.section::<TrainData>() else {
-                return;
-            };
-            let scope = TypeScope::of_package(package);
+        /// Resolves what `loaded`, which the action book of `world` loaded, trains, researches or
+        /// gathers, into the match's books of each, as the load resolves it.
+        pub fn load_action(world: &mut World, loaded: &LoadedAction<'_>) {
+            let action = loaded.action;
+            let modifiers = world.get_resource::<ModifierBook>();
+            let research = ResearchSpec::of(loaded, modifiers).expect("a test's research resolves");
+            if let Some(spec) = research {
+                ById::<ActionId, ResearchSpec>::amend(world, |_, book| book.set(action, spec));
+            }
+            let resources = world.get_resource::<ResourceBook>();
+            let rate = *world.resource::<MatchRate>();
+            let gather = GatherSpec::of(loaded, resources, rate).expect("a test's gather resolves");
+            if let Some(spec) = gather {
+                ById::<ActionId, GatherSpec>::amend(world, |_, book| book.set(action, spec));
+            }
             let names = world.resource::<MatchNames>();
-            let named = |name: &DeclaredName| {
-                let unit_type = names.named((scope, name.as_str()));
-                unit_type.expect("a test's train makes a type of its package")
-            };
-            let spec = TrainSpec {
-                unit_type: named(&train.unit_type),
-                at_place: train.at_place,
-            };
-            ById::<ActionId, TrainSpec>::amend(world, |_, book| book.set(action, spec));
+            let train = TrainSpec::of(loaded, |scope, name| names.named((scope, name)))
+                .expect("a test's train makes a type of its package");
+            if let Some(spec) = train {
+                ById::<ActionId, TrainSpec>::amend(world, |_, book| book.set(action, spec));
+            }
         }
 
         /// Adds `build`, aimed at a point, no pool and no cooldown, to the match's action book

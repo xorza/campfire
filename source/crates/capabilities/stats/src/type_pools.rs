@@ -2,7 +2,7 @@ use campfire_declarations::{
     BookCx, BookError, BookPlace, ById, ByIdBuilder, Fact, NamesListError, SourceType,
 };
 use campfire_math::Num;
-use campfire_script::UnknownName;
+use campfire_names::UnknownName;
 use campfire_units::{Life, Meter, PoolId};
 use campfire_values::{NameId, Named, Stat, UnitType};
 

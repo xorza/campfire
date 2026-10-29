@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_declarations::Book;
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_values::{NameId, PackageIndex, UnitType};
 
 /// Where each unit type of the match comes from, by type: the package that declares it, by its

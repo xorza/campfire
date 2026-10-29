@@ -23,6 +23,8 @@ The rules of the script API. Every name, with its roles, capability and status, 
 - **Time rounds so nothing happens early.** A wait rounds up to whole ticks, a cut off a wait rounds down, and each kind of time is its own argument type.
 - **Vectors and numbers are exact.** Vector sums and scales round once; a place past the world's bound fails the call ([Numbers](03-game-scripting.md#numbers)).
 - **A read is a script of the query role, planned.** `sim_eval` with a query runs in a role `query`, whose viewer is the whole match, as a local spectator sees every unit, and enters no log.
+- **The scripts' runtime is a module of its own.** `Scripts`, first of the core after the match's own, declares the match's names, the script host within the role's budgets, the context of a call, the view of the units and its reader, the budgets, prints and failures of a tick, and the core and view API; `Units` declares the unit model and its script books. Refused: the runtime in `Units`, which tied the unit model to the host every module binds into.
+- **The match's names are no Rhai type's.** The crate `names`, below `script`, holds the match's names, tags, teams and filters, so a crate that resolves a name needs no script engine; the script view makes a script string of each name as a batch reads a change of them, and the install puts `MatchNames` in empty as package data that each book fills and a load keeps. Refused: the names under `script`'s view, which tied every resolver to Rhai; `MatchNames` as a cache, whose clear had nothing to clear; a fact, which the install never puts in (decided 2026-10-29).
 
 ## One source
 

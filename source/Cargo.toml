@@ -50,6 +50,7 @@ default-members = [
     "crates/capabilities/core/actions",
     "crates/capabilities/core/declarations",
     "crates/capabilities/core/deliveries",
+    "crates/capabilities/core/names",
     "crates/capabilities/core/players",
     "crates/capabilities/core/script",
     "crates/capabilities/core/states",
@@ -263,6 +264,7 @@ campfire-package-format = { path = "crates/session/package-format" }
 campfire-protocol = { path = "crates/session/protocol" }
 campfire-runner = { path = "crates/session/runner" }
 campfire-schedule = { path = "crates/sim/schedule" }
+campfire-names = { path = "crates/capabilities/core/names" }
 campfire-script = { path = "crates/capabilities/core/script" }
 campfire-sim = { path = "crates/sim/sim" }
 campfire-platform = { path = "crates/base/platform" }

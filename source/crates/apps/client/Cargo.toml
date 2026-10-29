@@ -23,32 +23,33 @@ internals = [
     "campfire-items/internals",
     "campfire-logging/internals",
     "campfire-math/internals",
+    "dep:campfire-measure",
     "campfire-mode/internals",
-    "campfire-net/internals",
+    "campfire-names/internals",
     "campfire-net-endpoint/internals",
     "campfire-net-socket/internals",
+    "campfire-net/internals",
     "campfire-orders/internals",
-    "campfire-package/internals",
     "campfire-package-disk/internals",
     "campfire-package-format/internals",
+    "campfire-package/internals",
     "campfire-players/internals",
-    "campfire-protocol/internals",
-    "campfire-runner/internals",
     "campfire-production/internals",
     "campfire-progression/internals",
     "campfire-projectiles/internals",
-    "campfire-script/internals",
+    "campfire-protocol/internals",
+    "campfire-runner/internals",
     "campfire-sim/internals",
     "campfire-stats/internals",
     "campfire-store/internals",
     "campfire-units/internals",
     "campfire-values/internals",
     "campfire-vision/internals",
-    "dep:campfire-measure",
     "dep:criterion",
 ]
 
 [dependencies]
+campfire-names.workspace = true
 campfire-app-threads.workspace = true
 campfire-actions.workspace = true
 campfire-areas.workspace = true
@@ -82,7 +83,6 @@ campfire-production.workspace = true
 campfire-progression.workspace = true
 campfire-projectiles.workspace = true
 campfire-runner.workspace = true
-campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-stats.workspace = true
 campfire-store.workspace = true

@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_declarations::Book;
-use campfire_script::{MatchNames, ScriptId, ScriptRole};
+use campfire_names::MatchNames;
+use campfire_script::{ScriptId, ScriptRole};
 use campfire_units::ScriptBook;
 use campfire_values::{ActionId, NameId, Names, PackageIndex, Rank};
 
@@ -179,7 +180,7 @@ impl Book for ActionBook {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use campfire_script::Filter;
+    use campfire_names::Filter;
     use campfire_units::ScriptBook;
     use campfire_values::{ActionId, NameId};
 

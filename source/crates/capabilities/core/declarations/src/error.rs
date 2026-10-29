@@ -3,7 +3,7 @@ use std::error::Error;
 use std::fmt;
 
 use campfire_common::DeclaredName;
-use campfire_script::UnknownName;
+use campfire_names::UnknownName;
 use campfire_sim::Capability;
 use campfire_values::{PackageIndex, PackageName, PackagePath};
 use thiserror::Error;

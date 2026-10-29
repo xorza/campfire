@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_declarations::{Book, BookCx, BookError, ById, ByIdBuilder};
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_values::{ActionId, NameId, UnitType};
 
 use crate::supply_data::SupplyData;

@@ -8,7 +8,7 @@ use campfire_actions::Targets;
 use campfire_declarations::{Book, BookCx, BookError, BookPlace, ById, ByIdBuilder, Section};
 use campfire_geometry::Placed;
 use campfire_math::{Num, Rounding};
-use campfire_script::{Filter, MatchNames, UnknownName};
+use campfire_names::{Filter, MatchNames, UnknownName};
 use campfire_sim::{EntityIndex, Position, StableId};
 use campfire_stats::Level;
 use campfire_units::{Deaths, Owner, UnitTypes, UnitsNear};

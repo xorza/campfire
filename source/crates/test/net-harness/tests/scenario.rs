@@ -534,6 +534,27 @@ fn a_server_stall_runs_at_most_its_bound_and_its_held_orders_apply() {
             "hero {index} on its client"
         );
     }
+}
+
+#[test]
+fn a_stall_past_its_bound_drops_the_rest_and_the_clients_step_back_to_the_server() {
+    // The lane mode at 30 ticks a second, its players ordering their heroes by hand once the
+    // clients' lead on the server settles, by tick 60.
+    let mut local = InProcessMatch::new(InProcessSetup::duo(
+        LinkModel::perfect(),
+        InProcessMatch::SEED_CHAIN,
+    ));
+    local.start_match();
+    let heroes = [local.avatar(0), local.avatar(1)];
+    let teams = [0, 1].map(|client| local.team(client).index());
+    while local.next_tick(End::Server) < 60 {
+        local.step();
+    }
+    let ran = |local: &mut InProcessMatch, ticks: u32| {
+        let before = local.next_tick(End::Server);
+        local.stall_server(ticks);
+        local.next_tick(End::Server) - before
+    };
     // A stall of 2 s, 60 ticks, runs 9, and drops the rest: the clients run 51 ticks ahead of
     // the server, past the max input lead, until the network stack steps their timelines back. Each
     // player orders its hero on: the order waits until it is within the lead of the server, its

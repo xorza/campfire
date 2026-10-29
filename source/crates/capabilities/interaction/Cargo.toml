@@ -12,6 +12,7 @@ internals = [
     "campfire-actions/internals",
     "campfire-declarations/internals",
     "campfire-math/internals",
+    "campfire-names/internals",
     "campfire-players/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
@@ -22,6 +23,7 @@ internals = [
 ]
 
 [dependencies]
+campfire-names.workspace = true
 campfire-actions.workspace = true
 campfire-common.workspace = true
 campfire-declarations.workspace = true

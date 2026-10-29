@@ -1,9 +1,10 @@
-use std::num::NonZeroU16;
+use std::num::{NonZeroU16, NonZeroU64};
 
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_actions::ActionSlots;
+use campfire_actions::{ActionSlot, ActionSlots};
+use campfire_common::Ticks;
 use campfire_declarations::ById;
 use campfire_sim::SimComponent;
 use campfire_states::{Replication, SentPredicted};
@@ -32,6 +33,22 @@ pub struct HomeClip {
     pub action: ActionId,
     pub clip: ClipRule,
     pub fired: u16,
+}
+
+impl HomeClip {
+    /// The ticks its reload takes to give back the shots it fired: its reload's share of them,
+    /// rounded up.
+    pub fn reload_ticks(&self) -> Ticks {
+        let ticks = self.clip.reload.get() * u64::from(self.fired);
+        Ticks::new(ticks.div_ceil(NonZeroU64::from(self.clip.shots).get()))
+    }
+}
+
+/// How far a reload at home went: `passed` of its `total` ticks, of more than none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HomeReload {
+    pub passed: Ticks,
+    pub total: Ticks,
 }
 
 /// A weapon's shots since its clip was last full, at least one.
@@ -72,12 +89,31 @@ impl ClipShots {
         self.fired(action) >= shots.get()
     }
 
-    /// Refills the clip of `action` to `fired` shots fired since it was full, none for a full
-    /// clip: the contract by which a unit's home refills a clip that refills there, as its reload
-    /// goes (04-capabilities/combat.md, A clip may reload at home).
-    pub fn refill(&mut self, action: ActionId, fired: u16) {
-        debug_assert!(fired <= self.fired(action), "a refill gives shots back");
-        self.set(action, fired);
+    /// Refills each clip of `slots` that refills at home, of `weapons`, by the share of `reload`
+    /// that passed: the share of its shots back, rounded down, as Zero Hour fills a clip in
+    /// proportion (`JetOrHeliReloadAmmoState::update`). The contract by which a unit's home
+    /// refills its clips as its reload goes (04-capabilities/combat.md, A clip may reload at home).
+    pub fn reload_at_home(
+        &mut self,
+        slots: &ActionSlots,
+        weapons: &ById<ActionId, Weapon>,
+        reload: HomeReload,
+    ) {
+        let HomeReload { passed, total } = reload;
+        debug_assert!(passed <= total && total > Ticks::ZERO, "a reload's share");
+        for (action, clip) in slots
+            .iter()
+            .filter_map(|slot| Self::home_clip(slot, weapons))
+        {
+            let fired = self.fired(action);
+            let shots = NonZeroU64::from(clip.shots).get();
+            let back = u16::try_from(shots * passed.get() / total.get())
+                .expect("a share of a clip's shots fits");
+            let left = fired.min(clip.shots.get() - back);
+            if left != fired {
+                self.set(action, left);
+            }
+        }
     }
 
     /// The clips of the weapons in `slots` that refill at home, each of `weapons`, at its slot's
@@ -89,14 +125,24 @@ impl ClipShots {
         weapons: &'a ById<ActionId, Weapon>,
     ) -> impl Iterator<Item = HomeClip> + 'a {
         slots.iter().filter_map(move |slot| {
-            let action = slot.action?;
-            let clip = weapons.get(action)?.clip(&[], slot.rank?)?;
-            (clip.refill == ClipRefill::Home).then(|| HomeClip {
+            let (action, clip) = Self::home_clip(slot, weapons)?;
+            Some(HomeClip {
                 action,
                 clip,
                 fired: self.fired(action),
             })
         })
+    }
+
+    /// The weapon of `slot` and its clip at the slot's rank, of `weapons`, when the clip refills at
+    /// home.
+    fn home_clip(
+        slot: ActionSlot,
+        weapons: &ById<ActionId, Weapon>,
+    ) -> Option<(ActionId, ClipRule)> {
+        let action = slot.action?;
+        let clip = weapons.get(action)?.clip(&[], slot.rank?)?;
+        (clip.refill == ClipRefill::Home).then_some((action, clip))
     }
 
     /// Sets the shots `action` fired since its clip was full, removing a full clip's.

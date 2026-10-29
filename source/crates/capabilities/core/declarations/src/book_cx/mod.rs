@@ -4,7 +4,9 @@ use std::{fmt, mem};
 
 use std::sync::Arc;
 
-use campfire_script::{NameTables, ScriptId};
+use campfire_script::ScriptId;
+
+use campfire_names::NameTables;
 use campfire_sim::{Capability, MatchRate};
 use campfire_values::{
     MatchScope, NameId, Named, Names, PackageIndex, PackagePath, ScriptSource, TypeScope, UnitType,

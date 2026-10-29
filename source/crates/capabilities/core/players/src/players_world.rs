@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::{Mut, World};
 use campfire_common::PlayerSlot;
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_sim::{SimWorld, StableId};
 use campfire_units::Owner;
 use campfire_values::ResourceId;

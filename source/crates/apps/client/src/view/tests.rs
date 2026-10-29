@@ -20,8 +20,8 @@ use campfire_common::{DeclaredName, Tick};
 use campfire_declarations::{ById, ByIdBuilder};
 use campfire_geometry::{Bounds, Metric};
 use campfire_math::Num;
+use campfire_names::MatchNames;
 use campfire_projectiles::{Flight, Payload};
-use campfire_script::MatchNames;
 use campfire_sim::IdAllocator;
 use campfire_units::{
     BodyForm, BodyShape, HeightGrid, Layer, TypeOrigin, TypeOriginBook, Variations,

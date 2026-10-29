@@ -1,8 +1,8 @@
 use campfire_values::{FilterData, Relation, TagSet};
 
-use crate::scripts::error::UnknownName;
-use crate::scripts::view::filter::Filter;
-use crate::scripts::view::tag_names::TagNames;
+use crate::error::UnknownName;
+use crate::filter::Filter;
+use crate::tag_names::TagNames;
 
 /// Filters as a match runs them, which select a unit when any one of them does, as 0 A.D.'s class
 /// lists and OpenRA's `ValidTargets` select by any one term; none of them selects no unit.

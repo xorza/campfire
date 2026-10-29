@@ -3,8 +3,8 @@ use campfire_values::{
     TagSet,
 };
 
-use crate::scripts::error::{ApiError, UnknownName};
-use crate::scripts::view::tag_names::TagNames;
+use crate::error::UnknownName;
+use crate::tag_names::TagNames;
 
 /// A filter as a match runs it: a set of relations, the tags a unit must have, and those it must
 /// not, among them each tag that a filter selects only when it names it, as a delivery's, but one
@@ -17,11 +17,12 @@ pub struct Filter {
 }
 
 impl Filter {
-    /// The filter `text` names, with its tags among the match's.
-    pub fn parse(text: &str, tags: &TagNames) -> Result<Self, ApiError> {
-        let syntax = FilterSyntax::parse(text).ok_or(ApiError::Unknown(Self::NAMES))?;
+    /// The filter `text` names, with its tags among the match's; the kind of the name it does
+    /// not read, a filter's or a tag's.
+    pub fn parse(text: &str, tags: &TagNames) -> Result<Self, NameKind> {
+        let syntax = FilterSyntax::parse(text).ok_or(Self::NAMES)?;
         let terms = syntax.tags().map(|term| (term.name, term.negated));
-        Self::of(syntax.relations, terms, tags).ok_or(ApiError::Unknown(Tag::NAMES))
+        Self::of(syntax.relations, terms, tags).ok_or(Tag::NAMES)
     }
 
     /// The run-time form of `filter`, data's, with its tags among the match's; an error that
@@ -107,8 +108,8 @@ pub(crate) mod internals {
     use bevy_ecs::world::World;
     use campfire_values::RelationSet;
 
-    use crate::scripts::view::filter::Filter;
-    use crate::scripts::view::match_names::MatchNames;
+    use crate::filter::Filter;
+    use crate::match_names::MatchNames;
 
     impl Filter {
         /// The filter of `relations` alone, of the tags of the match `world` holds.

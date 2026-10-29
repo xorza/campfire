@@ -4,10 +4,10 @@ use bevy_ecs::query::With;
 use bevy_ecs::system::SystemState;
 use campfire_combat::{Combat, DamageCause};
 use campfire_geometry::{Bounds, Grid, Polygon};
+use campfire_names::Filter;
 use campfire_navigation::{Navigation, Walker};
 use campfire_orders::OrdersDirective;
 use campfire_production::internals::TestBuild;
-use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position, SnapshotError};
 use campfire_units::{
     BuildTarget, Deaths, GroundPoint, Leader, Life, LivingSpawns, MapBook, SeenBy, SpawnOf,

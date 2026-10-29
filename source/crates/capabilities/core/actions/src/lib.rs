@@ -323,8 +323,9 @@ pub mod internals {
     use campfire_common::Ticks;
     use campfire_declarations::internals::BookLoad;
     use campfire_math::Num;
+    use campfire_names::MatchNames;
     use campfire_players::ResourceAmount;
-    use campfire_script::{HookSet, MatchNames};
+    use campfire_script::HookSet;
     use campfire_sim::Capability;
     use campfire_units::PoolCost;
     use campfire_values::{ActionId, Distance, PackageIndex, UnitType};

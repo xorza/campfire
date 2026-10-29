@@ -2,7 +2,7 @@ use bevy_ecs::change_detection::Mut;
 use bevy_ecs::component::Immutable;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 
 use crate::role::Role;
 

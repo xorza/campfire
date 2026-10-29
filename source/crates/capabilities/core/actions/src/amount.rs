@@ -1,6 +1,7 @@
 use campfire_common::Ticks;
 use campfire_math::Num;
-use campfire_script::{Frame, UnknownName};
+use campfire_names::UnknownName;
+use campfire_script::Frame;
 use campfire_sim::MatchRate;
 use campfire_values::Number;
 

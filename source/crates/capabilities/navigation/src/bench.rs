@@ -192,7 +192,7 @@ impl WalledScene {
     /// stand where they are: a crowd a route prices or walls.
     fn crowd(&self) -> CrowdCosts {
         let walkers = WalkerKinds::from([self.walker]);
-        let mut costs = CrowdCosts::new(self.cells, &walkers);
+        let mut costs = CrowdCosts::new(self.cells, &walkers, []);
         let bodies = scene(9, KernelScene::UNITS, self.span, 1, false);
         costs.update(
             bodies

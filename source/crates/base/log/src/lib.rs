@@ -6,11 +6,13 @@ mod json_layer;
 mod json_text;
 mod log_event;
 mod log_line;
+mod log_record;
 
 pub use crate::json_layer::{check_layer, json_lines};
 pub use crate::json_text::JsonText;
 pub use crate::log_event::LogEvent;
 pub use crate::log_line::{LogLevel, LogLine};
+pub use crate::log_record::{LogFieldsError, LogRecord, LogValue, RecordLayer};
 
 #[cfg(feature = "internals")]
 pub mod internals {

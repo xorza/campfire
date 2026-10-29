@@ -9,6 +9,7 @@ use campfire_projectiles::{ProjectileData, ProjectileDeliveryData};
 use campfire_values::{FilterTag, Number, Stat, TagFilterData};
 use serde::Serialize;
 
+use crate::zero_hour::additions::Additions;
 use crate::zero_hour::combat_import::converted_shot::{ConvertedShot, WeaponShot};
 use crate::zero_hour::dropped::Losses;
 use crate::zero_hour::error::ZeroHourError;
@@ -20,7 +21,6 @@ use crate::zero_hour::format::ini::weapon_ini::WeaponIni;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::{NamedType, ProjectileNames};
 use crate::zero_hour::imported_type::ImportedType;
-use crate::zero_hour::model_bones::ModelBones;
 use crate::zero_hour::portable_structure;
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::type_name::TypeName;
@@ -43,18 +43,16 @@ use crate::zero_hour::combat_import::weapon_gate::{GatedWeapon, WeaponGate};
 /// their upgrades' damage bonuses name, each with what a `WeaponBonusUpgrade` adds to it; every
 /// armor, the share of each damage kind it does not take whole; the weapons dropped, each once for
 /// each cause, in the order the types are read; the objects whose body the import gives no life,
-/// and those whose body starts below its most life; each type's actions of the slot kind `weapon`,
-/// by its name, which it returns, and the same actions by the place of their slot in its sets,
-/// which its look's attack conditions test; the projectile types of a weapon's own, each with the
-/// object whose look it takes; and the modifiers of the weapons' stages of continuous fire.
+/// and those whose body starts below its most life; the projectile types of a weapon's own, each
+/// with the object whose look it takes; and the modifiers of the weapons' stages of continuous
+/// fire. It gives each type its actions of the slot kind `weapon`, and the same actions by the
+/// place of their slot in its sets, which its look's attack conditions test, as additions.
 #[derive(Debug, Default)]
 pub(crate) struct CombatImport {
     pub(crate) actions: BTreeMap<DeclaredName, ImportedWeapon>,
     /// The game's weapon each action converts, by the action.
     sources: BTreeMap<DeclaredName, String>,
     pub(crate) modifiers: BTreeMap<DeclaredName, StageModifier>,
-    pub(crate) weapons: BTreeMap<TypeName, Vec<DeclaredName>>,
-    pub(crate) weapon_slots: BTreeMap<TypeName, Vec<Vec<DeclaredName>>>,
     /// The types a weapon of their starting set arms.
     armed: BTreeSet<TypeName>,
     pub(crate) bonuses: BTreeMap<Stat, Number>,
@@ -173,14 +171,16 @@ impl CombatImport {
         self.armed.contains(unit)
     }
 
-    /// The combat of `rules`, of the unit types `names` made, each type's weapons by its name;
-    /// the projectile types its weapons fire join `names`. An error for a type whose armor no file
+    /// The combat of `rules`, of the unit types `names` made, each type's weapons given it in
+    /// `additions`; the projectile types its weapons fire join `names`. An error for a type whose
+    /// armor no file
     /// defines by the name of its case, which the game's debug build stops at as wrong data and
     /// its release build takes as no armor (`INI::parseArmorTemplate`), and for a projectile
     /// type's name another object took.
     pub(crate) fn of<'r>(
         rules: &'r ZeroHourRules,
         names: &mut ProjectileNames<'r>,
+        additions: &mut Additions,
     ) -> Result<Self, ZeroHourError> {
         let mut import = Self::default();
         let mut armors = BTreeMap::new();
@@ -329,7 +329,8 @@ impl CombatImport {
                                 import.modifiers.extend(converted.modifiers);
                             }
                         }
-                        let slots = import.weapon_slots.entry(type_name.clone()).or_default();
+                        let added = additions.type_mut(type_name);
+                        let slots = &mut added.weapon_slots;
                         let place = offset + slot;
                         if slots.len() <= place {
                             slots.resize_with(place + 1, Vec::new);
@@ -337,9 +338,8 @@ impl CombatImport {
                         if !slots[place].contains(&id) {
                             slots[place].push(id.clone());
                         }
-                        let weapons = import.weapons.entry(type_name.clone()).or_default();
-                        if !weapons.contains(&id) {
-                            weapons.push(id);
+                        if !added.weapons.contains(&id) {
+                            added.weapons.push(id);
                         }
                         if gate != WeaponGate::Upgraded && carried.is_none() {
                             import.armed.insert(type_name.clone());
@@ -448,18 +448,24 @@ impl CombatImport {
 
     /// Gives each projectile type named for its weapon, in the unit looks `looks`, the look of the
     /// object it fires, when that object has one; then each type's look its weapons by the places
-    /// of their slots, which its attack conditions test (09-zero-hour.md, A condition is the game's
-    /// name for a test).
-    pub(crate) fn complete_looks(&self, looks: &mut BTreeMap<DeclaredName, ClientUnit>) {
+    /// of their slots in `additions`, which its attack conditions test (09-zero-hour.md, A
+    /// condition is the game's name for a test).
+    pub(crate) fn complete_looks(
+        &self,
+        additions: &Additions,
+        looks: &mut BTreeMap<DeclaredName, ClientUnit>,
+    ) {
         for ProjectileLook { unit_type, object } in &self.projectile_looks {
             if let Some(look) = looks.get(object.declared()) {
                 let look = look.clone();
                 looks.insert(unit_type.declared().clone(), look);
             }
         }
-        for (unit_type, slots) in &self.weapon_slots {
-            if let Some(look) = looks.get_mut(unit_type.declared()) {
-                look.weapons.clone_from(slots);
+        for (unit_type, added) in additions {
+            if let Some(look) = looks.get_mut(unit_type.declared())
+                && !added.weapon_slots.is_empty()
+            {
+                look.weapons.clone_from(&added.weapon_slots);
             }
         }
     }
@@ -501,21 +507,17 @@ impl CombatImport {
             .collect()
     }
 
-    /// The barrels of each type's weapons that fire a projectile: of each weapon slot of the type,
-    /// the barrels its model's bones give the slot, as Zero Hour launches the slot's weapon of
-    /// each set from them (04-capabilities/combat.md, A shot leaves its weapon's barrel); a weapon
-    /// in two slots takes the first's.
-    pub(crate) fn barrels(
-        &self,
-        bones: &BTreeMap<TypeName, ModelBones>,
-    ) -> BTreeMap<TypeName, BarrelsData> {
-        let mut barrels = BTreeMap::new();
-        for (unit_type, slots) in &self.weapon_slots {
-            let Some(bones) = bones.get(unit_type) else {
+    /// Gives each type of `additions` the barrels of its weapons that fire a projectile: of each
+    /// weapon slot of the type, the barrels its model's bones give the slot, as Zero Hour launches
+    /// the slot's weapon of each set from them (04-capabilities/combat.md, A shot leaves its
+    /// weapon's barrel); a weapon in two slots takes the first's.
+    pub(crate) fn barrels(&self, additions: &mut Additions) {
+        for (_, added) in additions.iter_mut() {
+            let Some(bones) = &added.bones else {
                 continue;
             };
             let mut of_type = BarrelsData::default();
-            let slotted = slots.iter().zip(&bones.barrels);
+            let slotted = added.weapon_slots.iter().zip(&bones.barrels);
             for (weapons, of_slot) in slotted.filter(|(_, of_slot)| !of_slot.is_empty()) {
                 let launches = |weapon: &&DeclaredName| {
                     let fired = self.actions.get(*weapon);
@@ -529,10 +531,9 @@ impl CombatImport {
                 }
             }
             if !of_type.0.is_empty() {
-                barrels.insert(unit_type.clone(), of_type);
+                added.barrels = Some(of_type);
             }
         }
-        barrels
     }
 }
 
@@ -548,19 +549,13 @@ impl FiredProjectile<'_> {
 
 #[cfg(test)]
 pub(crate) mod reach_in {
-    use campfire_common::DeclaredName;
-
     use crate::zero_hour::combat_import::CombatImport;
     use crate::zero_hour::type_name::TypeName;
 
     impl CombatImport {
-        /// Gives `unit` the weapon `weapon`, of its starting set when `starting`, else of its
-        /// upgrade set alone, as the conversion of its object's sets gives it.
-        pub(crate) fn give(&mut self, unit: TypeName, weapon: DeclaredName, starting: bool) {
-            if starting {
-                self.armed.insert(unit.clone());
-            }
-            self.weapons.entry(unit).or_default().push(weapon);
+        /// Arms `unit` as it starts, as a weapon of its starting set the conversion gives it does.
+        pub(crate) fn arm(&mut self, unit: TypeName) {
+            self.armed.insert(unit);
         }
     }
 }

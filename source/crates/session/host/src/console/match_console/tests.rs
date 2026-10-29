@@ -1,8 +1,24 @@
 use bevy_state::state::{NextState, State};
 use campfire_common::Tick;
 use campfire_console::{FailedScriptCall, ScriptFailureCount};
+use campfire_log::{LogLevel, LogRecord, LogValue};
 
 use super::*;
+
+/// The record of a call of `on_think` that failed in tick `tick`, as the tap takes it.
+fn failed_call(tick: u64) -> LogRecord {
+    let text = |text: &str| LogValue::Text(text.to_owned());
+    LogRecord {
+        level: LogLevel::Warn,
+        target: "campfire_runner",
+        fields: vec![
+            ("message", text("a script call failed and changed nothing")),
+            ("tick", LogValue::Unsigned(tick)),
+            ("hook", text("on_think")),
+            ("error", text("no")),
+        ],
+    }
+}
 
 /// A server in its lobby with no match, its console's pace `pace`, its tap having seen a call
 /// fail.
@@ -13,10 +29,8 @@ fn lobby(pace: Option<Arc<Pace>>) -> World {
     world.init_resource::<Time<Real>>();
     world.init_resource::<Time<Fixed>>();
     let seen = Arc::new(Mutex::new(LogSeen::default()));
-    let failed = r#"{"level":"WARN","target":"campfire_runner","fields":{"message":"a script call failed and changed nothing","tick":3,"hook":"on_think","error":"no"}}"#;
-    seen.lock()
-        .unwrap()
-        .see(&campfire_log::LogLine::parse(failed).unwrap());
+    let failed = failed_call(3);
+    seen.lock().unwrap().see(&failed);
     world.insert_resource(MatchConsole::new(pace, seen));
     world
 }
@@ -218,11 +232,8 @@ fn a_run_plays_until_its_end_and_pauses_there() {
         [run(RunTo::Until(RunCondition::ScriptFailure), None)],
     );
     assert_eq!(held(&mut world), []);
-    let failed = r#"{"level":"WARN","target":"campfire_runner","fields":{"message":"a script call failed and changed nothing","tick":6,"hook":"on_think","error":"no"}}"#;
-    world
-        .resource::<MatchConsole>()
-        .seen()
-        .see(&campfire_log::LogLine::parse(failed).unwrap());
+    let failed = failed_call(6);
+    world.resource::<MatchConsole>().seen().see(&failed);
     assert_eq!(
         answered(held(&mut world)),
         [ConsoleAnswer::Ran(RunStop::Held)]

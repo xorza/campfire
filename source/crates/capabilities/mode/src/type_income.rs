@@ -1,7 +1,7 @@
 use campfire_common::Ticks;
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
+use campfire_names::UnknownName;
 use campfire_players::ResourceBook;
-use campfire_script::UnknownName;
 use campfire_stats::StatBook;
 use campfire_units::StatId;
 use campfire_values::{Named, ResourceId, UnitType};

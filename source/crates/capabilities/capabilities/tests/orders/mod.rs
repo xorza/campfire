@@ -17,6 +17,7 @@ use campfire_declarations::internals::BookLoad;
 use campfire_geometry::{Bounds, Grid};
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
+use campfire_names::{Filter, TagNames};
 use campfire_navigation::{
     Navigation, OnPath, PathArrival, PathArrivals, PathEnd, PathWalk, PathWalker, Paths, Route,
     RoutePlanner, Walker, WalkerOnPath,
@@ -24,9 +25,7 @@ use campfire_navigation::{
 use campfire_orders::*;
 use campfire_players::{CommandedUnits, OrderUnits, OutOfPlay, Players, PlayersWorld, Selecting};
 use campfire_production::Production;
-use campfire_script::{
-    ApiError, CapabilityRefusal, FailureKind, Filter, ScriptFailures, ScriptLimits, TagNames,
-};
+use campfire_script::{ApiError, CapabilityRefusal, FailureKind, ScriptFailures, ScriptLimits};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
     Addressee, Capability, Command, IdAllocator, Position, SimComponent, SimTick, StableId,

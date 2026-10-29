@@ -1,9 +1,10 @@
 //! A moment on an app's network clock.
 
-#[cfg(feature = "reflect")]
-use bevy_reflect::Reflect;
 use core::ops::{Add, AddAssign, Sub};
 use core::time::Duration;
+
+#[cfg(feature = "reflect")]
+use bevy_reflect::Reflect;
 
 /// A moment on an app's network clock: the time since the app's first update, in nanoseconds
 /// (11-net-stack/time.md, The stack's own `Instant`, a `Duration` since the app's first update).

@@ -10,9 +10,9 @@ kind = "glue"
 
 [features]
 internals = [
-    "dep:campfire-measure",
     "campfire-abilities/internals",
     "campfire-actions/internals",
+    "campfire-airfields/internals",
     "campfire-areas/internals",
     "campfire-codec/internals",
     "campfire-combat/internals",
@@ -20,13 +20,14 @@ internals = [
     "campfire-deliveries/internals",
     "dep:campfire-geometry",
     "campfire-geometry/internals",
-    "campfire-airfields/internals",
     "campfire-interaction/internals",
     "campfire-items/internals",
     "dep:campfire-log",
     "campfire-log/internals",
     "campfire-math/internals",
+    "dep:campfire-measure",
     "campfire-mode/internals",
+    "campfire-names/internals",
     "campfire-navigation/internals",
     "campfire-orders/internals",
     "campfire-players/internals",
@@ -44,6 +45,7 @@ internals = [
 ]
 
 [dependencies]
+campfire-names.workspace = true
 campfire-abilities.workspace = true
 campfire-actions.workspace = true
 campfire-areas.workspace = true

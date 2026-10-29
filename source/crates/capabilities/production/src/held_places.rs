@@ -64,13 +64,6 @@ impl HeldPlaces {
         self.0.get(usize::from(place)).copied().flatten()
     }
 
-    /// Holds the free place `place` for `unit`, a unit of another producer that lost its own: the
-    /// contract by which an airfield takes in a unit of a gone one (04-capabilities/airfields.md, A
-    /// jet goes home).
-    pub fn hold_for(&mut self, place: u8, unit: StableId) {
-        self.hold(place, unit);
-    }
-
     /// Holds the free place `place` for `unit`.
     pub(crate) fn hold(&mut self, place: u8, unit: StableId) {
         let held = &mut self.0[usize::from(place)];

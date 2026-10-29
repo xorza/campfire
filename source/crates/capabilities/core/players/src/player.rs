@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_declarations::{EntityKind, KindAudience};
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_sim::{KindMarker, SimComponent, StableId};
 use campfire_states::{Replication, SentOnce};
 use campfire_units::EntityKinds;

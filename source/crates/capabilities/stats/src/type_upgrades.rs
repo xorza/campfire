@@ -1,6 +1,6 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
-use campfire_script::{Filter, UnknownName};
+use campfire_names::{Filter, UnknownName};
 use campfire_units::{Life, UnitTypes};
 use campfire_values::{ModifierId, Named, PackageIndex, Share, TagSet, UnitType};
 
@@ -147,7 +147,7 @@ impl PerId<UnitType> for TypeUpgrades {
 #[cfg(test)]
 mod tests {
     use campfire_math::Num;
-    use campfire_script::TagNames;
+    use campfire_names::TagNames;
 
     use super::*;
 

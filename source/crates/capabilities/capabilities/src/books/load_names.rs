@@ -4,7 +4,7 @@ use campfire_actions::CostTarget;
 use campfire_common::DeclaredName;
 use campfire_declarations::{BookCx, BookError, NameSets, NamedScripts, NamedTexts, StateFields};
 use campfire_mode::{ChoiceId, MapData, ModeData, TimerId};
-use campfire_script::{Filter, NameTables};
+use campfire_names::{Filter, NameTables};
 use campfire_units::{PoolId, TypeParamsData};
 use campfire_values::{ActionId, ModifierId, NameKind, Named, Names, Param, ResourceId, TextId};
 

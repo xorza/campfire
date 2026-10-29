@@ -8,7 +8,7 @@ use bevy::math::Rect;
 use campfire_client_files::{
     GridCell, HudFile, Key, PanelButton, PanelCommand, PanelGrid, PanelIcon,
 };
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_units::TypeOriginBook;
 use campfire_values::{ActionId, NameId, PackageIndex, PackagePath, UnitType};
 use tracing::error;

@@ -1,11 +1,11 @@
 use campfire_common::Tick;
 use campfire_geometry::{Bounds, Metric, Radius};
 use campfire_math::SplitMix64;
+use campfire_names::TagNames;
 use campfire_sim::IdAllocator;
 use campfire_values::{Relation, Relations, UnitTags, UnitType, VisionShare};
 
 use super::*;
-use crate::scripts::view::tag_names::TagNames;
 use crate::scripts::view::view_rows::ReadOf;
 
 /// The tags of these tests, and the filters they parse of them.

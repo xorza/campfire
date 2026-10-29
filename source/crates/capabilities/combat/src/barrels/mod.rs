@@ -3,7 +3,7 @@ use std::ops::Range;
 use campfire_actions::{ActionBook, ShotLaunch};
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
 use campfire_math::{Num, SinCos, Vec3};
-use campfire_script::UnknownName;
+use campfire_names::UnknownName;
 use campfire_units::Facing;
 use campfire_values::{ActionId, Named, UnitType};
 

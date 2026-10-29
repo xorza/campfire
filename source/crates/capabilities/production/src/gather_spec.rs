@@ -5,6 +5,7 @@ use campfire_common::Ticks;
 use campfire_declarations::{BookCx, BookError, ById, ByIdBuilder, PerId};
 use campfire_math::Num;
 use campfire_players::ResourceBook;
+use campfire_sim::MatchRate;
 use campfire_values::{ActionId, Distance, ResourceId, TimeTooLarge};
 
 use crate::Production;
@@ -35,26 +36,35 @@ impl GatherSpec {
         let resources = cx.book_if::<ResourceBook>()?;
         let mut book = ByIdBuilder::default();
         for action in LoadedAction::all(cx)? {
-            let Some(data) = action.section::<GatherData>() else {
-                continue;
-            };
-            let resource = Production::resource(resources, &data.resource);
-            let unit = data.unit.unwrap_or(data.take);
-            if unit > data.take {
-                return Err(action.broken(ProductionDataError::UnitPastTake));
+            if let Some(spec) = Self::of(&action, resources, cx.rate())? {
+                book.set(action.action, spec);
             }
-            let deliver = cx.rate().ticks(data.deliver_ms.unwrap_or(0));
-            book.set(
-                action.action,
-                Self {
-                    resource: resource.map_err(|name| action.unknown(name))?,
-                    take: data.take,
-                    unit,
-                    bounce: data.bounce.map_or(Num::ZERO, Distance::get),
-                    deliver: deliver.ok_or_else(|| action.broken(TimeTooLarge))?,
-                },
-            );
         }
         Ok(book.build())
+    }
+
+    /// What `action` gathers, of the player resources `resources`, in a match at `rate`, when it
+    /// is a gather; an error as `book` gives one.
+    pub(crate) fn of(
+        action: &LoadedAction<'_>,
+        resources: Option<&ResourceBook>,
+        rate: MatchRate,
+    ) -> Result<Option<Self>, BookError> {
+        let Some(data) = action.section::<GatherData>() else {
+            return Ok(None);
+        };
+        let resource = Production::resource(resources, &data.resource);
+        let unit = data.unit.unwrap_or(data.take);
+        if unit > data.take {
+            return Err(action.broken(ProductionDataError::UnitPastTake));
+        }
+        let deliver = rate.ticks(data.deliver_ms.unwrap_or(0));
+        Ok(Some(Self {
+            resource: resource.map_err(|name| action.unknown(name))?,
+            take: data.take,
+            unit,
+            bounce: data.bounce.map_or(Num::ZERO, Distance::get),
+            deliver: deliver.ok_or_else(|| action.broken(TimeTooLarge))?,
+        }))
     }
 }

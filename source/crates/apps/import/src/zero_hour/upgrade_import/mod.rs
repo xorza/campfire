@@ -6,6 +6,7 @@ use campfire_stats::{UpgradeData, UpgradesData};
 use campfire_values::{Number, Stat};
 use serde::Serialize;
 
+use crate::zero_hour::additions::Additions;
 use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::dropped::Losses;
 use crate::zero_hour::error::{NameError, ZeroHourError};
@@ -17,23 +18,22 @@ use crate::zero_hour::import_names::NamedType;
 use crate::zero_hour::portable_structure;
 use crate::zero_hour::production_import::ProductionImport;
 use crate::zero_hour::propaganda_import::PropagandaImport;
-use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::upgrade_drop_cause::UpgradeDropCause;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// Zero Hour's upgrades (04-capabilities/production.md, An upgrade is a modifier;
 /// 04-capabilities/stats.md, A unit type takes modifiers by upgrades; 09-zero-hour.md, Zero Hour's
 /// upgrade flags are tags and stats): the modifier of each upgrade a research gives or a module
-/// names, which gives nothing of its own; each unit type's `upgrades`, an entry of each of its
-/// object's modules that converts; the modifiers of their effects, each shared by the modules of
-/// one first trigger and one effect, but for a second life of one type, which adds as the
-/// original's second module does; how many modules convert; and the modules and objects of sets
-/// dropped, each once for each cause, in the order the types are named.
+/// names, which gives nothing of its own; the modifiers of the effects of the types' modules, each
+/// shared by the modules of one first trigger and one effect, but for a second life of one type,
+/// which adds as the original's second module does; how many modules convert; and the modules and
+/// objects of sets dropped, each once for each cause, in the order the types are named. It gives
+/// each unit type its `upgrades`, an entry of each of its object's modules that converts, as
+/// additions.
 #[derive(Debug, Default)]
 pub(crate) struct UpgradeImport {
     pub(crate) upgrades: BTreeSet<DeclaredName>,
     pub(crate) effects: BTreeMap<DeclaredName, EffectModifier>,
-    pub(crate) types: BTreeMap<TypeName, UpgradesData>,
     pub(crate) modules: usize,
     pub(crate) dropped: Losses<UpgradeDropCause>,
 }
@@ -46,6 +46,15 @@ pub(crate) struct EffectModifier {
     tags: Vec<DeclaredName>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     stats: BTreeMap<Stat, Number>,
+}
+
+/// What the upgrades' conversion reads: the rules, the researches production converted, and the
+/// weapons combat converted.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct UpgradeSources<'a> {
+    pub(crate) rules: &'a ZeroHourRules,
+    pub(crate) production: &'a ProductionImport,
+    pub(crate) combat: &'a CombatImport,
 }
 
 /// What a module's conversion reads: the rules, and the stats of the weapons' damage bonuses,
@@ -80,28 +89,27 @@ impl EffectModifier {
 }
 
 impl UpgradeImport {
-    /// Takes the propaganda towers' entries of `propaganda` into its types' `upgrades`, after each
-    /// type's own, and the upgrades they name (riders-and-upgrades.md, A propaganda tower is an
-    /// aura).
+    /// Takes the upgrades the propaganda towers' entries of `propaganda` name
+    /// (riders-and-upgrades.md, A propaganda tower is an aura).
     pub(crate) fn take_propaganda(&mut self, propaganda: &PropagandaImport) {
-        for (unit_type, entries) in &propaganda.upgrades {
-            let held = self.types.entry(unit_type.clone());
-            let held = held.or_insert_with(|| UpgradesData(Vec::new()));
-            held.0.extend(entries.iter().cloned());
-        }
         self.upgrades.extend(propaganda.named.iter().cloned());
     }
 
-    /// The upgrades of `rules`: the modifier of each research of `production`, and each module of
-    /// the objects of `types` that converts, of the damage bonuses of `combat`'s weapons. An error
-    /// for two upgrades whose names give one modifier's, and for an effect's modifier of the name
-    /// of an upgrade's or of a stage's of `combat`, as one table holds them.
+    /// The upgrades of `sources`' rules: the modifier of each research of its production, and
+    /// each module of the objects of `types` that converts, of the damage bonuses of its combat's
+    /// weapons, each type's entries given it in `additions`. An error for two upgrades whose names
+    /// give one modifier's, and for an effect's modifier of the name of an upgrade's or of a
+    /// stage's of its combat, as one table holds them.
     pub(crate) fn of<'n, 'r: 'n>(
-        rules: &ZeroHourRules,
+        sources: UpgradeSources<'_>,
         types: impl Iterator<Item = NamedType<'n, 'r>>,
-        production: &ProductionImport,
-        combat: &CombatImport,
+        additions: &mut Additions,
     ) -> Result<Self, ZeroHourError> {
+        let UpgradeSources {
+            rules,
+            production,
+            combat,
+        } = sources;
         let mut named = BTreeSet::new();
         for upgrade in rules.upgrades.names() {
             let name = ImportName::latin(upgrade).declared();
@@ -144,7 +152,7 @@ impl UpgradeImport {
             }
             import.modules += entries.len();
             if !entries.is_empty() {
-                import.types.insert(name.clone(), UpgradesData(entries));
+                additions.type_mut(name).upgrades = Some(UpgradesData(entries));
             }
         }
         let mut names = import.upgrades.iter().chain(import.effects.keys());

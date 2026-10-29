@@ -13,6 +13,7 @@ internals = [
     "campfire-declarations/internals",
     "campfire-geometry/internals",
     "campfire-math/internals",
+    "campfire-names/internals",
     "campfire-navigation/internals",
     "campfire-players/internals",
     "campfire-script/internals",
@@ -25,6 +26,7 @@ internals = [
 ]
 
 [dependencies]
+campfire-names.workspace = true
 campfire-actions.workspace = true
 campfire-common.workspace = true
 campfire-declarations.workspace = true

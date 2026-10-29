@@ -18,7 +18,7 @@ use campfire_client_files::{
 use campfire_common::DeclaredName;
 use campfire_declarations::ById;
 use campfire_math::Num;
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_units::{TypeOriginBook, Variation, Variations};
 use campfire_values::{ActionId, NameId, PackageIndex, Tag, TagSet, UnitType};
 use tracing::error;

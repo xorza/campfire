@@ -2,7 +2,7 @@ use bevy_ecs::resource::Resource;
 use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section, Sections};
 use campfire_geometry::{Grid, Polygon};
 use campfire_math::Num;
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_units::MapBook;
 use campfire_values::{PackageIndex, Team};
 

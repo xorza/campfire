@@ -52,6 +52,7 @@ pub(crate) mod internals {
     use crate::json_layer::json_lines;
     use crate::log_event::LogEvent;
     use crate::log_line::LogLine;
+    use crate::log_record::{LogRecord, RecordLayer};
     use campfire_common::ErrorReport;
 
     /// Asserts that `event` logs one JSON line, which reads back as `event`.
@@ -61,6 +62,19 @@ pub(crate) mod internals {
         let line = LogLine::parse(&lines[0]).unwrap();
         let read = line.read::<E>().expect("the line is the event");
         assert_eq!(read.as_ref().ok(), Some(event), "{}: {read:?}", lines[0]);
+        // Its record, as a console's tap takes it, reads back as the event too.
+        let records = Arc::new(Mutex::new(Vec::new()));
+        let taken = Arc::clone(&records);
+        let layer = RecordLayer::new(move |record: &LogRecord| {
+            taken.lock().unwrap().push(record.clone());
+        });
+        subscriber::with_default(tracing_subscriber::registry().with(layer), || event.log());
+        let records = records.lock().unwrap();
+        let [record] = records.as_slice() else {
+            panic!("{records:?}");
+        };
+        let read = record.read::<E>().expect("the record is the event");
+        assert_eq!(read.as_ref().ok(), Some(event), "{record:?}: {read:?}");
     }
 
     /// The lines the process's capture keeps, once a check or a binary's log put it in: statics,

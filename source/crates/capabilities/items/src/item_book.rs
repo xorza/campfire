@@ -5,8 +5,8 @@ use bevy_ecs::resource::Resource;
 use campfire_actions::ActionBook;
 use campfire_common::DeclaredName;
 use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section};
+use campfire_names::{MatchNames, UnknownName};
 use campfire_players::ResourceAmount;
-use campfire_script::{MatchNames, UnknownName};
 use campfire_stats::ModifierBook;
 use campfire_values::{
     ActionId, ItemId, ModifierId, NameId, Named, Names, PackageIndex, ResourceId,

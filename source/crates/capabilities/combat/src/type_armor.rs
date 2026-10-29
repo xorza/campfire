@@ -4,7 +4,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::DeclaredName;
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
-use campfire_script::{Filter, UnknownName};
+use campfire_names::{Filter, UnknownName};
 use campfire_units::UnitTypes;
 use campfire_values::{DamageKind, Named, Names, TagSet, UnitTags, UnitType};
 

@@ -2,7 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_sim::SimComponent;
 use campfire_states::{Replication, SentOnInsert};
 use campfire_values::Team;

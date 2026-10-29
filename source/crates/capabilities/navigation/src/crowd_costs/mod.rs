@@ -25,6 +25,8 @@ use crate::walker_kinds::WalkerKinds;
 pub(crate) struct CrowdCosts {
     grid: Grid,
     kinds: Vec<KindCosts>,
+    /// Whether the load made every team's counts, so a unit of another team is a bug.
+    teams_made: bool,
     /// The units as the counts hold them, by stable id, and the buffer the next tick's are read
     /// into.
     stamps: Vec<Stamp>,
@@ -59,6 +61,29 @@ struct TeamCosts {
     /// The cells some unit holds, one bit a cell, column by column, as a line's test reads the
     /// walls'.
     stood: Vec<u64>,
+}
+
+impl TeamCosts {
+    /// A team's counts of no unit, on a grid of `cells` cells.
+    fn new(team: Team, cells: usize) -> Self {
+        Self {
+            team,
+            units: 0,
+            movable: vec![0; cells],
+            held: vec![0; cells],
+            hemmed: vec![0; cells],
+            stood: vec![0; cells.div_ceil(64)],
+        }
+    }
+
+    /// Counts no unit.
+    fn clear(&mut self) {
+        self.units = 0;
+        self.movable.fill(0);
+        self.held.fill(0);
+        self.hemmed.fill(0);
+        self.stood.fill(0);
+    }
 }
 
 /// A unit that stands, as the costs count it: its body, its team, if any, and how a walker of its
@@ -119,14 +144,26 @@ impl CrowdCosts {
     /// movable unit's, as the walker must go round it, by its short route at worst.
     pub(crate) const HELD: u32 = 84;
 
-    /// Counts of no unit, on `grid`, for each of `walkers`.
-    pub(crate) fn new(grid: Grid, walkers: &WalkerKinds) -> Self {
+    /// Counts of no unit, on `grid`, for each of `walkers` and each of `teams`, the match's, made
+    /// now, so no tick makes one; with no team, as in a test's match of no mode, a team's counts
+    /// are made as its first unit stands.
+    pub(crate) fn new(
+        grid: Grid,
+        walkers: &WalkerKinds,
+        teams: impl IntoIterator<Item = Team>,
+    ) -> Self {
         let cells = grid.cells();
+        let mut teams: Vec<Team> = teams.into_iter().collect();
+        teams.sort_unstable();
+        teams.dedup();
         let kinds = walkers
             .iter()
             .map(|&walker| KindCosts {
                 walker,
-                teams: Vec::new(),
+                teams: teams
+                    .iter()
+                    .map(|&team| TeamCosts::new(team, cells))
+                    .collect(),
                 units: 0,
                 standing: vec![0; cells],
                 stood: vec![0; cells.div_ceil(64)],
@@ -135,6 +172,7 @@ impl CrowdCosts {
         Self {
             grid,
             kinds,
+            teams_made: !teams.is_empty(),
             stamps: Vec::new(),
             fresh: Vec::new(),
             old_runs: Vec::new(),
@@ -234,15 +272,11 @@ impl CrowdCosts {
                 let at = match kind.teams.binary_search_by_key(&team, |costs| costs.team) {
                     Ok(at) => at,
                     Err(at) => {
-                        let costs = TeamCosts {
-                            team,
-                            units: 0,
-                            movable: vec![0; cells],
-                            held: vec![0; cells],
-                            hemmed: vec![0; cells],
-                            stood: vec![0; cells.div_ceil(64)],
-                        };
-                        kind.teams.insert(at, costs);
+                        debug_assert!(
+                            !self.teams_made,
+                            "a unit of {team:?} stands, a team the match lacks"
+                        );
+                        kind.teams.insert(at, TeamCosts::new(team, cells));
                         at
                     }
                 };
@@ -388,10 +422,14 @@ impl Cache for CrowdCosts {
         None
     }
 
-    /// As the load built it: no unit counted.
+    /// As the load built it: no unit counted, and the counts of the teams the load made kept.
     fn clear(&mut self) {
         for kind in &mut self.kinds {
-            kind.teams.clear();
+            if self.teams_made {
+                kind.teams.iter_mut().for_each(TeamCosts::clear);
+            } else {
+                kind.teams.clear();
+            }
             kind.units = 0;
             kind.standing.fill(0);
             kind.stood.fill(0);

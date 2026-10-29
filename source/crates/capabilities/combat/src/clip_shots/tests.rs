@@ -1,5 +1,4 @@
 use campfire_codec::{Binary, BinaryError};
-use campfire_common::Ticks;
 
 use super::*;
 
@@ -42,7 +41,8 @@ fn a_clip_of_three_empties_at_its_third_shot_and_a_full_clip_is_not_held() {
     assert!(single.shoot(rifle, one));
     assert_eq!(single, ClipShots::default());
     // A clip of two that refills at home stays empty after its second shot, its two shots kept,
-    // and its home refills it: to one shot fired, then full, which leaves the list.
+    // and its home refills it: to one shot fired, then full, which leaves the list. Its reload
+    // gives one shot back in ⌈21 × 1 ÷ 2⌉ = 11 ticks, two in 21.
     let home = ClipRule {
         shots: NonZeroU16::new(2).unwrap(),
         reload: Ticks::new(21),
@@ -54,12 +54,21 @@ fn a_clip_of_three_empties_at_its_third_shot_and_a_full_clip_is_not_held() {
     assert!(!jet.shoot(rifle, home));
     assert!(jet.is_empty(rifle, home.shots));
     assert_eq!(jet.fired(rifle), 2);
-    jet.refill(rifle, 1);
+    let at = |fired| HomeClip {
+        action: rifle,
+        clip: home,
+        fired,
+    };
+    assert_eq!(
+        [at(1), at(2)].map(|home| home.reload_ticks()),
+        [Ticks::new(11), Ticks::new(21)]
+    );
+    jet.set(rifle, 1);
     assert_eq!(
         (jet.fired(rifle), jet.is_empty(rifle, home.shots)),
         (1, false)
     );
-    jet.refill(rifle, 0);
+    jet.set(rifle, 0);
     assert_eq!(jet, ClipShots::default());
     // A snapshot out of order, or of a weapon of no shot, does not decode.
     let encode = |fired: &[(u32, u16)]| {

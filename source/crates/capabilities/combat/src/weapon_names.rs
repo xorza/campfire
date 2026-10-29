@@ -4,7 +4,7 @@ use campfire_actions::{Action, DeliveryAim, LoadedAction, RangeBonus};
 use campfire_common::{DeclaredName, Ticks};
 use campfire_declarations::BookError;
 use campfire_math::Num;
-use campfire_script::{Filter, TagNames, UnknownName};
+use campfire_names::{Filter, TagNames, UnknownName};
 use campfire_sim::MatchRate;
 use campfire_stats::{ModifierBook, StatBook};
 use campfire_units::StatId;

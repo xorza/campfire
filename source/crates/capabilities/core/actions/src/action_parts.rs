@@ -1,4 +1,4 @@
-use campfire_script::{Filter, UnknownName};
+use campfire_names::{Filter, UnknownName};
 use campfire_sim::MatchRate;
 use campfire_values::{ModifierId, PackageIndex, ResourceId, TrackId};
 

@@ -27,7 +27,7 @@ use campfire_script::{ApiBuilder, Hook, ModeScripts, ScriptApi, ScriptHost, Scri
 use campfire_sim::{Capability, SimWorld, SimWorldBuilder, StateRewritten, Unpredicted};
 use campfire_states::StateTypes;
 use campfire_stats::{MoveSpeedCap, Stats};
-use campfire_units::{UnitTypes, Units};
+use campfire_units::{Scripts, UnitTypes, Units};
 use campfire_values::EngineTag;
 use campfire_vision::Vision;
 
@@ -38,7 +38,7 @@ use crate::books::load_names::LoadNames;
 use crate::books::units_seed::UnitsSeed;
 use crate::bot::bots::Bots;
 use crate::release::api_binder::ApiBinder;
-use crate::release::declaring::{Declaring, Scripts};
+use crate::release::declaring::{Declaring, ScriptedPart};
 use crate::release::error::{CapabilityError, CheckedBooksError};
 use crate::release::installing::{Installing, ModuleWalk};
 use crate::release::kinds_only::KindsOnly;
@@ -88,6 +88,7 @@ impl Release {
     /// last. The mode's scripted part installs above them, once the scripts compile.
     fn modules<V: ModuleVisitor>(v: &mut V) {
         v.module::<MatchCore>();
+        v.module::<Scripts>();
         v.module::<Units>();
         v.module::<ModeCore>();
         v.module::<Players>();
@@ -182,7 +183,7 @@ impl Release {
     /// Visits, with `d`, the declarations of a match of `set`: each module's of the list that the
     /// match runs, in the order they install, the mode's scripted part's among them.
     pub(crate) fn declare<D: Declarations>(set: CapabilitySet, d: &mut D) {
-        Self::modules(&mut Declaring::new(set, Scripts::Visited, d));
+        Self::modules(&mut Declaring::new(set, ScriptedPart::Visited, d));
     }
 
     /// The registries of callbacks the modules of a match of `set` and `role` call or declare
@@ -190,9 +191,9 @@ impl Release {
     /// installs it.
     fn called(set: CapabilitySet, role: &Role) -> Vec<TypeId> {
         let scripts = if role.scripts() {
-            Scripts::Visited
+            ScriptedPart::Visited
         } else {
-            Scripts::Skipped
+            ScriptedPart::Skipped
         };
         ReleaseCatalog::get().called(set, scripts)
     }
@@ -216,7 +217,7 @@ impl Release {
     /// prepares it for the sim, keeps its facts, puts in the declarations of each module of the
     /// list the match runs, in order, its books among them, then adds the systems of each, so each
     /// install reads every book; binds the script API of the match's modules into the script host
-    /// the core's install puts in, and the mode's names into the script view; loads the map's
+    /// the scripts' runtime puts in, and the mode's names into the script view; loads the map's
     /// pathing grid, but in a test's match of rules alone; then starts the match, as `start` says,
     /// and builds its schedule once. A match that ended runs no stage. The world then holds the
     /// match whole: its schedule, its state registry, and its facts.
@@ -346,7 +347,7 @@ impl Release {
     /// package load parsed them all.
     pub fn compile(world: &mut World, scripts: &[PackageScript<'_>]) {
         for (at, script) in scripts.iter().enumerate() {
-            let id = Units::compile(world, script.source)
+            let id = Scripts::compile(world, script.source)
                 .unwrap_or_else(|error| panic!("the load parsed {}: {error:?}", script.path));
             assert_eq!(
                 id,

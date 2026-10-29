@@ -1,4 +1,5 @@
 use campfire_geometry::{Placed, Shape};
+use campfire_names::Filter;
 use campfire_values::{Named, Param, Tag, Team, UnitType};
 use campfire_visibility::DataKind;
 
@@ -14,7 +15,6 @@ use crate::scripts::script_api::api_builder::ApiBuilder;
 use crate::scripts::script_position::ScriptPosition;
 use crate::scripts::script_radius::ScriptRadius;
 use crate::scripts::script_value::ScriptValue;
-use crate::scripts::view::filter::Filter;
 use crate::scripts::view::unit::Unit;
 
 /// The script API of the view: the `Unit` handle's fields and methods, and `ctx.find`.

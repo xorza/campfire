@@ -59,6 +59,7 @@ thiserror = { workspace = true, features = ["std"] }
 tracing = { workspace = true, features = ["attributes", "std"] }
 
 [dev-dependencies]
+campfire-names = { workspace = true, features = ["internals"] }
 campfire-abilities = { workspace = true, features = ["internals"] }
 campfire-areas = { workspace = true, features = ["internals"] }
 campfire-codec = { workspace = true, features = ["internals"] }

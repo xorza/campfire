@@ -15,13 +15,14 @@ use campfire_math::{Num, Vec3};
 use campfire_mode::{
     InputValue, MatchResult, ModeError, ModeInput, Offer, UnansweredPlayerSlotEvents, *,
 };
+use campfire_names::MatchNames;
 use campfire_navigation::{NavigationBook, OnPath, PathEnd, Route};
 use campfire_players::{MatchEntity, OutOfPlay, Player, PlayerResources, PlayersWorld};
 use campfire_production::{Queued, TrainQueue};
 use campfire_progression::{Experience, Points, TrackSet};
 use campfire_runner::MatchBuild;
 use campfire_script::{
-    ApiError, BudgetOf, CallError, FailureKind, ListPlace, MatchNames, ParamProblem, ScriptBudgets,
+    ApiError, BudgetOf, CallError, FailureKind, ListPlace, ParamProblem, ScriptBudgets,
     ScriptFailures, ScriptLimits, ScriptRole, StateValue,
 };
 use campfire_sim::{

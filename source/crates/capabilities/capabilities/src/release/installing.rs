@@ -3,7 +3,7 @@ use std::fmt;
 use campfire_declarations::{BuiltBooks, InstallCx, InstallFacts, Module, ModuleVisitor};
 use campfire_sim::SimFields;
 
-use crate::release::declaring::{Declaring, Scripts};
+use crate::release::declaring::{Declaring, ScriptedPart};
 use crate::release::installer::{InstallFields, Installer};
 
 /// The walk that installs each module a match runs, as `facts` says, in two passes: its
@@ -59,7 +59,7 @@ impl<'a> Installing<'a> {
             books: self.books,
         };
         let mut installer = Installer::new(fields, self.facts);
-        Declaring::new(self.facts.facts.set, Scripts::Visited, &mut installer).declare::<M>();
+        Declaring::new(self.facts.facts.set, ScriptedPart::Visited, &mut installer).declare::<M>();
     }
 
     /// Adds the systems of `M`.

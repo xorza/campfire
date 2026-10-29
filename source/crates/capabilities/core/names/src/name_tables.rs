@@ -1,10 +1,10 @@
+use std::any::TypeId;
 use std::fmt;
 use std::sync::Arc;
 
 use campfire_values::{MatchScope, NameId, NameKey, NameKind, Named, Names};
 
-use crate::scripts::script_names::ScriptNames;
-use crate::scripts::typed_list::{TypedItem, TypedList};
+use crate::typed_list::{TypedItem, TypedList};
 
 /// The names of a match's ids, one table for each kind of id, found by the id's type: what the
 /// load resolves the packages' names by, each module adding the tables of its own ids, and what
@@ -17,9 +17,12 @@ pub struct NameTables(TypedList<dyn AnyTable>);
 struct Table<I: NameId>(Arc<Names<I>>);
 
 /// A table of the names of one kind of id, among the others.
-pub(crate) trait AnyTable: TypedItem + fmt::Debug + Send + Sync {
-    /// The table as scripts read it, each name a script string.
-    fn script_names(&self) -> Box<dyn AnyNames>;
+trait AnyTable: TypedItem + fmt::Debug + Send + Sync {
+    /// The type of its ids.
+    fn id_type(&self) -> TypeId;
+
+    /// Each name, by its id's place.
+    fn texts(&self) -> Box<dyn Iterator<Item = &str> + '_>;
 
     fn clone_table(&self) -> Box<dyn AnyTable>;
 
@@ -30,16 +33,33 @@ pub(crate) trait AnyTable: TypedItem + fmt::Debug + Send + Sync {
     fn has(&self, name: &str) -> Option<bool>;
 }
 
-/// A table of the names of one kind of id as scripts read it, among the others.
-pub(crate) trait AnyNames: TypedItem + fmt::Debug {}
+/// The names of the ids of one kind, by their places, as `NameTables::texts` gives them.
+pub struct KindTexts<'a> {
+    /// The type of the ids.
+    pub id_type: TypeId,
+    pub texts: Box<dyn Iterator<Item = &'a str> + 'a>,
+}
+
+/// Its kind, as the names stream.
+impl fmt::Debug for KindTexts<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("KindTexts")
+            .field("id_type", &self.id_type)
+            .finish_non_exhaustive()
+    }
+}
 
 impl<I: NameId + Named + 'static> AnyTable for Table<I>
 where
     Names<I>: Send + Sync,
     I::Scope: MatchScope,
 {
-    fn script_names(&self) -> Box<dyn AnyNames> {
-        Box::new(ScriptNames::new(Arc::clone(&self.0)))
+    fn id_type(&self) -> TypeId {
+        TypeId::of::<I>()
+    }
+
+    fn texts(&self) -> Box<dyn Iterator<Item = &str> + '_> {
+        Box::new(self.0.texts())
     }
 
     fn clone_table(&self) -> Box<dyn AnyTable> {
@@ -55,8 +75,6 @@ where
         Some(self.0.named((scope, name)).is_some())
     }
 }
-
-impl<I: NameId + 'static> AnyNames for ScriptNames<I> {}
 
 impl Clone for NameTables {
     fn clone(&self) -> Self {
@@ -101,8 +119,12 @@ impl NameTables {
         Some(table.has(name))
     }
 
-    /// Each table as scripts read it, in the order they were put in.
-    pub(crate) fn script_tables(&self) -> impl Iterator<Item = Box<dyn AnyNames>> + '_ {
-        self.0.iter().map(AnyTable::script_names)
+    /// Each table's names, by the type of its ids, in the order they were put in, as the script
+    /// view makes its strings of them.
+    pub fn texts(&self) -> impl Iterator<Item = KindTexts<'_>> {
+        self.0.iter().map(|table| KindTexts {
+            id_type: table.id_type(),
+            texts: table.texts(),
+        })
     }
 }

@@ -2,7 +2,7 @@ use bevy_ecs::resource::Resource;
 use campfire_common::Ticks;
 use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section};
 use campfire_math::Num;
-use campfire_script::{Filter, MatchNames};
+use campfire_names::{Filter, MatchNames};
 use campfire_units::UnitTypes;
 use campfire_values::{PackageIndex, TimeTooLarge};
 

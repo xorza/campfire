@@ -3,7 +3,7 @@ use std::num::NonZeroI64;
 use campfire_actions::{ActionSlots, SlotKind, SlotKindBook, TurretMount};
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
 use campfire_math::{Num, Rounding, SinCos, Vec3};
-use campfire_script::UnknownName;
+use campfire_names::UnknownName;
 use campfire_sim::MatchRate;
 use campfire_units::TurnStep;
 use campfire_values::{Named, UnitType};

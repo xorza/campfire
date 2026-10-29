@@ -2,7 +2,7 @@ use campfire_actions::ActionBook;
 use campfire_common::{PlayerSlot, Ticks};
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
 use campfire_math::Num;
-use campfire_script::{Filter, Filters, UnknownName};
+use campfire_names::{Filter, Filters, UnknownName};
 use campfire_stats::ModifierBook;
 use campfire_units::UnitTypes;
 use campfire_values::{

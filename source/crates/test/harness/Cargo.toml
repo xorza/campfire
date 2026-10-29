@@ -14,6 +14,7 @@ kind = "test"
 # is test code, so it has no `internals` of its own: it depends, with their `internals`, on every
 # crate its library names, and dev-depends so on each crate that only its tests name.
 [dependencies]
+campfire-names.workspace = true
 campfire-actions = { workspace = true, features = ["internals"] }
 campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-combat = { workspace = true, features = ["internals"] }

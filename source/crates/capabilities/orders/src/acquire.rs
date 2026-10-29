@@ -1,7 +1,7 @@
 use campfire_actions::{ActionBook, ActionKind, ActionSlots};
 use campfire_common::Ticks;
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
-use campfire_script::Filters;
+use campfire_names::Filters;
 use campfire_units::UnitTypes;
 use campfire_values::{TimeTooLarge, UnitType};
 

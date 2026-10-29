@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_declarations::{Book, BookCx, BookError};
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_values::{DamageKind, Names};
 
 /// The names of the mode's damage kinds, by kind, as the script view names them.

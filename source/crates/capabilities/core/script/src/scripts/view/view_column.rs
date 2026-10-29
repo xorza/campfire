@@ -3,9 +3,9 @@ use std::fmt;
 use std::ops::Range;
 
 use bevy_ecs::world::World;
+use campfire_names::{TypedItem, TypedList};
 use campfire_values::Team;
 
-use crate::scripts::typed_list::{TypedItem, TypedList};
 use crate::scripts::view::kept_rows::AnyKeptRows;
 
 /// A part of the script view that a capability, or the action pipeline, owns: what it reads of

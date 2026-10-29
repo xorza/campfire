@@ -39,7 +39,7 @@ pub(crate) fn crowd_costs(c: &mut Criterion) {
         layer: Layer::FIRST,
         radius: Num::HALF,
     };
-    let mut costs = CrowdCosts::new(scene_cells(span), &WalkerKinds::from([walker]));
+    let mut costs = CrowdCosts::new(scene_cells(span), &WalkerKinds::from([walker]), []);
     let mut group = Kind::Atomic.group(c, "crowd_costs", Scale::Sample);
     for changes in CHANGES {
         let moved: Vec<Stamp> = (0..)

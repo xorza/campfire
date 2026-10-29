@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
 use campfire_declarations::{Book, BookCx, BookError, BookPlace, ById, ByIdBuilder};
+use campfire_names::{MatchNames, UnknownName};
 use campfire_players::ResourceBook;
-use campfire_script::{MatchNames, UnknownName};
 use campfire_values::{ResourceId, UnitType};
 
 use crate::Production;

@@ -1,7 +1,7 @@
 use bevy_ecs::world::World;
 use campfire_actions::ActionBook;
 use campfire_math::Num;
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_sim::StableId;
 use campfire_values::{ActionId, Allegiance, DamageKind, Hit, Rank};
 use serde::{Deserialize, Serialize};

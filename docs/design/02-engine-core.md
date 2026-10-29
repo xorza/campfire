@@ -14,6 +14,7 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 | `math` | built | problem | Fixed-point numbers and vectors, trig, roots, RNG ([Determinism core](07-determinism-core.md)) |
 | `protocol` | built | problem | Signatures, keys, the handshake, input and seed chains, the session log; no IO ([Protocol Spec](05-protocol-spec.md)) |
 | `sim` | built | glue | Deterministic state and systems on `bevy_ecs`; no genre code |
+| `names` | built | glue | The match's names as the load resolves them: a table of each kind of id, the tags, the teams and the filters, which no Rhai type holds |
 | `script` | built | glue | The Rhai host, the script API's registry, and the script view ([Scripting](#scripting)) |
 | `capabilities` | built | glue | The top of the capabilities' crates: the release, the books, `Match` |
 | `values` | built | problem | Data value types, names and ids |
@@ -436,7 +437,7 @@ An agent outside a game's process asks it through its console; the facts are [Th
 - **A console opens with its fingerprint.** A game's first line names its role and a fingerprint of the console's types, and `campfire-mcp` refuses a game of other types with a reply that says which to build again, as each outlives the other's builds.
 - **A request carries its id, and a reply its tick.** Replies come in any order, matched by id, so a read answers between two ticks of a run that has not returned, as Claude Code calls read-only tools in parallel; each reply names the tick its world held, the last tick ended. Refused: one request at a time, which holds every read behind a run.
 - **A line that is no reply is logged.** `campfire-mcp` writes a line of a game's output that decodes as no console message to its log and reads on, as a dependency's print would break the stream, and an id matches no stray line. Refused: a console that stops at the first such line, which a crate's print ends; standard output moved to another descriptor, an entity of `platform` for each OS.
-- **Events come over the console.** A game sends each log event as it logs it, and `campfire-mcp` keeps the latest of each game in a ring of fixed size, which `game_events` reads by level, target and tick. Refused: the log file read back, a disk read of what the process already held.
+- **Events come over the console.** A game sends each log event as it logs it, and `campfire-mcp` keeps the latest of each game in a ring of fixed size, which `game_events` reads by level, target and tick. The console's tap is a layer that takes each event's fields typed as tracing records them, and a typed event reads from them as from its JSON. Refused: the log file read back, a disk read of what the process already held; and a tap of JSON lines, which wrote each event as text for the console to parse it back.
 
 ### Tools
 

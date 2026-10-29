@@ -1,5 +1,5 @@
 use campfire_math::Num;
-use campfire_script::Filter;
+use campfire_names::Filter;
 
 use crate::gather_spec::GatherSpec;
 

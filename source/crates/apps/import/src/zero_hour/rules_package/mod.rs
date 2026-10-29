@@ -22,6 +22,7 @@ use campfire_sim::Capability;
 use campfire_stats::{ModeStatsData, ModifiersData};
 use campfire_values::{PackageName, PackagePath, Relation, Scalar, ScriptSource, Speed, TextId};
 
+use crate::zero_hour::additions::Additions;
 use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::contain_import::ContainImport;
 use crate::zero_hour::error::ZeroHourError;
@@ -176,11 +177,12 @@ pub(crate) fn mode_manifest(max_move_speed: Speed) -> ModeManifest<Vec<Capabilit
 }
 
 /// What the mode's data is made of: the skirmish's start, the trains, builds and researches, the
-/// weapons and armors, the upgrades, the starting money, and the modifiers of the movers' hurts
-/// and of the second lives.
+/// weapons and armors, the upgrades, the starting money, the modifiers of the movers' hurts and of
+/// the second lives, and what the stages gave each type.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ModeImport<'a> {
     pub(crate) start: &'a SkirmishStart,
+    pub(crate) additions: &'a Additions,
     pub(crate) production: &'a ProductionImport,
     pub(crate) combat: &'a CombatImport,
     pub(crate) upgrades: &'a UpgradeImport,
@@ -211,6 +213,7 @@ impl ModeImport<'_> {
     pub(crate) fn data(self) -> String {
         let Self {
             start,
+            additions,
             production,
             combat,
             upgrades,
@@ -253,7 +256,7 @@ impl ModeImport<'_> {
             let sources = BaseSources {
                 production,
                 combat,
-                contains,
+                additions,
             };
             let base = FactionBase::of(sources, faction, perks);
             let fixed = [

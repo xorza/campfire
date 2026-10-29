@@ -1,5 +1,5 @@
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
-use campfire_script::UnknownName;
+use campfire_names::UnknownName;
 use campfire_stats::{Level, ModifierBook};
 use campfire_values::{ModifierId, Named, PackageIndex, TrackId, UnitType};
 

@@ -316,6 +316,11 @@ fn the_nearest_open_cell_is_the_nearest_of_the_grid_or_the_window_by_every_cell(
         }
     );
     assert_eq!(waypoints, []);
+    // A stand's scan in it, which must answer at once, finds none and counts the 9 cells its
+    // rings visit against the tick's limit, as the plan's 10 did before it.
+    planner.begin_tick();
+    assert_eq!(planner.stand_at(walkable, quarters(2, 2)), None);
+    assert_eq!(*planner.spent.get_mut(), 9);
 }
 
 #[test]

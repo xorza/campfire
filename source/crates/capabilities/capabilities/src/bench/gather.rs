@@ -9,12 +9,12 @@ use campfire_declarations::Role;
 use campfire_declarations::internals::BookLoad;
 use campfire_math::{Num, Vec3};
 use campfire_measure::{Kind, Scale};
+use campfire_names::Filter;
 use campfire_players::{Players, PlayersWorld};
 use campfire_production::{
     EmptyNode, GatherOrder, GatherSpec, GatherStep, Gatherer, Node, NodeAt, NodeBook, NodeSpec,
     Production, ResourceSet,
 };
-use campfire_script::Filter;
 use campfire_sim::{Capability, IdAllocator, SimWorld, StableId};
 use campfire_units::{
     Body, BodyForm, BodyShape, BodyUnit, Destination, Layer, Owner, TypeOrigin, UnitCore,

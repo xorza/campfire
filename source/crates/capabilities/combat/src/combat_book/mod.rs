@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
 use campfire_common::Ticks;
 use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section};
-use campfire_script::MatchNames;
+use campfire_names::MatchNames;
 use campfire_sim::MatchRate;
 use campfire_stats::StatBook;
 use campfire_units::StatId;

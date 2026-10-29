@@ -6,7 +6,7 @@ use campfire_capabilities::Books;
 use campfire_common::DeclaredName;
 use campfire_items::{Inventory, ItemStack};
 use campfire_mode::InputType;
-use campfire_script::UnknownName;
+use campfire_names::UnknownName;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{IdAllocator, SimWorld};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
