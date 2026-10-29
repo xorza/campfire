@@ -32,10 +32,10 @@ let client = commands.spawn((ReplicationSender::default(), Rooms::single(room)))
 
 */
 use bevy_app::{App, Plugin};
-use bevy_replicon::prelude::AppVisibilityExt;
 use bevy_replicon::server::visibility::registry::FilterRegistry;
 use bevy_replicon::shared::replication::registry::ReplicationRegistry;
 
+use crate::app_filter_ext::AppFilterExt;
 use crate::room_allocator::RoomAllocator;
 use crate::rooms::Rooms;
 
@@ -50,7 +50,7 @@ impl Plugin for RoomPlugin {
         app.init_resource::<FilterRegistry>()
             .init_resource::<ReplicationRegistry>()
             .init_resource::<RoomAllocator>();
-        app.add_visibility_filter::<Rooms>();
+        app.add_filter::<Rooms>();
     }
 }
 

@@ -1,6 +1,6 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_replicon::prelude::{AppVisibilityExt, Replicated};
+use bevy_replicon::prelude::Replicated;
 use bevy_replicon::server::ServerSystems;
 use bevy_replicon::server::server_tick::ServerTick;
 use bevy_replicon::server::visibility::registry::FilterRegistry;
@@ -10,6 +10,7 @@ use campfire_net_timeline::LocalTimeline;
 use campfire_net_timeline::Rollback;
 use tracing::trace;
 
+use crate::app_filter_ext::AppFilterExt;
 use crate::component_registry::ComponentRegistry;
 use crate::interpolation_yield::InterpolationYield;
 use crate::replication_systems::ReplicationSystems;
@@ -56,15 +57,13 @@ impl Plugin for ServerSendPlugin {
         );
 
         app.register_required_components::<Replicate, Replicated>();
-        // Replication targets are `VisibilityFilter`s: Replicon evaluates them on
-        // insertion and on link changes, replacing the previous manual bit writes.
-        app.add_visibility_filter::<Replicate>();
+        app.add_filter::<Replicate>();
         app.init_resource::<VisibilityBits>();
         app.register_required_components::<PredictionTarget, PredictedSend>();
-        app.add_visibility_filter::<PredictionTarget>();
+        app.add_filter::<PredictionTarget>();
         app.register_required_components::<InterpolationTarget, InterpolatedSend>();
-        app.add_visibility_filter::<InterpolationTarget>();
-        app.add_visibility_filter::<InterpolationYield>();
+        app.add_filter::<InterpolationTarget>();
+        app.add_filter::<InterpolationYield>();
     }
 }
 

@@ -49,6 +49,19 @@ visibility.
   receiver that drops `Interpolated` beside `Predicted`, which leaves an entity on neither
   timeline when the prediction target goes; a field of `InterpolationTarget` kept in step, which
   hierarchy inheritance compares and would rewrite.
+- **A filter reads a disabled entity for every link.** Every visibility filter goes through
+  `AppFilterExt::add_filter`, which adds Replicon's filter and evaluates it for the disabled
+  entities as a link connects and as its client component comes or goes, as Replicon's own
+  observers there skip them though its evaluation as the filter comes reads them (`bevy_replicon`
+  0.45.2 and its main branch of 2026-10-29, `server/visibility.rs`); without it a rider the server
+  holds disabled kept, on a link that joined while it rode, a filter's bit unset: its owner's
+  state stayed hidden for good, and an enemy's rider reached the link. Refused: a fork of
+  Replicon, a dependency to keep in step for three query filters; a fix in each filter of the
+  stack, which the next filter forgets; a ban of Replicon's own call, which needs a proxy crate of
+  its own, as `net-replication`'s root may not exempt the despawns its `clippy.toml` bans, so
+  review holds the rule. Planned: `add_filter` goes, and every filter goes back to
+  `add_visibility_filter`, once a Replicon release evaluates the disabled entities for each link,
+  as the fork's branch `disabled-visibility` of `xorza/bevy_replicon` does.
 - **Each frame prunes every diff receiver to its history's front.** The prune drops a late pending
   diff below the front; such a diff would hold interpolation's floor, and so the front, for good.
   Refused: a prune only on a confirmed tick change or a moved front, which then never runs; a late

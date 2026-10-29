@@ -1,9 +1,12 @@
 //! Riders over the network: a rider's team alone receives it, hidden.
 
 use bevy_ecs::entity_disabling::Disabled;
+use campfire_actions::SlotTimes;
 use campfire_harness::MatchUnits;
+use campfire_host::JoinState;
 use campfire_interaction::Riding;
 use campfire_math::Num;
+use campfire_net::{CloseCode, LinkLossCause, LinkLost};
 use campfire_net_harness::{InProcessMatch, InProcessSetup};
 use campfire_orders::OrdersDirective;
 use campfire_sim::{Position, SimWorld};
@@ -15,7 +18,11 @@ use campfire_values::{Team, TeamSet};
 fn a_rider_leaves_its_enemies_clients_and_stays_hidden_on_its_allies() {
     // A solo match of the lane mode, with interaction: the west player's client holds its hero and
     // the creeps it sees walk; here a creep of each team rides, as an entry leaves it, its team
-    // alone seeing it (04-capabilities/interaction.md, A rider's team holds it).
+    // alone seeing it (04-capabilities/interaction.md, A rider's team holds it). A client of the
+    // player that logs in again while the hero rides, superseding the first, holds what the first
+    // did, the slot times its owner alone receives among it, and no enemy rider, as the server's
+    // filters read the disabled riders for it too (11-net-stack/replication.md, A filter reads a
+    // disabled entity for every link).
     let mut tree = PackageTree::of(TestMode::Lane);
     tree.edit(
         "modes/lane/manifest.toml",
@@ -65,14 +72,33 @@ fn a_rider_leaves_its_enemies_clients_and_stays_hidden_on_its_allies() {
     for _ in 0..10 {
         local.step();
     }
-    let client = local.client(0).world();
-    let held = client.entity_of(ally).unwrap();
-    assert!(client.entity(held).contains::<Disabled>());
+    let holds = |local: &InProcessMatch, client: usize| {
+        let client = local.client(client).world();
+        let held = client.entity_of(ally).unwrap();
+        assert!(client.entity(held).contains::<Disabled>());
+        assert_eq!(
+            client.get::<Riding>(held).map(|riding| riding.container()),
+            Some(hero)
+        );
+        assert_eq!(client.entity_of(enemy), None);
+        let hero = client.entity(client.entity_of(hero).unwrap());
+        assert!(hero.contains::<Disabled>());
+        assert!(hero.contains::<SlotTimes>());
+    };
+    holds(&local, 0);
+    let second = local.add_client(0);
+    local.step_until(300, |local| {
+        let state = local.client(second).world().resource::<JoinState>();
+        state.playing_clock().is_some()
+    });
+    for _ in 0..10 {
+        local.step();
+    }
+    holds(&local, second);
     assert_eq!(
-        client.get::<Riding>(held).map(|riding| riding.container()),
-        Some(hero)
+        local.log().take::<LinkLost>(),
+        [LinkLost {
+            cause: LinkLossCause::ClientClosed(CloseCode::Superseded)
+        }]
     );
-    assert_eq!(client.entity_of(enemy), None);
-    let hero = client.entity_of(hero).unwrap();
-    assert!(client.entity(hero).contains::<Disabled>());
 }

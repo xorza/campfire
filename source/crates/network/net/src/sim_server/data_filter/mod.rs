@@ -9,13 +9,14 @@ use bevy_ecs::observer::On;
 use bevy_ecs::query::With;
 use bevy_ecs::system::{Commands, Query, Res};
 use bevy_ecs::world::{DeferredWorld, World};
-use bevy_replicon::prelude::{AppVisibilityExt, FilterScope, SingleComponent, VisibilityFilter};
+use bevy_replicon::prelude::{FilterScope, SingleComponent, VisibilityFilter};
 use bevy_replicon::shared::replication::registry::ReplicationRegistry;
 use bevy_replicon::shared::replication::registry::receive_fns::MutWrite;
 use bevy_replicon::shared::replication::visibility::VisibilityScope;
 use campfire_capabilities::Release;
 use campfire_common::PlayerSlot;
 use campfire_declarations::{CapabilitySet, MatchFacts};
+use campfire_net_replication::AppFilterExt;
 use campfire_players::Player;
 use campfire_sim::SimResource;
 use campfire_states::{Declared, Replication, Sending, SendingWays, StateTypes};
@@ -284,7 +285,7 @@ impl<K: FilteredKind> DataFilter<K> {
 
     /// The filter of `K`, as replicon reads it and as `keep` keeps it.
     fn register_kind(app: &mut App) {
-        app.add_visibility_filter::<Self>();
+        app.add_filter::<Self>();
         Self::keep(app);
     }
 

@@ -1,3 +1,4 @@
+use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::prelude::*;
 use bevy_replicon::prelude::VisibilityFilter;
 use bevy_replicon::prelude::{AuthMethod, RepliconSharedPlugin};
@@ -161,36 +162,42 @@ fn the_room_plugin_adds_the_allocator() {
 }
 
 /// A link that replication admits sees the room-filtered entities that exist already exactly
-/// when it shares a room with them, also when its rooms came before its `ClientVisibility`.
+/// when it shares a room with them, also when its rooms came before its `ClientVisibility`, and
+/// again as its rooms come or go after it; a disabled entity as an enabled one, as a rider the
+/// server holds disabled (11-net-stack/replication.md, A filter reads a disabled entity for every
+/// link).
 #[test]
 fn a_new_client_evaluates_preexisting_room_entities() {
     let mut app = rooms_app();
     let room_a = RoomId(0);
     let room_b = RoomId(1);
-    // entity exists before the link is admitted into replication
-    let entity = app.world_mut().spawn(Rooms::single(room_a)).id();
-
-    // link already carries its rooms when ClientVisibility arrives (as when
-    // client Rooms are inserted in `On<Add<Connected>>`)
+    let entities = [
+        app.world_mut().spawn(Rooms::single(room_a)).id(),
+        app.world_mut()
+            .spawn((Rooms::single(room_a), Disabled))
+            .id(),
+    ];
+    let hidden = |app: &App, link: Entity| entities.map(|entity| is_hidden(app, link, entity));
+    let admitted = |app: &mut App, link: Entity| {
+        app.world_mut()
+            .entity_mut(link)
+            .insert(ClientVisibility::default());
+    };
     let stranger = app.world_mut().spawn(Rooms::single(room_b)).id();
-    app.world_mut()
-        .entity_mut(stranger)
-        .insert(ClientVisibility::default());
-    assert!(is_hidden(&app, stranger, entity));
-
-    // ...while a link in the same room sees the entity
+    admitted(&mut app, stranger);
+    assert_eq!(hidden(&app, stranger), [true; 2]);
     let member = app.world_mut().spawn(Rooms::single(room_a)).id();
-    app.world_mut()
-        .entity_mut(member)
-        .insert(ClientVisibility::default());
-    assert!(!is_hidden(&app, member, entity));
-
-    // ...and a link without rooms yet sees nothing room-filtered
+    admitted(&mut app, member);
+    assert_eq!(hidden(&app, member), [false; 2]);
     let bare = app.world_mut().spawn_empty().id();
+    admitted(&mut app, bare);
+    assert_eq!(hidden(&app, bare), [true; 2]);
     app.world_mut()
         .entity_mut(bare)
-        .insert(ClientVisibility::default());
-    assert!(is_hidden(&app, bare, entity));
+        .insert(Rooms::single(room_a));
+    assert_eq!(hidden(&app, bare), [false; 2]);
+    app.world_mut().entity_mut(bare).remove::<Rooms>();
+    assert_eq!(hidden(&app, bare), [true; 2]);
 }
 
 /// When client 2 connects:

@@ -29,6 +29,8 @@ It stands last, as the player's check is of the whole slice.
 
 ## Changed
 
+- **A filter reads a disabled entity for every link.** Every visibility filter goes through `AppFilterExt::add_filter`, which evaluates it for the disabled entities as a link connects and as its client component changes, which Replicon skips. A rider that rode as its player's link joined, as a start army's payload does, now carries its owner's slot times to that client, which the client's entry check reads, so a right click on a container orders its riders in, where it ordered a walk; an enemy's rider no longer reaches a client that joins while it rides.
+
 - **EB4. A walker brakes behind a unit that blocks it.** `Blocking` reads the units as the Move stage starts, and `Walking::move_units` cuts each walker's step, or a mover's speed, to touch the unit its cone holds before its next turn, on by that unit's step; `BrakedStep`, a new predicted part, holds the step a brake let each walker take, which the walker behind it reads and the walker's own stuck count takes.
 
 - **EB5. A unit outside the cone neither blocks nor pushes.** `Collider::push` went; collision moves the walker whose facing holds the other, and the crowded goal measures by the two radii and the step. Three walkers abreast keep their lines to the bit, where the push moved them 0.27 m, and two columns that cross keep theirs, where a walker slid 2.9 m; the crowd cases' goldens moved, each stated in its test: walkers that move idle friends aside arrive up to 8 ticks later, braked behind each until it clears, and those packed at a goal a tick later.

@@ -8,6 +8,7 @@
 )]
 
 mod app_component_ext;
+mod app_filter_ext;
 mod authoritative_tick;
 #[cfg(feature = "internals")]
 pub mod bench;
@@ -89,6 +90,7 @@ mod predicted;
 mod targets_overlap;
 
 pub use crate::app_component_ext::AppComponentExt;
+pub use crate::app_filter_ext::AppFilterExt;
 pub use crate::client_replication_plugins::ClientReplicationPlugins;
 pub use crate::component_registration::ComponentRegistration;
 pub use crate::component_registrator::ComponentRegistrator;
