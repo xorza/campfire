@@ -63,6 +63,7 @@ fn a_wide_walker_counts_every_unit_that_blocks_a_cell_of_its_window() {
         stuck: false,
         gathering: false,
         goal,
+        into: None,
         depth: AsideDepth::default(),
     };
     steering.steer(&mut planner, &grid, &statics, steered, route.read().ahead());
@@ -115,6 +116,7 @@ fn a_walker_that_gathers_steers_round_no_unit_that_gathers() {
             stuck: false,
             gathering,
             goal,
+            into: None,
             depth: AsideDepth::default(),
         };
         steering
@@ -172,6 +174,7 @@ fn a_walk_that_may_move_an_idle_friend_walks_through_it_and_one_too_deep_goes_ro
             stuck: false,
             gathering: false,
             goal,
+            into: None,
             depth,
         };
         steering
@@ -231,6 +234,7 @@ fn a_walker_moves_aside_only_an_idle_unit_it_may_move_on_its_next_stretch() {
         stuck: false,
         gathering: false,
         goal: eighths(64, 0),
+        into: None,
         depth: AsideDepth::default(),
     };
     let stretch = (eighths(64, 0), Num::int(4));
@@ -266,4 +270,15 @@ fn a_walker_moves_aside_only_an_idle_unit_it_may_move_on_its_next_stretch() {
     }
     assert_eq!(asides(Moves::Team, twice), []);
     assert_eq!(asides(Moves::None, own), []);
+    // A walk into the friend on the way at (3, 0) passes through it, so it stays, and the friend
+    // ahead to the left still steps aside (entries-and-blocking.md, A walker passes through the
+    // unit it walks into).
+    let into = Steered {
+        into: Some(bodies[1].body.id),
+        ..steered
+    };
+    steering.read(&statics, Moves::Team, bodies);
+    let mut moved = Vec::new();
+    steering.asides(into, stretch, &(3..5), &mut moved);
+    assert_eq!(moved, [aside(0, eighths(7, 8), own)]);
 }

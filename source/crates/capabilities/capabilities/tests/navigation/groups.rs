@@ -1,7 +1,6 @@
 use campfire_common::PlayerSlot;
 
 use super::*;
-use crate::halves;
 
 /// Over 1 m cells from (0, 0) to (20, 12), a wall from (4, 0) to (6, 4), as in
 /// `a_walker_goes_round_a_wall_smoothed_past_its_corners_and_never_through_it`, and `more` walls,
@@ -66,7 +65,7 @@ fn member(game: &mut Match, position: Vec3, goal: Vec3, party: Party) -> StableI
         game,
         id,
         RouteAsk {
-            goal,
+            goal: WalkGoal::Point(goal),
             tick: Tick::new(0),
             party: Some(party),
         },
@@ -164,7 +163,7 @@ fn a_member_that_the_shared_route_stops_short_of_its_goal_plans_its_own() {
         .walks(Num::ONE, Some(goal))
         .place(&mut game);
     let ask = RouteAsk {
-        goal,
+        goal: WalkGoal::Point(goal),
         tick: Tick::new(0),
         party: Some(party),
     };
@@ -186,7 +185,7 @@ fn a_member_whose_ask_waited_from_an_earlier_tick_plans_with_its_party() {
         &mut game,
         early,
         RouteAsk {
-            goal: Vec3::from((9, 0, 5)),
+            goal: WalkGoal::Point(Vec3::from((9, 0, 5))),
             tick: Tick::new(0),
             party: None,
         },
@@ -197,7 +196,7 @@ fn a_member_whose_ask_waited_from_an_earlier_tick_plans_with_its_party() {
         &mut game,
         early,
         RouteAsk {
-            goal,
+            goal: WalkGoal::Point(goal),
             tick: Tick::new(3),
             party: Some(party),
         },
@@ -208,7 +207,7 @@ fn a_member_whose_ask_waited_from_an_earlier_tick_plans_with_its_party() {
         &mut game,
         late,
         RouteAsk {
-            goal,
+            goal: WalkGoal::Point(goal),
             tick: Tick::new(3),
             party: Some(party),
         },
@@ -263,7 +262,7 @@ fn a_party_plans_once_for_each_layer_it_moves_on() {
             &mut game,
             id,
             RouteAsk {
-                goal,
+                goal: WalkGoal::Point(goal),
                 tick: Tick::new(0),
                 party: Some(party),
             },

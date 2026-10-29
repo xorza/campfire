@@ -124,7 +124,7 @@ pub use crate::damage_hits::{DamageHit, DamageHits};
 pub use crate::dead::Dead;
 pub use crate::deaths::{DeathView, DeathViews, Deaths, Fallen};
 pub use crate::declared_tags::DeclaredTags;
-pub use crate::destination::Destination;
+pub use crate::destination::{Destination, WalkGoal};
 pub use crate::died::Died;
 pub use crate::due::Due;
 pub use crate::entity_filters::{Acting, Sighted, UnitFilter};

@@ -111,6 +111,11 @@ From the released source, as [GeneralsX](https://github.com/fbraz3/GeneralsX) bu
   `moveAlliesAwayFromDestination`, which walks the cells on the line to the destination
   (`AIUpdate.cpp:1693-1700`, `AIPathfind.cpp:6962-7008`).
 - **A blocked and stuck unit plans again** (`AIUpdate.cpp:430, 509-513`).
+- **A mover is not bounced by another mover.** `PhysicsBehavior::onCollide` lets an object with an AI decide by `AIUpdateInterface::processCollision`, which applies no force between two units that move on the ground, as "AI objects move under their own initiative, not by getting bounced" (`PhysicsUpdate.cpp:1270-1280`, `AIUpdate.cpp`, `processCollision`). Read 29 October 2026.
+- **Blocked is a cone ahead.** `AIUpdateInterface::blockedBy` holds a mover blocked by a unit within 45° of its facing, 33.75° for a unit that stands, and by none behind it past 90°, none it can crush, and none while it is within a cell of its goal; two that cross off that cone are blocked only when they close on each other, and then only the one of lower path priority (`AIUpdate.cpp`, `blockedBy`).
+- **A blocked mover brakes to the speed of the one ahead.** `calculateMaxBlockedSpeed` caps the mover's speed at the blocker's speed away from it along the line between them, over the share of its own facing along that line; zero for a blocker that comes toward it; 55 % of that for two of one formation (`AIUpdate.cpp`, `calculateMaxBlockedSpeed`).
+- **A deadlock steps the lower priority aside.** A mover blocked by one that is blocked by it in turn, both facing their ways, moves away from it by `aiMoveAwayFromUnit` when it has the lower path priority: a dozer over all, a vehicle over infantry, then the one ahead along their two facings, then the lower id; a mover blocked by one that stands, facing its way, is blocked and stuck, and plans again; a vehicle that a soldier blocks tells the soldier to move away (`AIUpdate.cpp`, `processCollision`, `hasHigherPathPriority`).
+- **A blocked move plans again after 2 s.** `AIInternalMoveToState::update` plans a new path when the unit is blocked and stuck, or blocked more than `2 × LOGICFRAMES_PER_SECOND` frames (`AIStates.cpp:1834-1840`).
 - **An ally moves away anywhere clear of the path.** `Pathfinder::getMoveAwayFromPath` searches
   outward from the ally's cell over the cells it may stand in, and takes the first whose box,
   the ally's radius plus the mover's, crosses no segment of the mover's path nor of the last
@@ -131,6 +136,14 @@ From `CCmpUnitMotion_System.cpp` of [0 A.D.](https://github.com/0ad/0ad), and
   half the turn.
 - **Pressure.** Each push adds pressure to both units, kept at 0.6 of itself a turn; a pushed unit
   moves slower and is pushed less, damped by at most 160 of its pressure, so a crowd settles.
+- **Moving and stopped units apart.** `Push` returns at once for a pair of one unit that moves and
+  one that stands: "moving entities will push moving entities, but not stopped ones, and
+  vice-versa"; the members of one formation push idle units. A push under `MinimalPushing`, 0.2 by
+  default, is dropped, and one that turns a unit well off its move marks it obstructed
+  ([CCmpUnitMotion_System.cpp](https://github.com/0ad/0ad/blob/master/source/simulation2/components/CCmpUnitMotion_System.cpp),
+  read 29 October 2026).
+- **The push is along the centers.** The push runs along the line between the two units' centers,
+  averaged over the turn's start and end; only two that crossed paths take a nudge across it.
 - **Pushes do not cross walls.** A push into a blocked place is dropped and the unit marked
   obstructed.
 - **What it bought.** "It makes movement of groups of units much smoother overall"; a player's
@@ -178,6 +191,15 @@ From `CCmpUnitMotion_System.cpp` of [0 A.D.](https://github.com/0ad/0ad), and
 - **DetourCrowd.** Recast's crowd samples candidate velocities in rings round the wanted one and
   scores each by the wanted direction, the current velocity, a side bias and the time to impact
   with circles of position, velocity and radius ([Recast](https://recastnav.com/group__crowd.html)).
+  After the moves, it parts overlapping agents by position in 4 passes, each agent taking half of
+  each overlap times 0.7, so the velocity planning keeps overlaps rare and the positional pass
+  small ([DetourCrowd.cpp](https://github.com/recastnavigation/recastnavigation/blob/main/DetourCrowd/Source/DetourCrowd.cpp),
+  `dtCrowd::update`, read 29 October 2026).
+- **OpenRA's entry.** `Enter` takes the target's place again each tick, walks by
+  `MoveToTarget`, and enters by `MoveIntoTarget` once `CanEnterTargetNow` holds, with
+  `RetryIfDestinationBlocked`
+  ([Enter.cs](https://github.com/OpenRA/OpenRA/blob/bleed/OpenRA.Mods.Common/Activities/Enter.cs),
+  read 29 October 2026).
 - **Supreme Commander 2.** A flow field over sectors of tiles, with local steering
   ([Game AI Pro 360, ch. 7](https://www.taylorfrancis.com/books/9780429100277/chapters/10.1201/b16725-29));
   a community reading finds no dynamic density field in it
@@ -196,3 +218,25 @@ From `CCmpUnitMotion_System.cpp` of [0 A.D.](https://github.com/0ad/0ad), and
 - **Dota 2.** This engine's avoidance takes Dota 2's three kinds, a long route, a short route and
   collision ([Navigation](../design/04-capabilities/navigation.md#movement)), under which units
   block units and none moves another.
+
+## Walkers that cross, measured, 2026-10-29
+
+A probe of the navigation capability: walkers of a half meter that step a quarter meter a tick, on
+half-meter cells, of one team, each column's walkers 1.1 m apart; each walker's offset across the
+line from its start to its goal, read each tick.
+
+- **Two columns of three that cross at right angles.** The east column's leader slides 2.89 m
+  across its line while its facing never changes, and ends 0.52 m off it; the north column's
+  second walker slides 3.27 m, reverses across its line 8 times and turns 10 times in a few ticks
+  as it is stuck; the walkers move across their lines 2.8 m to 8.6 m in all, against
+  0.81 m net at most. With walkers that drive, a walker turns up to 14 times, and two overlap by 0.054 m.
+- **Three abreast, 1.1 m apart, the same way.** Pushed apart to their personal space of 1.25 m,
+  the outer two move 0.27 m across their lines and back.
+- **A slower walker ahead.** A walker of a quarter meter behind one of an eighth on the same line
+  follows it at the gap collision leaves, never passing it, and arrives a tick after it.
+- **A column through a gap of 1.6 m, and six through a corridor of 2.4 m.** No overlap; walkers
+  reverse across their lines up to 3 times, and step back along them up to 3 times.
+- **The cause.** `Collider::push` pushes each pair within their personal space of which one walks
+  along the line between their centers, a quarter of the intrusion a tick, whatever way each
+  walks, and `Collider::resolve` shares an overlap of two walkers between them; a walker's step
+  then goes on along its leg, so a walker beside another slides across its way.

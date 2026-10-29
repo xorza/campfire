@@ -5,7 +5,7 @@ use bevy_ecs::system::{Local, Query, Res, ResMut, SystemId};
 use campfire_common::Tick;
 use campfire_declarations::OneShot;
 use campfire_sim::{DueIndex, SimTick, StableId, UnitDues};
-use campfire_units::{Body, Dead, Destination, Tracking};
+use campfire_units::{Body, Dead, Destination, Tracking, WalkGoal};
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::path_walker::PathWalker;
@@ -109,18 +109,18 @@ impl StaticTracking {
             walkers.iter_mut()
         {
             let dues = &mut UnitDues::new(asks, id, entity);
-            let ask = |goal| RouteAsk {
+            let ask = |goal: WalkGoal| RouteAsk {
                 goal,
                 tick: now,
-                party: path.and_then(|path| path.party(goal)),
+                party: path.and_then(|path| path.party(goal.at())),
             };
-            match destination.get() {
+            match destination.goal() {
                 None if opened && route.read().is_arrived_short() => {
                     let goal = route.goal().expect("a route that arrived short has a goal");
                     Destination::route_to(&mut destination, Some(goal));
-                    route.ask(ask(goal), &mut progress, dues);
+                    route.ask(ask(WalkGoal::Point(goal)), &mut progress, dues);
                 }
-                Some(goal) if route.goal() == Some(goal) && route.asked().is_none() => {
+                Some(goal) if route.walk_goal() == Some(goal) && route.asked().is_none() => {
                     let walker = Walker::walking(body);
                     let blocked = added
                         && route

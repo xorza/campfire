@@ -117,7 +117,7 @@ impl NavigationEffect {
             if let Ok((destination, mut route, mut progress)) =
                 moved.get_components_mut::<(&Destination, RouteMut, &mut Progress)>()
             {
-                route.ask_again(destination.get(), &mut progress, now, dues);
+                route.ask_again(destination.goal(), &mut progress, now, dues);
             }
         });
     }

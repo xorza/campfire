@@ -10,7 +10,9 @@ use campfire_math::{Num, Vec3};
 use campfire_navigation::{Party, PathWalker, Progress, Route, RouteAsk, RouteMut};
 use campfire_sim::{Position, SimComponent, StableId, UnitDues};
 use campfire_states::{Replication, SentPredicted};
-use campfire_units::{BuildTarget, Destination, GroundPoint, OrderKind, SpawnPoint, UnitEntity};
+use campfire_units::{
+    BuildTarget, Destination, GroundPoint, OrderKind, SpawnPoint, UnitEntity, WalkGoal,
+};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
@@ -221,7 +223,7 @@ impl UnitOrder {
             && party.is_some()
         {
             let ask = RouteAsk {
-                goal,
+                goal: WalkGoal::Point(goal),
                 tick: now,
                 party,
             };

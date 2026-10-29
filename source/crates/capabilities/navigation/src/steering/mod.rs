@@ -52,7 +52,8 @@ pub(crate) struct Steering {
 
 /// A walker that may steer this tick: its unit, where it stands, its team, if any, its step, its
 /// kind, whether walkers keep it back, whether it gathers, which passes through the others that
-/// do, its route's goal, and how deep its walk is in a chain of steps aside.
+/// do, its route's goal, the unit its walk goes into, if any, which it passes through, and how
+/// deep its walk is in a chain of steps aside.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Steered {
     pub id: StableId,
@@ -63,6 +64,7 @@ pub(crate) struct Steered {
     pub(crate) stuck: bool,
     pub(crate) gathering: bool,
     pub(crate) goal: Vec3,
+    pub(crate) into: Option<StableId>,
     pub(crate) depth: AsideDepth,
 }
 
@@ -240,8 +242,10 @@ impl Steering {
     /// Hour's pathfinder moves the allies off a new path and OpenRA nudges an idle friend that
     /// blocks a move (04-capabilities/navigation.md, An idle friend steps aside), with how deep
     /// the walker's walk is, and `passage`, the walker's points in the tick's buffer, which its
-    /// place clears. One whose side clears the walker already stays, and a walk as deep as
-    /// `AsideDepth::MOST` moves none (04-capabilities/navigation.md, An idle friend steps aside).
+    /// place clears. One whose side clears the walker already stays, a walk as deep as
+    /// `AsideDepth::MOST` moves none (04-capabilities/navigation.md, An idle friend steps aside),
+    /// and the unit the walk goes into stays, as the walker passes through it
+    /// (entries-and-blocking.md, A walker passes through the unit it walks into).
     pub(crate) fn asides(
         &self,
         steered: Steered,
@@ -267,6 +271,9 @@ impl Steering {
         let standing = self.standing.as_ref().expect("steering read the bodies");
         let idle = &self.idle;
         standing.near(walker.layer, at, stretch + walker.radius, |body| {
+            if steered.into == Some(body.id) {
+                return;
+            }
             let clear = walker.radius + body.shape.bound();
             // One that arrived at the walker's goal is of the crowd there, which the walker
             // stops against (04-capabilities/navigation.md, A crowded goal ends the walk).
@@ -321,6 +328,9 @@ impl Steering {
         let off = at.ground_offset(goal).length_squared_bits();
         let mut packed = false;
         standing.near(walker.layer, at, walker.radius + step, |body| {
+            if steered.into == Some(body.id) {
+                return;
+            }
             let crowd = idle
                 .binary_search_by_key(&body.id, |idle| idle.id)
                 .is_ok_and(|place| idle[place].team == team && idle[place].arrived == Some(goal));
@@ -337,11 +347,14 @@ impl Steering {
     /// that stands shares with `steered`, which stands within it too: a goal the unit crowds, as
     /// near as collision lets the walker come, so it has arrived, as the A* Pathfinding Project
     /// stops a unit whose destination is crowded (04-capabilities/navigation.md, A walker stuck by
-    /// a crowded goal has arrived). Each space is collision's, `Collider::space_of`.
+    /// a crowded goal has arrived). Each space is collision's, `Collider::space_of`. The unit the
+    /// walk goes into crowds nothing, as the walker passes through it (entries-and-blocking.md, A
+    /// walker passes through the unit it walks into).
     pub(crate) fn crowded(&self, steered: Steered, waypoint: Vec3) -> bool {
         let Steered {
             position: at,
             walker,
+            into,
             ..
         } = steered;
         let standing = self.standing.as_ref().expect("steering read the bodies");
@@ -352,6 +365,9 @@ impl Steering {
             at,
             own + Collider::space_of(self.widest),
             |body| {
+                if into == Some(body.id) {
+                    return;
+                }
                 let space = own + Collider::space_of(body.shape.bound());
                 let inside = |point: Vec3| {
                     point.ground().distance_order(body.position.ground(), space) == Ordering::Less
@@ -369,6 +385,8 @@ impl Steering {
     /// the walkers it touches too. The short route goes to the last waypoint within the window,
     /// or to where the way leaves it, and the walker goes on from there; one that cannot end
     /// there keeps its route. One that `planner` has no work left for this tick keeps its route.
+    /// The unit its walk goes into blocks it nowhere (entries-and-blocking.md, A walker passes
+    /// through the unit it walks into).
     pub(crate) fn steer(
         &mut self,
         planner: &mut RoutePlanner,
@@ -384,6 +402,7 @@ impl Steering {
             walker,
             stuck,
             gathering,
+            into,
             ..
         } = steered;
         let standing = match (gathering && !self.gatherers.is_empty(), &self.apart) {
@@ -396,8 +415,10 @@ impl Steering {
         // (04-capabilities/navigation.md, A walker walks through the friends it moves aside).
         let passes = steered.depth.clears();
         let (idle, moves) = (&self.idle, self.moves);
-        let blocks =
-            |body: &IndexedBody| !(passes && movable(idle, moves, steered.team, body.id).is_some());
+        let blocks = |body: &IndexedBody| {
+            into != Some(body.id)
+                && !(passes && movable(idle, moves, steered.team, body.id).is_some())
+        };
         let reach = Self::reach(grid);
         let look = at.step_toward(ahead[0], reach);
         let blocked = standing.blocks_where(Segment::new(at, look), walker, blocks);
@@ -438,7 +459,12 @@ impl Steering {
                 let reach = walker.radius + other.body.shape.bound();
                 let touching = other.body.position.within_ground(at, reach + step);
                 let passes = gathering && gatherers.binary_search(&other.id).is_ok();
-                if other.id == id || !touching || other.key != walker.layer || passes {
+                if other.id == id
+                    || into == Some(other.id)
+                    || !touching
+                    || other.key != walker.layer
+                    || passes
+                {
                     return ControlFlow::Continue(());
                 }
                 let shift = left * (reach / 2);

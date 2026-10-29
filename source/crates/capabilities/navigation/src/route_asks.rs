@@ -49,6 +49,8 @@ pub(crate) struct RouteAsks {
     layers: Vec<SharedRoute>,
     /// The route being planned.
     waypoints: Vec<Vec3>,
+    /// The cells of the unit the walker being planned walks into, which its price leaves out.
+    excused: Vec<Range<usize>>,
 }
 
 /// A walker's ask for a route, as its unit stood when the plan read it: the tick it was first
@@ -68,7 +70,8 @@ struct Waiting {
 }
 
 /// A walker a plan answers: its unit, where it stands, its kind of walker, its team and what
-/// its route walls, which the crowd's price reads, and its own goal.
+/// its route walls, which the crowd's price reads, its own goal, and the unit its walk goes into,
+/// if any, which the price leaves out.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PlanWalker {
     pub id: StableId,
@@ -78,6 +81,7 @@ pub(crate) struct PlanWalker {
     pub(crate) team: Option<Team>,
     pub(crate) walls: CrowdWalls,
     pub(crate) goal: Vec3,
+    pub(crate) into: Option<StableId>,
 }
 
 /// The route a party plans once for the members of one layer, for the walker it was searched for.
@@ -106,11 +110,24 @@ struct PartySearch<'s, 'a> {
 }
 
 impl<'a> RouteSearch<'a> {
-    /// What `walker` of `team` may walk, priced by the crowd, walled as `walls` says.
-    fn walkable(&self, walker: Walker, team: Option<Team>, walls: CrowdWalls) -> Walkable<'a> {
-        let crowd = self
-            .crowd
-            .and_then(|crowd| crowd.price(walker, team, walls));
+    /// What `member` may walk, priced by the crowd, walled as its `walls` says, but for the unit
+    /// it walks into, whose cells it puts in `excused` (entries-and-blocking.md, A walker passes
+    /// through the unit it walks into).
+    fn walkable<'r>(&self, member: &PlanWalker, excused: &'r mut Vec<Range<usize>>) -> Walkable<'r>
+    where
+        'a: 'r,
+    {
+        let PlanWalker {
+            walker,
+            team,
+            walls,
+            into,
+            ..
+        } = *member;
+        let crowd = self.crowd.and_then(|crowd| {
+            let excused = into.and_then(|unit| crowd.excuse(unit, (walker, team), excused));
+            Some(crowd.price(walker, team, walls)?.excusing(excused))
+        });
         Walkable::of(self.grid.clearance(walker), self.statics).priced(crowd)
     }
 }
@@ -153,7 +170,7 @@ impl RouteAsks {
             let run = next.ask.party.map_or(0..0, |party| self.party_run(party));
             if run.len() < 2 {
                 let member = next.ask.member;
-                let walkable = search.walkable(member.walker, member.team, member.walls);
+                let walkable = search.walkable(&member, &mut self.excused);
                 let outcome = search.planner.plan(
                     walkable,
                     member.position,
@@ -286,7 +303,11 @@ impl RouteAsks {
             .min_by_key(|member| (distance(member.position), member.id))
             .expect("the widest walker is a member's");
         let goal = search.party.goal;
-        let walkable = search.search.walkable(widest, leader.team, leader.walls);
+        let leader = PlanWalker {
+            walker: widest,
+            ..*leader
+        };
+        let walkable = search.search.walkable(&leader, &mut self.excused);
         let outcome =
             search
                 .search
@@ -322,7 +343,7 @@ impl RouteAsks {
             .expect("its layer's route was searched")
             .clone();
         let route = &self.shared[shared.waypoints];
-        let walkable = search.walkable(member.walker, member.team, member.walls);
+        let walkable = search.walkable(&member, &mut self.excused);
         let planner = &mut *search.planner;
         let shares =
             shared.reached || (member.walker == shared.walker && member.goal == party.goal);

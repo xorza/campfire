@@ -77,6 +77,7 @@ pub(crate) fn steering(c: &mut Criterion) {
                     stuck: false,
                     gathering: false,
                     goal,
+                    into: None,
                     depth: AsideDepth::default(),
                 };
                 planner.begin_tick();

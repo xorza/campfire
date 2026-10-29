@@ -7,6 +7,7 @@ use campfire_geometry::Grid;
 use campfire_math::{Num, Vec3};
 
 use crate::body_index::{BodyIndex, IndexedBody};
+use crate::crowd_costs::CrowdPrice;
 use crate::regions::Regions;
 use crate::segment::Segment;
 use crate::terrain::WallGrid;
@@ -256,21 +257,36 @@ impl Clearance<'_> {
     }
 
     /// Whether `segment` touches a cell the walls block the walker from, exactly, corners
-    /// included, or one of `more`, cells one bit each, column by column, in one pass over its
-    /// cells; each cell it visits to tell adds to `work`.
-    pub(crate) fn is_walled(&self, segment: Segment, more: Option<&[u64]>, work: &mut u32) -> bool {
-        if self.walled_columns.is_none() && more.is_none() {
+    /// included, or one a unit `crowd` prices stands in, in one pass over its cells; each cell it
+    /// visits to tell adds to `work`.
+    pub(crate) fn is_walled(
+        &self,
+        segment: Segment,
+        crowd: Option<CrowdPrice<'_>>,
+        work: &mut u32,
+    ) -> bool {
+        if self.walled_columns.is_none() && crowd.is_none() {
             return false;
         }
-        let rows = self.grid.rows();
+        let (rows, columns) = (self.grid.rows(), self.grid.columns());
         let (from, to) = (segment.start(), segment.end());
         self.grid.touches_columns(from, to, |column, run| {
             let cells = column * rows + run.start..column * rows + run.end;
-            let hit = [self.walled_columns, more]
-                .into_iter()
-                .flatten()
-                .filter_map(|words| Clearance::first_set(words, cells.clone()))
-                .min();
+            let walled = self
+                .walled_columns
+                .and_then(|words| Clearance::first_set(words, cells.clone()));
+            // A cell the unit the walker walks into alone holds is no unit's to it.
+            let stood = crowd.and_then(|crowd| {
+                let mut from = cells.start;
+                loop {
+                    let at = Clearance::first_set(crowd.stood(), from..cells.end)?;
+                    if crowd.stands((at - column * rows) * columns + column) {
+                        return Some(at);
+                    }
+                    from = at + 1;
+                }
+            });
+            let hit = walled.into_iter().chain(stood).min();
             let visited = hit.map_or(cells.end, |at| at + 1) - cells.start;
             *work += u32::try_from(visited).expect("a column's rows fit u32");
             hit.is_some()

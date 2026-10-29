@@ -170,9 +170,8 @@ impl<'a> Walkable<'a> {
     fn blocks_counting(&self, segment: Segment, work: &mut u32) -> bool {
         let walker = self.clearance.walker();
         let radius = walker.radius;
-        let stood = self.crowd.map(CrowdPrice::stood);
         self.statics.blocks(segment, walker)
-            || self.clearance.is_walled(segment, stood, work)
+            || self.clearance.is_walled(segment, self.crowd, work)
             || self.short.is_some_and(|short| {
                 short
                     .blockers

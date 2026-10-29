@@ -27,6 +27,7 @@ fn row(at: &[(Num, Num, bool)]) -> Vec<Collider> {
             team: None,
             firm: false,
             leaving: false,
+            into: None,
             pinned: false,
         })
         .collect()
@@ -241,7 +242,7 @@ fn parted_bodies_lie_the_sum_of_their_radii_apart_rounded_up_to_a_bit() {
 }
 
 #[test]
-fn two_gatherers_pass_through_each_other_and_part_from_any_other() {
+fn two_gatherers_or_a_walker_and_the_unit_it_walks_into_pass_through_each_other() {
     // Three walkers 1.5 m apart along x, of radius 1: overlaps of 0.5. The first two gather, and
     // stay where they stand; the third, which does not, parts from the second by a quarter
     // meter each way.
@@ -265,6 +266,31 @@ fn two_gatherers_pass_through_each_other_and_part_from_any_other() {
             (Num::int(3) + quarter, Num::ZERO),
         ]
     );
+    // A walker 1.5 m from a unit it walks into, either way round, neither parts from nor pushes
+    // the other (entries-and-blocking.md, A walker passes through the unit it walks into); one
+    // that walks into a third unit is near a unit 2.25 m off, in its personal space, as ever.
+    for walker in [0, 1] {
+        let mut pair = row(&[
+            (Num::ZERO, Num::ZERO, true),
+            (Num::ONE + half, Num::ZERO, true),
+        ]);
+        pair[walker].into = Some(pair[1 - walker].id);
+        assert!(!pair[0].overlaps(&pair[1]) && !pair[0].near(&pair[1]));
+        resolve(&mut pair);
+        push(&mut pair, Moves::Team);
+        assert_eq!(
+            places(&pair),
+            [(Num::ZERO, Num::ZERO), (Num::ONE + half, Num::ZERO)],
+            "walker {walker}"
+        );
+    }
+    let mut three = row(&[
+        (Num::ZERO, Num::ZERO, true),
+        (Num::int(2) + quarter, Num::ZERO, true),
+        (Num::int(10), Num::ZERO, true),
+    ]);
+    three[0].into = Some(three[2].id);
+    assert!(three[0].near(&three[1]));
 }
 
 #[test]

@@ -18,9 +18,10 @@ pub(crate) mod contact;
 /// firm, as one that attacks, works, uses an ability or that its tags root, which no push moves
 /// (04-capabilities/navigation.md, Who may move whom is the game's); whether it leaves its
 /// producer, passing through its team's units (04-capabilities/navigation.md, A new unit leaves its
-/// exit); and whether a static body parted it this tick, which pins it against the other walkers. A
-/// unit that cannot walk, such as a tower or a building, is never pushed; only such a unit has a
-/// box.
+/// exit); the unit its walk goes into, if any, which it passes through, either way
+/// (entries-and-blocking.md, A walker passes through the unit it walks into); and whether a static
+/// body parted it this tick, which pins it against the other walkers. A unit that cannot walk,
+/// such as a tower or a building, is never pushed; only such a unit has a box.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Collider {
     pub id: StableId,
@@ -36,6 +37,7 @@ pub struct Collider {
     pub(crate) team: Option<Team>,
     pub(crate) firm: bool,
     pub(crate) leaving: bool,
+    pub(crate) into: Option<StableId>,
     pub(crate) pinned: bool,
 }
 
@@ -344,6 +346,7 @@ impl Collider {
             team: None,
             firm: false,
             leaving: false,
+            into: None,
             pinned: false,
         }
     }
@@ -361,12 +364,14 @@ impl Collider {
         }
     }
 
-    /// Whether the two may separate: they stand on one layer, one of them may be pushed, and not
-    /// both gather.
+    /// Whether the two may separate: they stand on one layer, one of them may be pushed, not both
+    /// gather, and neither walks into the other.
     fn may_separate(&self, other: &Self) -> bool {
         self.layer == other.layer
             && (self.movable || other.movable)
             && !(self.gathering && other.gathering)
+            && self.into != Some(other.id)
+            && other.into != Some(self.id)
     }
 
     /// The radius of a body that may be pushed, which is a circle.

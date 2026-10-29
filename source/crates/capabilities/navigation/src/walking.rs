@@ -12,7 +12,7 @@ use campfire_sim::{
 };
 use campfire_units::{
     AccelStep, AtWork, Body, Dead, Destination, Facing, FlightGoal, ForcedMove, Leaving, MapBook,
-    MoveStep, OnWings, StatusTags, TurnStep,
+    MoveStep, OnWings, StatusTags, TurnStep, WalkGoal,
 };
 use campfire_values::{Block, Motion, Team, UnitTags, UnitType};
 
@@ -220,6 +220,7 @@ impl Walking {
                 stuck: stuck_for >= stuck_ticks,
                 gathering: tags.is_some_and(|tags| tags.passes()),
                 goal,
+                into: destination.unit(),
                 depth,
             };
             if steering.packed(steered) {
@@ -355,7 +356,7 @@ impl Walking {
             };
             AsideDepth::set(&mut walk, depth);
             let ask = RouteAsk {
-                goal: to,
+                goal: WalkGoal::Point(to),
                 tick: tick.start(),
                 party: None,
             };
@@ -674,6 +675,7 @@ impl Walking {
                             team: team.copied(),
                             firm: Self::firm(progress, at_work, tags, hemmed),
                             leaving: leaving.expect("a walker carries whether it leaves").get(),
+                            into: destination.and_then(|destination| destination.unit()),
                             pinned: false,
                         }
                     },

@@ -262,6 +262,40 @@ fn a_cell_costs_by_whether_its_walker_may_move_the_units_of_its_team_in_it() {
         walls(&costs, CrowdWalls::Stuck),
         [false, true, false, false, true, true]
     );
+    // A red walker's price that leaves out the unit it walks into: the cells of that unit alone
+    // cost nothing, are no wall and hold no unit, and every other is as before; a unit that does
+    // not stand is left out of nothing (entries-and-blocking.md, A walker passes through the unit
+    // it walks into).
+    let mut runs = Vec::new();
+    let mut excusing = |unit, walls| {
+        let excused = costs.excuse(unit, (walker, Some(red)), &mut runs);
+        let price = costs
+            .price(walker, Some(red), walls)
+            .unwrap()
+            .excusing(excused);
+        let of = cells.map(|cell| price.of(cell));
+        let walled = cells.map(|cell| price.walls(cell));
+        let stands = cells.map(|cell| price.stands(cell));
+        (of, walled, stands)
+    };
+    let (of, _, stands) = excusing(idle, CrowdWalls::Priced);
+    assert_eq!(of, [0, 84, 0, 84, 0, 0]);
+    assert_eq!(stands, [false, true, false, true, false, false]);
+    let (of, walled, _) = excusing(penned, CrowdWalls::Stuck);
+    assert_eq!(of, [42, 0, 0, 84, 0, 0]);
+    assert_eq!(walled, [false, false, false, false, true, true]);
+    for (unit, at) in [(foe, 4), (stray, 5)] {
+        let (_, walled, stands) = excusing(unit, CrowdWalls::Stuck);
+        let mut expected = [false, true, false, false, true, true];
+        expected[at] = false;
+        assert_eq!(walled, expected);
+        assert!(!stands[at]);
+    }
+    assert!(
+        costs
+            .excuse(ids.allocate(), (walker, Some(red)), &mut runs)
+            .is_none()
+    );
     // The movable unit moves to (3, 3), and the hemmed one, the blue one and the one of no
     // team go: their old cells cost nothing again, and no cell is walled.
     costs.update([

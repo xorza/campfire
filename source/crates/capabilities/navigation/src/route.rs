@@ -10,11 +10,11 @@ use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_math::Vec3;
 use campfire_sim::{
-    DueIndex, SimComponent, StateRewritten, TimedKept, TimedProcess, TimedRuns, UnitDues,
+    DueIndex, SimComponent, StableId, StateRewritten, TimedKept, TimedProcess, TimedRuns, UnitDues,
     Unpredicted,
 };
 use campfire_states::{Replication, SentPredicted};
-use campfire_units::{ArrivedShort, Body, Facing, UnitEntity};
+use campfire_units::{ArrivedShort, Body, Facing, UnitEntity, WalkGoal};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
@@ -57,10 +57,10 @@ pub struct RouteRef<'a> {
     cursor: &'a RouteCursor,
 }
 
-/// Where a route goes, and its ask while it waits for one.
+/// Where a route goes, a point or into a unit, and its ask while it waits for one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 struct Goal {
-    position: Vec3,
+    goal: WalkGoal,
     asked: Option<Ask>,
 }
 
@@ -75,14 +75,25 @@ struct Ask {
 /// A walker's ask for a route: to `goal`, in `tick`, as one of `party` when it has one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RouteAsk {
-    pub goal: Vec3,
+    pub goal: WalkGoal,
     pub tick: Tick,
     pub party: Option<Party>,
 }
 
 impl Route {
+    /// The point it goes to.
     pub fn goal(&self) -> Option<Vec3> {
-        self.goal.map(|goal| goal.position)
+        self.goal.map(|goal| goal.goal.at())
+    }
+
+    /// The walk it serves.
+    pub fn walk_goal(&self) -> Option<WalkGoal> {
+        self.goal.map(|goal| goal.goal)
+    }
+
+    /// The unit its walk goes into, if any.
+    pub fn unit(&self) -> Option<StableId> {
+        self.walk_goal()?.unit()
     }
 
     pub fn asked(&self) -> Option<Tick> {
@@ -125,7 +136,7 @@ impl Route {
         let RouteAsk { goal, tick, party } = ask;
         let tick = self.asked().unwrap_or(tick);
         self.goal = Some(Goal {
-            position: goal,
+            goal,
             asked: Some(Ask { tick, party }),
         });
     }
@@ -140,7 +151,7 @@ impl Route {
 
     /// Asks in `tick` for a route to `goal` again, if there is one, as `ask` does: a unit a forced
     /// move left elsewhere walks to it from there.
-    fn ask_again(&mut self, goal: Option<Vec3>, progress: &mut Progress, tick: Tick) {
+    fn ask_again(&mut self, goal: Option<WalkGoal>, progress: &mut Progress, tick: Tick) {
         if let Some(goal) = goal {
             let ask = RouteAsk {
                 goal,
@@ -169,17 +180,14 @@ impl Route {
     }
 
     /// Serves `goal` in place of the goal the route reaches, as its last waypoint.
-    fn move_goal(&mut self, goal: Vec3) {
+    fn move_goal(&mut self, goal: WalkGoal) {
         debug_assert!(self.reached && self.asked().is_none());
         let last = self
             .waypoints
             .last_mut()
             .expect("a route that reaches its goal");
-        *last = goal;
-        self.goal = Some(Goal {
-            position: goal,
-            asked: None,
-        });
+        *last = goal.at();
+        self.goal = Some(Goal { goal, asked: None });
     }
 
     /// Forgets the goal and the route, and keeps the buffer of waypoints.
@@ -365,7 +373,7 @@ impl RouteMutItem<'_, '_> {
     /// See `Route::ask_again`; the unit is due in `dues` while its ask waits.
     pub(crate) fn ask_again(
         &mut self,
-        goal: Option<Vec3>,
+        goal: Option<WalkGoal>,
         progress: &mut Progress,
         tick: Tick,
         dues: &mut UnitDues<'_, Route>,
@@ -403,7 +411,7 @@ impl RouteMutItem<'_, '_> {
     }
 
     /// See `Route::move_goal`.
-    pub(crate) fn move_goal(&mut self, goal: Vec3) {
+    pub(crate) fn move_goal(&mut self, goal: WalkGoal) {
         self.route.move_goal(goal);
         self.report();
     }
@@ -458,7 +466,7 @@ impl SimComponent for Route {
         let within = |point: Vec3| point.within_bound();
         let goal = |goal: Goal| {
             let party = goal.asked.and_then(|ask| ask.party);
-            within(goal.position) && party.is_none_or(|party| within(party.goal))
+            within(goal.goal.at()) && party.is_none_or(|party| within(party.goal))
         };
         let places = self.goal.is_none_or(goal) && self.waypoints.iter().copied().all(within);
         let served = world.get_resource::<PathingGrid>().is_none_or(|grid| {
@@ -511,6 +519,7 @@ pub(crate) mod internals {
     use bevy_ecs::bundle::{Bundle, NoBundleEffect};
     use campfire_common::Tick;
     use campfire_math::Vec3;
+    use campfire_units::WalkGoal;
 
     use crate::progress::Progress;
     use crate::route::{Route, RouteAsk, RouteCursor, RouteRef};
@@ -529,7 +538,7 @@ pub(crate) mod internals {
             let mut route = Route::default();
             let mut cursor = RouteCursor::default();
             let ask = RouteAsk {
-                goal,
+                goal: WalkGoal::Point(goal),
                 tick: Tick::new(0),
                 party: None,
             };
@@ -580,7 +589,7 @@ mod tests {
         // From (0, 0), to (0, 0) again, then (4, 0), then (4, −3): the leg of no length is passed
         // over, so the way is along `x`, 0°. Its legs are its own three.
         let ask = RouteAsk {
-            goal: at(4, -3),
+            goal: WalkGoal::Point(at(4, -3)),
             tick: Tick::new(0),
             party: None,
         };
@@ -626,7 +635,7 @@ mod tests {
         let mut route = Route::default();
         let mut cursor = RouteCursor::default();
         let ask = RouteAsk {
-            goal: Vec3::from((1, 0, 0)),
+            goal: WalkGoal::Point(Vec3::from((1, 0, 0))),
             tick: Tick::new(0),
             party: None,
         };

@@ -1,8 +1,11 @@
+use std::ops::Range;
+
 use bevy_ecs::change_detection::{DetectChanges, Ref};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_common::Tick;
+use campfire_math::Vec3;
 use campfire_sim::{DueIndex, DueUnit, Position, Removals, SimTick, StableId, UnitDues};
 use campfire_units::{Body, Dead, Destination};
 use campfire_values::Team;
@@ -29,8 +32,12 @@ impl Routing {
     /// route there, unless its route reaches its goal and the walker may go straight on from the
     /// waypoint before the last to the new one, past every static body, every cell the walls
     /// block it from and every cell its team's crowd prices, as a chaser after a target that moved:
-    /// then only the last waypoint moves (04-capabilities/navigation.md, A route prices the units
-    /// on it).
+    /// then only the last waypoint moves, and the walker's progress goes on toward it
+    /// (04-capabilities/navigation.md, A route prices the units on it). A walk into a unit passes
+    /// through that unit's cells, and once its route serves that walk, a new place of the unit it
+    /// may not go straight on to asks again only when it lies more than a tenth of the walker's
+    /// distance to it from the route's goal, keeping the walker's progress, as one walk
+    /// (entries-and-blocking.md, A walk into a unit follows it).
     /// A walker with no destination forgets its route, unless it arrived short. A change of the
     /// static bodies asks the routes it changes as it is tracked, as `StaticTracking` says. A
     /// walker that asks or forgets its route forgets its progress. One on its path asks as one
@@ -57,7 +64,7 @@ impl Routing {
             Without<Dead>,
         >,
         (mut lived, mut returned): (Removals<'_, '_, Dead>, Local<'_, Vec<Entity>>),
-        mut asks: ResMut<'_, DueIndex<Route>>,
+        (mut asks, mut excused): (ResMut<'_, DueIndex<Route>>, Local<'_, Vec<Range<usize>>>),
     ) {
         let now = tick.start();
         returned.clear();
@@ -78,7 +85,7 @@ impl Routing {
                 continue;
             }
             let walker = Walker::walking(body);
-            match destination.get() {
+            match destination.goal() {
                 None if route.read().is_arrived_short() => {}
                 None => {
                     if route.goal().is_some() {
@@ -86,7 +93,7 @@ impl Routing {
                         progress.restart();
                     }
                 }
-                Some(goal) if route.goal() == Some(goal) => {}
+                Some(goal) if route.walk_goal() == Some(goal) => {}
                 Some(goal) => {
                     // A destination a step aside did not give, as it gives its route's goal with
                     // it, is a walk of the unit's own.
@@ -100,35 +107,60 @@ impl Routing {
                         [] => None,
                     };
                     let straight = from.filter(|_| route.is_reached() && route.asked().is_none());
-                    let blocks = |from| {
+                    let mut blocks = |from| {
                         grid.as_ref().is_some_and(|grid| {
                             let price = crowd.as_deref().and_then(|crowd| {
-                                crowd.price(walker, team.copied(), CrowdWalls::Priced)
+                                let excused = goal.unit().and_then(|unit| {
+                                    crowd.excuse(unit, (walker, team.copied()), &mut excused)
+                                });
+                                let price = crowd.price(walker, team.copied(), CrowdWalls::Priced);
+                                Some(price?.excusing(excused))
                             });
                             let walkable =
                                 Walkable::of(grid.clearance(walker), &statics).priced(price);
-                            walkable.blocks(Segment::new(from, goal))
+                            walkable.blocks(Segment::new(from, goal.at()))
                         })
+                    };
+                    // A route that arrived short of the unit's last place serves no walk on.
+                    let follows = goal.unit().is_some()
+                        && route.unit() == goal.unit()
+                        && !route.read().is_arrived_short();
+                    let dues = &mut UnitDues::new(&mut asks, id, entity);
+                    let ask = RouteAsk {
+                        goal,
+                        tick: now,
+                        party: path.and_then(|path| path.party(goal.at())),
                     };
                     if let Some(from) = straight
                         && !blocks(from)
                     {
+                        let moved = route.read().ahead().last().copied();
                         route.move_goal(goal);
+                        if let Some(moved) = moved {
+                            progress.goal_moved(moved, goal.at());
+                        }
+                    } else if follows {
+                        let planned = route.goal().expect("a route that serves a walk");
+                        if !Self::near_enough(at.get(), planned, goal.at()) {
+                            route.ask_keeping(ask, dues);
+                        }
                     } else {
-                        let ask = RouteAsk {
-                            goal,
-                            tick: now,
-                            party: path.and_then(|path| path.party(goal)),
-                        };
-                        route.ask(
-                            ask,
-                            &mut progress,
-                            &mut UnitDues::new(&mut asks, id, entity),
-                        );
+                        route.ask(ask, &mut progress, dues);
                     }
                 }
             }
         }
+    }
+
+    /// Whether a route planned to `planned` still serves a walker at `at` bound for `goal`: the
+    /// two lie at most a tenth of the walker's distance to `goal` apart, as Zero Hour's
+    /// `isSamePosition` keeps a path to a goal object that moved (entries-and-blocking.md, A walk
+    /// into a unit follows it).
+    const fn near_enough(at: Vec3, planned: Vec3, goal: Vec3) -> bool {
+        // Offsets within the world's bound square below 2⁹², and a hundred times that fits.
+        let moved = goal.ground_offset(planned).length_squared_bits();
+        let distance = goal.ground_offset(at).length_squared_bits();
+        100 * moved <= distance
     }
 
     /// Plans the asked routes as the tick's work begins, as `RouteAsks::plan` says, and gives
@@ -184,6 +216,7 @@ impl Routing {
                     team: team.copied(),
                     walls,
                     goal: route.goal().expect("a unit that asked a route has a goal"),
+                    into: route.unit(),
                 },
             }
         }));
@@ -202,5 +235,38 @@ impl Routing {
             route.answer(member.position, waypoints, reached);
             index.forget(member.entity);
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_math::Num;
+
+    use super::*;
+
+    #[test]
+    fn a_route_serves_a_goal_that_moved_at_most_a_tenth_of_the_walkers_distance() {
+        // A walker at the origin, a goal 10 m off along x: a route planned to a point 1 m from
+        // the goal, a tenth of 10 m, serves it, either way along or across; a bit past 1 m, or
+        // 1 m from a goal 9 m off, does not.
+        let goal = Vec3::from((10, 0, 0));
+        let bit = Num::from_bits(1);
+        for planned in [
+            Vec3::from((11, 0, 0)),
+            Vec3::from((10, 0, 1)),
+            Vec3::from((9, 0, 0)),
+        ] {
+            assert!(
+                Routing::near_enough(Vec3::ZERO, planned, goal),
+                "{planned:?}"
+            );
+        }
+        let past = Vec3::new(Num::int(11) + bit, Num::ZERO, Num::ZERO);
+        assert!(!Routing::near_enough(Vec3::ZERO, past, goal));
+        assert!(!Routing::near_enough(
+            Vec3::from((1, 0, 0)),
+            Vec3::from((11, 0, 0)),
+            goal
+        ));
     }
 }

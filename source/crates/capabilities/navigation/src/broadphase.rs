@@ -246,6 +246,7 @@ pub(crate) mod internals {
                 team: None,
                 firm: false,
                 leaving: false,
+                into: None,
                 pinned: false,
             })
             .collect()

@@ -5,6 +5,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_declarations::Cache;
 use campfire_geometry::{Grid, RunChange};
+use campfire_sim::StableId;
 use campfire_values::Team;
 
 use crate::body_index::IndexedBody;
@@ -127,12 +128,35 @@ enum Change {
 }
 
 /// What a walker of one kind and team pays to enter a cell of the grid, past the step, by its
-/// team's counts, if any stands, and which cells it may not enter, by its kind's and `walls`.
+/// team's counts, if any stands, and which cells it may not enter, by its kind's and `walls`, but
+/// for the unit it walks into, if that stands, which it passes through.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct CrowdPrice<'a> {
     team: Option<&'a TeamCosts>,
     kind: &'a KindCosts,
     walls: CrowdWalls,
+    excused: Option<Excused<'a>>,
+}
+
+/// A unit that stands that a walker walks into, which its price leaves out
+/// (entries-and-blocking.md, A walker passes through the unit it walks into): what it adds to the
+/// counts the walker's price reads in each cell it holds, and those cells for the walker's kind,
+/// one run a row, rows in order, on a grid of `columns` columns.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Excused<'a> {
+    counts: UnitCounts,
+    runs: &'a [Range<usize>],
+    columns: usize,
+}
+
+/// What one unit adds to a cell's counts: to those of its team's units a walker may move, may
+/// not, and the hemmed in among those, and to every unit's.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct UnitCounts {
+    movable: u16,
+    held: u16,
+    hemmed: u16,
+    standing: u16,
 }
 
 impl CrowdCosts {
@@ -245,7 +269,46 @@ impl CrowdCosts {
             CrowdWalls::Priced => team.is_some(),
             CrowdWalls::Stuck => kind.units > 0,
         };
-        prices.then_some(CrowdPrice { team, kind, walls })
+        prices.then_some(CrowdPrice {
+            team,
+            kind,
+            walls,
+            excused: None,
+        })
+    }
+
+    /// The unit `unit`, when it stands, as the price of `walker` of `team` leaves it out: with the
+    /// cells the counts hold it in for the walker's kind, which it puts in `runs`.
+    pub(crate) fn excuse<'a>(
+        &self,
+        unit: StableId,
+        (walker, team): (Walker, Option<Team>),
+        runs: &'a mut Vec<Range<usize>>,
+    ) -> Option<Excused<'a>> {
+        let at = self
+            .stamps
+            .binary_search_by_key(&unit, |stamp| stamp.body.id)
+            .ok()?;
+        let stamp = self.stamps[at];
+        runs.clear();
+        if stamp.body.layer == walker.layer {
+            stamp
+                .body
+                .spans_closer(&self.grid, walker.radius, |run| runs.push(run));
+        }
+        let own_team = team.is_some() && stamp.team == team;
+        let counted = |standing| u16::from(own_team && stamp.standing == standing);
+        let counts = UnitCounts {
+            movable: counted(Standing::Movable),
+            held: counted(Standing::Held) + counted(Standing::Hemmed),
+            hemmed: counted(Standing::Hemmed),
+            standing: 1,
+        };
+        Some(Excused {
+            counts,
+            runs,
+            columns: self.grid.columns(),
+        })
     }
 
     /// Adds `stamp`'s unit to the counts of each kind of its layer, and of its team in each, or
@@ -376,16 +439,47 @@ impl CrowdCosts {
     }
 }
 
+impl Excused<'_> {
+    /// What it adds to `cell`'s counts.
+    fn share(self, cell: usize) -> UnitCounts {
+        let row = cell / self.columns;
+        let at = self
+            .runs
+            .partition_point(|run| run.start / self.columns < row);
+        let holds = self
+            .runs
+            .get(at)
+            .is_some_and(|run| run.start / self.columns == row && run.contains(&cell));
+        if holds {
+            self.counts
+        } else {
+            UnitCounts::default()
+        }
+    }
+}
+
 impl<'a> CrowdPrice<'a> {
+    /// It, leaving out `excused`, the unit the walker walks into, if it stands.
+    pub(crate) const fn excusing(self, excused: Option<Excused<'a>>) -> Self {
+        Self { excused, ..self }
+    }
+
+    /// What the excused unit adds to `cell`'s counts, none with none.
+    fn excused_counts(self, cell: usize) -> UnitCounts {
+        self.excused
+            .map_or_else(UnitCounts::default, |excused| excused.share(cell))
+    }
+
     /// What entering `cell` costs past the step: `HELD` where a unit the walker may not move
     /// stands, else `MOVABLE` where one it may stands, else nothing.
     pub(crate) fn of(self, cell: usize) -> u32 {
         let Some(costs) = self.team else {
             return 0;
         };
-        if costs.held[cell] > 0 {
+        let excused = self.excused_counts(cell);
+        if costs.held[cell] > excused.held {
             CrowdCosts::HELD
-        } else if costs.movable[cell] > 0 {
+        } else if costs.movable[cell] > excused.movable {
             CrowdCosts::MOVABLE
         } else {
             0
@@ -398,21 +492,37 @@ impl<'a> CrowdPrice<'a> {
         if self.walls == CrowdWalls::Priced {
             return false;
         }
+        let excused = self.excused_counts(cell);
         let (own, hemmed) = self.team.map_or((0, false), |costs| {
             (
-                costs.movable[cell] + costs.held[cell],
-                costs.hemmed[cell] > 0,
+                costs.movable[cell] + costs.held[cell] - excused.movable - excused.held,
+                costs.hemmed[cell] > excused.hemmed,
             )
         });
-        hemmed || self.kind.standing[cell] > own
+        hemmed || self.kind.standing[cell] - excused.standing > own
     }
 
     /// The cells some unit holds, one bit a cell, column by column: its team's on a route that
-    /// walls nothing, every unit's on a stuck walker's, so no line crosses a walled cell.
+    /// walls nothing, every unit's on a stuck walker's, so no line crosses a walled cell. A cell
+    /// the excused unit alone holds is among them; `stands` tells it apart.
     pub(crate) fn stood(self) -> &'a [u64] {
         match (self.walls, self.team) {
             (CrowdWalls::Priced, Some(costs)) => &costs.stood,
             _ => &self.kind.stood,
+        }
+    }
+
+    /// Whether a unit but the excused one holds `cell`, of those `stood` marks.
+    pub(crate) fn stands(self, cell: usize) -> bool {
+        if self.excused.is_none() {
+            return true;
+        }
+        let excused = self.excused_counts(cell);
+        match (self.walls, self.team) {
+            (CrowdWalls::Priced, Some(costs)) => {
+                costs.movable[cell] + costs.held[cell] > excused.movable + excused.held
+            }
+            _ => self.kind.standing[cell] > excused.standing,
         }
     }
 }

@@ -25,7 +25,9 @@ use campfire_interaction::{
 };
 use campfire_math::Num;
 use campfire_names::{Filter, Filters};
-use campfire_navigation::{FlightData, Navigation, Walker};
+use campfire_navigation::{
+    FlightData, Gait, Navigation, Progress, RoutePlanner, UnitNavigationData, Walker,
+};
 use campfire_orders::Orders;
 use campfire_orders::OrdersDirective;
 use campfire_players::Players;
@@ -466,12 +468,15 @@ fn a_riders_walk_follows_a_container_that_drives_and_ends_short_of_one_walled_of
     ] {
         Units::give_type(&mut game, unit_type, circle);
     }
-    // Walking circles of a half meter: a humvee at 2 m drives to 8 m, a meter a tick, from the tick
-    // its rider at the origin is ordered in: the rider follows it, a meter a tick, and comes within
-    // its reach of 1 m once it stops; the entry winds up 3 ticks and resolves.
+    // Walking circles of a half meter: a humvee at 2 m drives to 10 m, a meter a tick, from the
+    // tick its rider at −6 m is ordered in: the rider follows it, a meter a tick, and comes within
+    // its reach of 1 m, at 8 m, in tick 13, 6 ticks after the humvee stops; the entry winds up 3
+    // ticks and resolves in tick 17. As it keeps pace with the humvee for 8 ticks, it comes no
+    // nearer it, and it is never stuck, as its progress grows by each move of its goal
+    // (entries-and-blocking.md, A walk into a unit follows it).
     let humvee = container(&mut game, rides.humvee, 2, 0, Some(0));
-    let follower = rider(&mut game, "walking caster", 0, 0, 0);
-    let to = GroundPoint::new(Num::int(8), Num::ZERO);
+    let follower = rider(&mut game, "walking caster", -6, 0, 0);
+    let to = GroundPoint::new(Num::int(10), Num::ZERO);
     game.step_orders(
         PlayerSlot::new(0),
         &[
@@ -479,8 +484,15 @@ fn a_riders_walk_follows_a_container_that_drives_and_ends_short_of_one_walled_of
             Order::one(follower, OrdersDirective::Enter { target: humvee }),
         ],
     );
-    game.steps(12);
-    assert_eq!(ground(&game, humvee), (16, 0));
+    let stuck_after = Progress::stuck_after(*game.resource::<MatchRate>());
+    for tick in 1..=16 {
+        game.step();
+        assert!(game.try_part::<Riding>(follower).is_none(), "tick {tick}");
+        let stuck = game.part::<Progress>(follower).stuck_ticks();
+        assert!(stuck < stuck_after, "tick {tick}: {stuck}");
+    }
+    game.step();
+    assert_eq!(ground(&game, humvee), (20, 0));
     assert_eq!(riders(&game, humvee), [follower]);
     // A humvee at (−8, 0) ringed by eight bunkers of 2 m, whose inner faces stand a meter from
     // it: no cell outside the ring lies within reach of it, so the rider's route ends short, at
@@ -516,6 +528,164 @@ fn a_riders_walk_follows_a_container_that_drives_and_ends_short_of_one_walled_of
         game.part::<Destination>(walker).get().map(|at| at.z),
         Some(Num::int(4))
     );
+    assert_eq!(failed(&mut game), []);
+}
+
+/// Gives `game` the grid `grid` gives, riders and humvees of circles of a half meter, and
+/// humvees that drive, of weight 4, as a vehicle does (04-capabilities/navigation.md, A unit moves
+/// by its kind of motion).
+fn driving(game: &mut Match, rides: Rides) {
+    grid(game, rides);
+    let circle = BodyForm::new(BodyShape::circle(Num::HALF).unwrap(), Layer::FIRST);
+    let walking = Units::type_named(game, "walking caster").unwrap();
+    for unit_type in [walking, rides.humvee] {
+        Units::give_type(game, unit_type, circle);
+    }
+    let navigation = UnitNavigationData::new(Gait::Drive, Num::int(4)).unwrap();
+    Navigation::load_unit_navigation(game, rides.humvee, navigation);
+}
+
+#[test]
+fn riders_walk_into_an_idle_container_that_drives_which_stands_where_it_stood() {
+    // A humvee that drives stands idle at (2, 0), and three riders on the x axis at −2, −6 and
+    // −8 are ordered into it at once; then the same with four idle friends ringing it 1.5 m off.
+    // Each rider's walk goes into the humvee, which so never steps aside for it and blocks none
+    // of its routes (entries-and-blocking.md, A walker passes through the unit it walks into).
+    // The first walks 2 m, a meter a tick from the tick of its order, to stand 2 m from the
+    // humvee's center, its reach of 1 m from the humvee's body, at the end of tick 1; its entry
+    // winds up 3 ticks from tick 2 and resolves in tick 5. The second, 6 m from there, stands
+    // behind the first a tick as the first winds up at x = 0, and enters in tick 10; the third
+    // goes round the second as it winds up, and enters in tick 12.
+    for ringed in [false, true] {
+        let (mut game, rides) = Rides::load();
+        driving(&mut game, rides);
+        let humvee = container(&mut game, rides.humvee, 2, 0, Some(0));
+        let ring = [halves(1, 0), halves(7, 0), halves(4, 3), halves(4, -3)];
+        let friends: Vec<StableId> = ring
+            .into_iter()
+            .filter(|_| ringed)
+            .map(|at| {
+                Spawn::named(&game, "walking caster", at)
+                    .team(Team::new(0))
+                    .place(&mut game)
+            })
+            .collect();
+        let units: Vec<StableId> = [-2, -6, -8]
+            .into_iter()
+            .map(|x| rider(&mut game, "walking caster", x, 0, 0))
+            .collect();
+        let orders: Vec<Order> = units
+            .iter()
+            .map(|&unit| Order::one(unit, OrdersDirective::Enter { target: humvee }))
+            .collect();
+        game.step_orders(PlayerSlot::new(0), &orders);
+        let mut entered = [None; 3];
+        for tick in 1..60 {
+            game.step();
+            assert_eq!(ground(&game, humvee), (4, 0), "tick {tick}");
+            for (at, &unit) in entered.iter_mut().zip(&units) {
+                if at.is_none() && game.try_part::<Riding>(unit).is_some() {
+                    *at = Some(tick);
+                }
+            }
+        }
+        // Ringed, the friend at (0.5, 0) on the riders' way steps aside, and the first rider
+        // enters two ticks later; the third, which goes round the second, enters before it.
+        let expected = if ringed {
+            [Some(7), Some(13), Some(12)]
+        } else {
+            [Some(5), Some(10), Some(12)]
+        };
+        assert_eq!((ringed, entered), (ringed, expected));
+        assert_eq!(riders(&game, humvee).len(), 3);
+        if ringed {
+            assert_ne!(game.part::<Position>(friends[0]).get(), ring[0]);
+        }
+        assert_eq!(failed(&mut game), []);
+    }
+}
+
+#[test]
+fn a_rider_meets_a_container_that_drives_at_it_and_follows_one_that_drives_round_a_wall() {
+    // A humvee that drives from (6, 0) to (−8, 0), a meter a tick, and a rider at (−2, 0) ordered
+    // into it in the same tick: they close 2 m a tick, 8 m apart, to the rider's reach, 2 m
+    // between their centers, at the end of tick 2; the rider winds up from tick 3, the humvee
+    // steering round it as it stands, and enters in tick 6, and the humvee drives on to its goal.
+    let (mut game, rides) = Rides::load();
+    driving(&mut game, rides);
+    let humvee = container(&mut game, rides.humvee, 6, 0, Some(0));
+    let follower = rider(&mut game, "walking caster", -2, 0, 0);
+    let to = GroundPoint::new(Num::int(-8), Num::ZERO);
+    game.step_orders(
+        PlayerSlot::new(0),
+        &[
+            Order::one(humvee, OrdersDirective::Move { to }),
+            Order::one(follower, OrdersDirective::Enter { target: humvee }),
+        ],
+    );
+    let mut entered = None;
+    for tick in 1..20 {
+        game.step();
+        if entered.is_none() && riders(&game, humvee) == [follower] {
+            entered = Some(tick);
+        }
+    }
+    assert_eq!(entered, Some(6));
+    assert_eq!(ground(&game, humvee), (-16, 0));
+
+    // A humvee at (4, 0) drives round the north end of a wall of bunkers along x = 0 from z = −3
+    // to 9, to (−6, 11), and a rider at (−10, 0) is ordered into it: it walks round the wall's
+    // south end after it, then to its north end and on to it as the humvee comes round. Its
+    // walk keeps its goal each tick until it stands in reach to wind up, and it is never stuck;
+    // over the 16 ticks the humvee moves, its route's last waypoint moves with it while the line
+    // to it from the waypoint before is clear, and one tick plans a route, as the humvee leaves
+    // that line round the wall's north end, more than a tenth of the rider's distance from the
+    // route's goal (entries-and-blocking.md, A walk into a unit follows it).
+    let (mut game, rides) = Rides::load();
+    driving(&mut game, rides);
+    for z in [-2, 0, 2, 4, 6, 8] {
+        Spawn::of(rides.bunker, (0, 0, z))
+            .team(Team::new(0))
+            .place(&mut game);
+    }
+    let humvee = container(&mut game, rides.humvee, 4, 0, Some(0));
+    let follower = rider(&mut game, "walking caster", -10, 0, 0);
+    let to = GroundPoint::new(Num::int(-6), Num::int(11));
+    game.step_orders(
+        PlayerSlot::new(0),
+        &[
+            Order::one(humvee, OrdersDirective::Move { to }),
+            Order::one(follower, OrdersDirective::Enter { target: humvee }),
+        ],
+    );
+    let stuck_after = Progress::stuck_after(*game.resource::<MatchRate>());
+    let (mut asks, mut moving, mut entered) = (0, 0, None);
+    let mut searches = game.resource::<RoutePlanner>().searches();
+    for tick in 1..60 {
+        game.step();
+        if riders(&game, humvee) == [follower] {
+            entered = Some(tick);
+            break;
+        }
+        let progress = game.part::<ActionProgress>(follower);
+        assert!(progress.in_progress().is_some(), "tick {tick}");
+        if progress.is_approaching() {
+            assert!(
+                game.part::<Destination>(follower).get().is_some(),
+                "tick {tick}"
+            );
+            assert!(
+                game.part::<Progress>(follower).stuck_ticks() < stuck_after,
+                "tick {tick}"
+            );
+        }
+        let searched = game.resource::<RoutePlanner>().searches();
+        asks += u32::from(searched > searches);
+        searches = searched;
+        moving += u32::from(game.part::<Destination>(humvee).get().is_some());
+    }
+    assert_eq!((asks, moving, entered), (1, 16, Some(34)));
+    assert_eq!(ground(&game, humvee), (-12, 22));
     assert_eq!(failed(&mut game), []);
 }
 

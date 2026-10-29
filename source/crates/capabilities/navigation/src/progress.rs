@@ -92,6 +92,22 @@ impl Progress {
         self.stuck
     }
 
+    /// Notes that the waypoint `from` it walks toward, its route's last, moved to `to`, as the goal
+    /// of a chase or of a walk into a unit moves: the walk goes on toward it, and the nearest it
+    /// came grows by the move, the farthest the goal may have gone from where it stood then, so a
+    /// walker that steps toward a goal that moves away comes nearer by its step, and one that
+    /// stands does not (entries-and-blocking.md, A walk into a unit follows it).
+    pub(crate) fn goal_moved(&mut self, from: Vec3, to: Vec3) {
+        if let Some(nearest) = &mut self.toward
+            && nearest.waypoint == from
+        {
+            *nearest = Nearest {
+                waypoint: to,
+                distance: nearest.distance + from.ground_offset(to).length(),
+            };
+        }
+    }
+
     /// Whether the route the walker asks is one it asked as it was stuck, and since passed no
     /// waypoint.
     pub(crate) const fn asked_stuck(&self) -> bool {
@@ -189,5 +205,23 @@ mod tests {
         assert_eq!(progress.track(here, detour, step), 1);
         progress.restart();
         assert_eq!(progress.track(here, waypoint, step), 0);
+        // A goal that moves 2 m on along x keeps the walk: the nearest grows by 2 m, so a step of
+        // 1 m toward it, which leaves the walker 1 m farther from it than before, is half a step
+        // nearer than the bound, and progress; standing as it moves 2 m more counts. A move of a
+        // waypoint the walker does not walk toward changes nothing.
+        let moved = waypoint + Vec3::from((2, 0, 0));
+        progress.goal_moved(waypoint, moved);
+        assert_eq!(progress.track(here + Vec3::from((1, 0, 0)), moved, step), 0);
+        let farther = moved + Vec3::from((2, 0, 0));
+        progress.goal_moved(moved, farther);
+        assert_eq!(
+            progress.track(here + Vec3::from((1, 0, 0)), farther, step),
+            1
+        );
+        progress.goal_moved(detour, waypoint);
+        assert_eq!(
+            progress.track(here + Vec3::from((1, 0, 0)), farther, step),
+            2
+        );
     }
 }

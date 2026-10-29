@@ -167,7 +167,7 @@ impl ForcedMoves {
                     .remove::<(ForcedMove, DashDelivering)>();
                 if let Ok((&id, destination, mut route, mut progress)) = walkers.get_mut(entity) {
                     let dues = &mut UnitDues::new(&mut asks, id, entity);
-                    route.ask_again(destination.get(), &mut progress, now, dues);
+                    route.ask_again(destination.goal(), &mut progress, now, dues);
                 }
             } else {
                 under_way.set_if_neq(forced);

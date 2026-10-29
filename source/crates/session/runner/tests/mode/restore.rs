@@ -14,7 +14,7 @@ use campfire_sim::{
 };
 use campfire_stats::{Ends, Lifetime, StackEnd};
 use campfire_units::{
-    AudienceOwner, AudienceTeam, DashTo, ForcedMove, SpawnPoint, UnitEntity, UnitState,
+    AudienceOwner, AudienceTeam, DashTo, ForcedMove, SpawnPoint, UnitEntity, UnitState, WalkGoal,
 };
 use campfire_values::{ActionStart, DashDelivery, VisionShare};
 
@@ -418,7 +418,7 @@ fn a_restore_keeps_each_time_within_the_limit() {
         let mut route = game.get::<Route>(grunt).unwrap().clone();
         let goal = game.get::<Position>(grunt).unwrap().get();
         let ask = RouteAsk {
-            goal,
+            goal: WalkGoal::Point(goal),
             tick: at,
             party: None,
         };
@@ -642,7 +642,11 @@ fn a_place_past_the_world_bound_fails_its_types_check() {
         assert_eq!(started.check(&game, grunt), holds);
         let mut route = game.get::<Route>(grunt).unwrap().clone();
         let tick = Tick::new(0);
-        let ask = |goal, party| RouteAsk { goal, tick, party };
+        let ask = |goal, party| RouteAsk {
+            goal: WalkGoal::Point(goal),
+            tick,
+            party,
+        };
         route.ask_unreported(ask(point, None));
         assert_eq!(route.check(&game, grunt), holds, "{point:?}");
         route.ask_unreported(ask(at, Some(party(point))));

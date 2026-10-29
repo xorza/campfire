@@ -9,10 +9,10 @@ use bevy_ecs::query::{Has, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::{Mut, World};
 use campfire_actions::{
-    ActionBook, ActionCall, ActionCheck, ActionKind, ActionProgress, ActionSlots, CastSpends,
-    Caster, CheckedAction, EffectListBook, InProgress, ListCall, ListHook, ListsOf, OnResolve,
-    OrderPhase, PlayerCooldowns, ProgressDues, ProgressIndexes, Purse, RangeFit, ResolveKind,
-    ResolvedCast, SlotCommit, SlotTimes, StartChecked, StartFrom, Targets, UseGroup,
+    ActionBook, ActionCall, ActionCheck, ActionKind, ActionProgress, ActionSlots, ActionTarget,
+    CastSpends, Caster, CheckedAction, EffectListBook, InProgress, ListCall, ListHook, ListsOf,
+    OnResolve, OrderPhase, PlayerCooldowns, ProgressDues, ProgressIndexes, Purse, RangeFit,
+    ResolveKind, ResolvedCast, SlotCommit, SlotTimes, StartChecked, StartFrom, Targets, UseGroup,
 };
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_deliveries::{Deliverers, Delivering, Launcher};
@@ -210,10 +210,15 @@ impl Casts {
             if reach != RangeFit::Within {
                 let to = checked.walk_to(position.get(), body, reach, &targets);
                 // A walk that arrived short of its goal ends its cast, as no path comes nearer
-                // (riders-and-upgrades.md, An approach that cannot reach ends).
+                // (riders-and-upgrades.md, An approach that cannot reach ends). An entry walks into
+                // its container, as Zero Hour's rider ignores its container on its way
+                // (entries-and-blocking.md, A walk may go into a unit).
                 match (walk.as_mut(), to) {
                     (Some(walk), Some(to)) if !walk.gives_up(to) => {
-                        walk.to(Some(to));
+                        match (action.kind, checked.target) {
+                            (ActionKind::Enter, ActionTarget::Unit(unit)) => walk.to_unit(unit, to),
+                            _ => walk.to(Some(to)),
+                        }
                         progress.approach();
                     }
                     _ => progress.end(dues),

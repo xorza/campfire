@@ -253,6 +253,7 @@ impl WalledScene {
                     team: None,
                     walls: CrowdWalls::Priced,
                     goal,
+                    into: None,
                 },
             })
             .collect();

@@ -12,9 +12,11 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId, Unpredicted};
 use campfire_units::{
     ArrivedShort, AtWork, Body, BodyForm, BodyShape, Dead, Destination, Facing, Layer, MapBook,
-    TurnStep, Units, Wall,
+    TurnStep, Units, WalkGoal, Wall,
 };
 use campfire_values::{Block, PathId, Team};
+
+use crate::halves;
 
 const ONE: i64 = 1 << 24;
 
@@ -590,6 +592,66 @@ fn an_idle_friend_on_a_walkers_way_steps_aside_before_it_stalls_and_an_enemy_or_
         );
         assert_eq!([walker, blocker].map(Vec3::to_bits), at, "{team}");
     }
+}
+
+#[test]
+fn a_walker_passes_through_the_idle_friend_it_walks_into_and_a_client_walks_it_alike() {
+    // A walker of 0.5 m at (−4, 0) walks into an idle friend of 0.5 m at (2, 0), a meter a tick,
+    // on open ground: the friend is on its way, but its walk goes into it, so it does not step
+    // aside, its cells cost the walker's route nothing and collision does not part the two; the
+    // walker reaches the friend's place in tick 5, 6 m on, and has arrived, its walk over, so
+    // collision parts the two on one spot along x, the walker, of the higher id, to +x, half a
+    // meter each way. A client predicts the walk alike, as it moves no friend
+    // aside (entries-and-blocking.md, A walker passes through the unit it walks into).
+    let half = Num::HALF;
+    let mut game = walk_match();
+    let mut client = Match::builder(&[Capability::Navigation])
+        .role(Role::Client)
+        .build();
+    Navigation::walker_type(&mut client);
+    let mut walker = None;
+    let mut friend = None;
+    for game in [&mut game, &mut client] {
+        Navigation::load_open_pathing(game, half, [-8, -8], [8, 8], [ground(half)]);
+        friend = Some(
+            Navigation::walker_at(game, (2, 0, 0))
+                .team(Team::new(0))
+                .circle(half)
+                .walks(Num::ONE, None)
+                .place(game),
+        );
+        walker = Some(
+            Navigation::walker_at(game, (-4, 0, 0))
+                .team(Team::new(0))
+                .circle(half)
+                .walks(Num::ONE, None)
+                .place(game),
+        );
+    }
+    let (walker, friend) = (walker.unwrap(), friend.unwrap());
+    let into = Destination::to_unit(friend, Vec3::from((2, 0, 0)));
+    for game in [&mut game, &mut client] {
+        *game.part_mut::<Destination>(walker) = into;
+    }
+    let mut arrived = None;
+    for tick in 0..8 {
+        game.step();
+        client.step();
+        if tick < 5 {
+            let still = game.part::<Position>(friend).get();
+            assert_eq!(still, Vec3::from((2, 0, 0)), "tick {tick}");
+        }
+        assert_eq!(
+            client.part::<Position>(walker).get(),
+            game.part::<Position>(walker).get(),
+            "tick {tick}"
+        );
+        if arrived.is_none() && game.part::<Destination>(walker).get().is_none() {
+            arrived = Some((tick, game.part::<Position>(walker).get()));
+        }
+    }
+    assert_eq!(arrived, Some((5, halves(5, 0))));
+    assert_eq!(game.part::<Position>(friend).get(), halves(3, 0));
 }
 
 #[test]
@@ -1317,7 +1379,7 @@ fn every_navigation_type_is_state() {
         ),
     );
     let ask = RouteAsk {
-        goal: Vec3::from((3, 0, 4)),
+        goal: WalkGoal::Point(Vec3::from((3, 0, 4))),
         tick: Tick::new(2),
         party: None,
     };
