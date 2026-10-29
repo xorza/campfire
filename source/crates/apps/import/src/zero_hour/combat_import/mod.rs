@@ -21,7 +21,7 @@ use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::damage_type::DamageType;
 use crate::zero_hour::format::ini::object_ini::IniObject;
-use crate::zero_hour::format::ini::object_ini::fight_data::PreferredKinds;
+use crate::zero_hour::format::ini::object_ini::fight_data::{PreferredKinds, WeaponSet};
 use crate::zero_hour::format::ini::weapon_ini::{IniWeapon, PrefireType, RadiusAffects, ShotDelay};
 use crate::zero_hour::game_time;
 use crate::zero_hour::import_name::ImportName;
@@ -29,6 +29,7 @@ use crate::zero_hour::import_names::{ProjectileNames, TypedObject};
 use crate::zero_hour::imported_type::ImportedType;
 use crate::zero_hour::model_bones::ModelBones;
 use crate::zero_hour::object_flight::ObjectFlight;
+use crate::zero_hour::portable_structure;
 use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::weapon_drop_cause::WeaponDropCause;
@@ -70,6 +71,32 @@ pub(crate) struct CombatImport {
     /// The weapons whose `PreferredAgainst` names a kind of no tag, whose preference goes.
     pub(crate) unpreferred: BTreeSet<String>,
     projectile_looks: Vec<ProjectileLook>,
+}
+
+/// The weapons of a portable structure its carrier holds: the structure's name, which each of its
+/// actions takes after the weapon's, and the tag of the upgrade that makes it, which arms them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CarriedWeapons {
+    by: DeclaredName,
+    tag: DeclaredName,
+}
+
+impl CarriedWeapons {
+    /// The action of the weapon of the action `id` it carries: `id` suffixed by the structure's
+    /// name; a long name for one past the bytes a name holds.
+    fn id(&self, id: &DeclaredName) -> Result<DeclaredName, WeaponDropCause> {
+        let name = ImportName::of(id.as_str().as_bytes());
+        name.suffixed(self.by.as_str())
+            .map_err(|_| WeaponDropCause::LongName)
+    }
+
+    /// The test of its carrier's tags each of its actions takes: the upgrade's tag.
+    fn when(&self) -> TagFilterData {
+        TagFilterData::new([FilterTag {
+            name: self.tag.clone(),
+            negated: false,
+        }])
+    }
 }
 
 /// A projectile type named for its weapon, and the object whose look it takes.
@@ -223,17 +250,48 @@ impl CombatImport {
                 _ => {}
             }
             // A leader of spawns fights by them: its own weapon, as a mob's harmless one, goes
-            // (09-zero-hour.md, The import converts a mob).
-            let Some(set) = fight.starting_weapons().filter(|_| !typed.leads()) else {
-                continue;
-            };
-            let gated = WeaponGate::of(set, fight.upgrade_weapons());
-            for GatedWeapon {
-                slot,
-                weapon,
-                gate,
-                set,
-            } in gated
+            // (09-zero-hour.md, The import converts a mob). A portable structure an upgrade makes
+            // inside it adds its starting set, of the slots past its own, armed by the upgrade's
+            // tag (riders-and-upgrades.md, A portable structure is a part of its carrier).
+            let own = fight.starting_weapons().filter(|_| !typed.leads());
+            let mut sources = Vec::new();
+            if let Some(set) = own {
+                let gated = WeaponGate::of(set, fight.upgrade_weapons());
+                sources.push((gated, None));
+            }
+            for module in object.upgrades() {
+                let Some(structure) = portable_structure::structure(rules, module) else {
+                    continue;
+                };
+                let set = structure.fight().starting_weapons();
+                let tag = portable_structure::tag(module)?;
+                let (Some(set), Some(tag)) = (set, tag) else {
+                    continue;
+                };
+                let carried = CarriedWeapons {
+                    by: ImportName::latin(&structure.name).declared()?,
+                    tag,
+                };
+                sources.push((WeaponGate::of(set, None), Some(carried)));
+            }
+            let gated = sources
+                .iter()
+                .enumerate()
+                .flat_map(|(at, (gated, carried))| {
+                    gated
+                        .iter()
+                        .map(move |gated| (WeaponSet::SLOTS * at, gated, carried.as_ref()))
+                });
+            for (
+                offset,
+                &GatedWeapon {
+                    slot,
+                    weapon,
+                    gate,
+                    set,
+                },
+                carried,
+            ) in gated
             {
                 if set.locked[slot] {
                     import.dropped.drop(weapon, WeaponDropCause::Locked);
@@ -245,14 +303,23 @@ impl CombatImport {
                     .get(weapon)
                     .ok_or(WeaponDropCause::NoWeapon)
                     .and_then(|ini| ImportedWeapon::of(ini, rules, &named))
-                    .and_then(|converted| Ok((gate.id(&named)?, converted)))
+                    .and_then(|converted| {
+                        let id = match carried {
+                            Some(carried) => carried.id(&named)?,
+                            None => gate.id(&named)?,
+                        };
+                        Ok((id, converted))
+                    })
                     .and_then(|(id, converted)| {
                         import.take_bonus(converted.bonus.as_ref())?;
                         Ok((id, converted))
                     });
                 match converted {
                     Ok((id, mut converted)) => {
-                        converted.weapon.keys.when = gate.when(&rules.names);
+                        converted.weapon.keys.when = match carried {
+                            Some(carried) => Some(carried.when()),
+                            None => gate.when(&rules.names),
+                        };
                         if let Some(kinds) = set.preferred[slot] {
                             converted.weapon.attack.prefers = Self::preference(kinds, &rules.names);
                             if kinds.other {
@@ -281,17 +348,18 @@ impl CombatImport {
                             }
                         }
                         let slots = import.weapon_slots.entry(type_name.clone()).or_default();
-                        if slots.len() <= slot {
-                            slots.resize_with(slot + 1, Vec::new);
+                        let place = offset + slot;
+                        if slots.len() <= place {
+                            slots.resize_with(place + 1, Vec::new);
                         }
-                        if !slots[slot].contains(&id) {
-                            slots[slot].push(id.clone());
+                        if !slots[place].contains(&id) {
+                            slots[place].push(id.clone());
                         }
                         let weapons = import.weapons.entry(type_name.clone()).or_default();
                         if !weapons.contains(&id) {
                             weapons.push(id);
                         }
-                        if gate != WeaponGate::Upgraded {
+                        if gate != WeaponGate::Upgraded && carried.is_none() {
                             import.armed.insert(type_name.clone());
                         }
                     }

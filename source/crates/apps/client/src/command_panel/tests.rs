@@ -14,6 +14,7 @@ use campfire_production::{
     BuildStart, NewBuild, Production, Queued, RallyTarget, SiteStart, Style,
 };
 use campfire_sim::{Capability, IdAllocator, UnitDues};
+use campfire_stats::TypeUpgrade;
 use campfire_units::{BodyForm, BodyShape, GroundPoint, Layer, TypeOrigin};
 use campfire_values::{Names, PackageIndex, Rank, Share};
 
@@ -603,6 +604,21 @@ fn a_research_is_done_as_its_player_or_its_unit_from_itself_holds_it() {
     assert!(done(research(walls, ResearchHolder::Producer)));
     assert!(!done(research(drill, ResearchHolder::Producer)));
     assert!(!done(Making::Train));
+    // An upgrade of `drill` that `walls` holds back: the player's `walls` is held back, as its
+    // player holds `drill`; the player's `drill` is not, as no one holds `walls`.
+    let upgrades = TypeUpgrades(Box::new([TypeUpgrade {
+        triggers: Box::new([drill]),
+        all: false,
+        conflicts: Box::new([walls]),
+        when: None,
+        below: None,
+        modifier: ModifierId::new(2),
+    }]));
+    let held_back =
+        |making: Making| making.held_back(Some(&upgrades), |spec| done(Making::Research(spec)));
+    assert!(held_back(research(walls, ResearchHolder::Player)));
+    assert!(!held_back(research(drill, ResearchHolder::Player)));
+    assert!(!held_back(Making::Train));
 }
 
 #[test]

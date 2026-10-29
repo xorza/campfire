@@ -2,7 +2,7 @@ use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::observer::On;
-use bevy_ecs::query::{Added, Allow, Changed, Or, QueryState, With, Without};
+use bevy_ecs::query::{Added, Allow, Changed, Has, Or, QueryState, With, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionProgress, ActionSlots, ActionTarget, InProgress, ProgressIndexes};
@@ -10,15 +10,16 @@ use campfire_common::PlayerSlot;
 use campfire_declarations::ById;
 use campfire_math::{Num, SinCos, Vec3};
 use campfire_sim::{
-    DueIndex, DueUnit, EntityIndex, IdAllocator, Position, SimTick, StableId, UnitDues,
+    DueIndex, DueUnit, EntityIndex, IdAllocator, PassesResumed, Position, SimTick, StableId,
+    UnitDues,
 };
 use campfire_stats::{Held, HeldModifiers};
 use campfire_units::{
-    Dead, Destination, Facing, FiringRider, FlightGoal, Leaving, Life, OpenCellAsk, OpenCellRun,
-    OrderKind, Owner, RiderFate, RidersCalledOut, SeeingRider, SeenBy, SpawnAt, Spawner,
-    StatusTags, TagBook, UnitOrdered,
+    Dead, Facing, FiringRider, FlightGoal, Leaving, Life, OpenCellAsk, OpenCellRun, OrderKind,
+    Owner, RiderFate, RidersCalledOut, SeeingRider, SeenBy, SpawnAt, Spawner, StatusTags, TagBook,
+    UnitOrdered,
 };
-use campfire_values::{Rank, Team, TeamSet, UnitType};
+use campfire_values::{Rank, TagSet, Team, TeamSet, UnitTags, UnitType};
 
 use crate::Interaction;
 use crate::enter_spec::EnterSpec;
@@ -88,7 +89,15 @@ type Boarders<'w, 's> = Query<
     (Without<Dead>, Without<Riding>),
 >;
 
-/// The containers, with their places, their flight goals and their destinations.
+/// The living containers whose tags changed, with their riders and their types.
+type Retagged<'w, 's> = Query<
+    'w,
+    's,
+    (&'static Riders, &'static UnitType, &'static UnitTags),
+    (Changed<UnitTags>, Without<Dead>),
+>;
+
+/// The containers, with their places and their flight goals.
 type Landers<'w, 's> = Query<
     'w,
     's,
@@ -97,7 +106,6 @@ type Landers<'w, 's> = Query<
         &'static mut Riders,
         &'static Position,
         Option<&'static mut FlightGoal>,
-        Option<&'static Destination>,
         &'static UnitType,
     ),
     Without<Dead>,
@@ -378,17 +386,18 @@ impl Containers {
         }
     }
 
-    /// Lands each container that flies while it stands with a unit coming to it or waiting for it,
-    /// or a rider waiting to leave it, and lifts it again once none does; once it is on the
-    /// ground, each unit that waits for it enters again, and a unit that took another order or
-    /// went comes no more (04-capabilities/navigation.md, A flier lands for its riders).
+    /// Lands each container that flies while a unit comes to it or waits for it, or a rider waits
+    /// to leave it, once it walks nowhere, where its body has room on the ground, and lifts it
+    /// again once none does; once it is on the ground, each unit that waits for it enters again,
+    /// and a unit that took another order or went comes no more (04-capabilities/navigation.md, A
+    /// flier lands for its riders; riders-and-upgrades.md, A flier lands where it has room).
     pub(crate) fn land(
         mut containers: Landers<'_, '_>,
         mut boarders: Boarders<'_, '_>,
         (index, specs): (Res<'_, EntityIndex>, Res<'_, ById<UnitType, EnterSpec>>),
         mut indexes: ProgressIndexes<'_>,
     ) {
-        for (&id, mut riders, position, goal, destination, &unit_type) in &mut containers {
+        for (&id, mut riders, position, goal, &unit_type) in &mut containers {
             let Some(spec) = specs.get(unit_type) else {
                 continue;
             };
@@ -428,11 +437,10 @@ impl Containers {
                 }
                 true
             });
-            let stands = destination.is_none_or(|destination| destination.get().is_none());
-            let lands = riders.wants_ground() && stands;
+            let lands = riders.wants_ground();
             if let Some(mut goal) = goal {
                 if lands {
-                    goal.set_if_neq(FlightGoal::Ground);
+                    goal.set_if_neq(FlightGoal::Land);
                 } else if riders.lands() {
                     goal.set_if_neq(FlightGoal::Height);
                 }
@@ -495,7 +503,8 @@ impl Containers {
                 let room = Self::room(world, entity, each.unit_type);
                 let fires = Self::spec(world, entity).is_some_and(|spec| {
                     let tags = world.resource::<TagBook>().own(each.unit_type);
-                    spec.fire.fires(tags)
+                    let held = world.get::<UnitTags>(entity);
+                    spec.rider_fires(tags, held.map_or(TagSet::NONE, |held| held.tags))
                 });
                 let at = SpawnAt {
                     id: world.resource_mut::<IdAllocator>().allocate(),
@@ -608,6 +617,42 @@ impl Containers {
                     if let Some(gone) = index.get(rider.id) {
                         commands.entity(gone).despawn();
                     }
+                }
+            }
+        }
+    }
+
+    /// Marks each rider of a container whose tags changed, and whose fire waits for tags, as one
+    /// that fires while the container's tags pass them, and takes the mark while they do not, as
+    /// `PassengersFireUpgrade` lets the Helix's riders fire once it holds its bunker
+    /// (riders-and-upgrades.md, A rider's fire follows its container's tags).
+    pub(crate) fn arm(
+        containers: Retagged<'_, '_>,
+        (specs, index): (Res<'_, ById<UnitType, EnterSpec>>, Res<'_, EntityIndex>),
+        riders: Query<'_, '_, (Option<&UnitTags>, Has<FiringRider>), Allow<Disabled>>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        for (held, &unit_type, tags) in &containers {
+            let Some(spec) = specs.get(unit_type).filter(|spec| spec.fire_when.is_some()) else {
+                continue;
+            };
+            for rider in held.iter() {
+                let Some((entity, (rider_tags, marked))) = index
+                    .get(rider.id)
+                    .and_then(|entity| Some((entity, riders.get(entity).ok()?)))
+                else {
+                    continue;
+                };
+                let own = rider_tags.map_or(TagSet::NONE, |tags| tags.tags);
+                match (spec.rider_fires(own, tags.tags), marked) {
+                    (true, false) => {
+                        commands.entity(entity).insert(FiringRider);
+                        commands.trigger(PassesResumed { entity });
+                    }
+                    (false, true) => {
+                        commands.entity(entity).remove::<FiringRider>();
+                    }
+                    _ => {}
                 }
             }
         }

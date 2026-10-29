@@ -12,8 +12,9 @@ use serde::{Deserialize, Serialize};
 /// relation to it and their tags, all of them when absent; the milliseconds between two exits; the
 /// share of each rider's life most its death deals it; the share of its own life at or below which
 /// it takes none and lets every rider out, none when absent; whether one of no player takes its
-/// first rider's; the riders it spawns with; where its riders fire from, none when absent; whether
-/// its riders see from inside; the modifier of its package each rider holds inside
+/// first rider's; the riders it spawns with; where its riders fire from, none when absent, and the
+/// tags it holds while they fire, every time when absent (riders-and-upgrades.md, A rider's fire
+/// follows its container's tags); whether its riders see from inside; the modifier of its package each rider holds inside
 /// (04-capabilities/combat.md, A container may let its riders fire; 04-capabilities/interaction.md,
 /// A garrison's riders see from it; 04-capabilities/combat.md, A container's modifier holds on its
 /// riders); the tags it holds while it takes riders, every time when absent
@@ -41,6 +42,8 @@ pub struct EnterData {
     pub payload: Vec<PayloadData>,
     #[serde(default)]
     pub fire: FireData,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fire_when: Option<TagFilterData>,
     #[serde(default)]
     pub sight: bool,
     pub modifier: Option<DeclaredName>,

@@ -1,4 +1,4 @@
-data_version 96
+data_version 97
 actions.player_cooldowns e392c93f37f118db
 actions.progress cf0f07e0b1cf07cf
 actions.slot_times e81a763b4f0f5285
@@ -104,7 +104,7 @@ units.dead 38f27f78ec03c9db
 units.destination c4bce0c70722e851
 units.facing a90d70522fa19de5
 units.firing_rider 38f27f78ec03c9db
-units.flight_goal f1b6dd2159da3df3
+units.flight_goal 55163cfcdb4ea8ec
 units.forced_move 092cc3655c7865aa
 units.leaving 631977ddad03a1fb
 units.lifespan 0db406d8bacb40e8

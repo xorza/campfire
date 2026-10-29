@@ -72,6 +72,9 @@ pub enum InteractionSystems {
     /// After the units moved: each container's riders stand where it does, or at their fire
     /// points.
     Carry,
+    /// After the units' stats derived again from the moves: each rider of a container whose tags
+    /// changed fires from it while they pass its fire's tags.
+    Arm,
     /// After the hits and before the damage: each container holds its modifier on its riders.
     Hold,
     /// After the units died: the riders of each container that fell leave, hurt, and those of
@@ -94,6 +97,9 @@ impl ModuleSystems for InteractionSystems {
             Self::Aim => SetPlace::gap(SimEdgeSystems::After(SimSystems::Think)),
             Self::Land => SetPlace::gap(SimEdgeSystems::After(SimSystems::Act)),
             Self::Carry => SetPlace::gap(SimEdgeSystems::After(SimSystems::Collide)),
+            Self::Arm => SetPlace::gap(SimEdgeSystems::After(SimSystems::Collide)).after(
+                StatsSystems::Refresh(SimEdgeSystems::After(SimSystems::Collide)),
+            ),
             // Before the tick's damage, so the stats' hold of Resolve takes it beside the other
             // holds, in an order of its own.
             Self::Hold => SetPlace::gap(SimEdgeSystems::After(SimSystems::Hit)),
@@ -203,6 +209,7 @@ impl Module for Interaction {
         cx.server(InteractionSystems::Aim, Containers::aim);
         cx.server(InteractionSystems::Land, Containers::land);
         cx.server(InteractionSystems::Carry, Containers::carry);
+        cx.server(InteractionSystems::Arm, Containers::arm);
         cx.server(InteractionSystems::Hold, Containers::hold);
         cx.server(InteractionSystems::Fall, Containers::fall);
         cx.server(InteractionSystems::Exit, Containers::let_out);

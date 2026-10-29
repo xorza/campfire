@@ -135,9 +135,14 @@ pub(crate) enum BodyKind {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct WeaponSet {
     pub(crate) conditions: SetConditions,
-    pub(crate) weapons: [Option<String>; 3],
-    pub(crate) preferred: [Option<PreferredKinds>; 3],
-    pub(crate) locked: [bool; 3],
+    pub(crate) weapons: [Option<String>; Self::SLOTS],
+    pub(crate) preferred: [Option<PreferredKinds>; Self::SLOTS],
+    pub(crate) locked: [bool; Self::SLOTS],
+}
+
+impl WeaponSet {
+    /// The slots of a set, `PRIMARY`, `SECONDARY` and `TERTIARY`.
+    pub(crate) const SLOTS: usize = 3;
 }
 
 /// The kinds of a weapon set's `PreferredAgainst`, a target of all of which the slot's weapon is

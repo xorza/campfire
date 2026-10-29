@@ -2,7 +2,7 @@ use bevy_ecs::system::{Res, SystemParam};
 use campfire_actions::ActionBook;
 use campfire_common::PlayerSlot;
 use campfire_declarations::ById;
-use campfire_stats::PlayerModifiers;
+use campfire_stats::{PlayerModifiers, TypeUpgrades};
 use campfire_values::{ActionId, UnitType};
 
 use crate::held_places::HeldPlaces;
@@ -16,8 +16,8 @@ use crate::train_queue::TrainQueue;
 use crate::train_spec::TrainSpec;
 
 /// The books a train is checked and paid by: the actions, each producer's data, what a train
-/// requires and makes, what it costs in supply, and the supply rules, none in a match without
-/// supply.
+/// requires and makes, what it costs in supply, the supply rules, none in a match without supply,
+/// and the unit types' upgrades, none in a match without stats.
 #[derive(SystemParam, Debug)]
 pub(crate) struct ProductionBooks<'w> {
     pub actions: Res<'w, ActionBook>,
@@ -27,6 +27,7 @@ pub(crate) struct ProductionBooks<'w> {
     pub(crate) researches: Res<'w, ById<ActionId, ResearchSpec>>,
     pub(crate) costs: Res<'w, SupplyCostBook>,
     pub(crate) rules: Res<'w, SupplyBook>,
+    pub(crate) upgrades: Option<Res<'w, ById<UnitType, TypeUpgrades>>>,
 }
 
 /// A train, as what its start checks beyond the core's checks of its slot reads it: its

@@ -54,6 +54,25 @@ impl TypeUpgrade {
 }
 
 impl TypeUpgrades {
+    /// The modifiers that hold an upgrade back from `modifier`: each conflict of an upgrade
+    /// `modifier` triggers, and each trigger of an upgrade that `modifier` conflicts with, so a
+    /// unit holds one of the upgrades its `ConflictsWith` makes exclusive, as Zero Hour's
+    /// `CommandSetUpgrade` shows no other once one is bought (riders-and-upgrades.md, A conflicting
+    /// upgrade is refused).
+    pub fn conflicting(&self, modifier: ModifierId) -> impl Iterator<Item = ModifierId> + '_ {
+        self.0.iter().flat_map(move |upgrade| {
+            let conflicts = upgrade
+                .triggers
+                .contains(&modifier)
+                .then_some(&*upgrade.conflicts);
+            let triggers = upgrade
+                .conflicts
+                .contains(&modifier)
+                .then_some(&*upgrade.triggers);
+            conflicts.into_iter().chain(triggers).flatten().copied()
+        })
+    }
+
     /// The upgrades of each unit type that stands with some, or with a `hurt`, its last, of
     /// modifiers and tags of its package; an error for a name the package does not have.
     pub fn book(cx: &BookCx<'_>) -> Result<ById<UnitType, Self>, BookError> {

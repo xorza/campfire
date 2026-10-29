@@ -80,7 +80,10 @@ impl Riders {
         let tags = rider_unit
             .get::<UnitTags>()
             .map_or(TagSet::NONE, |tags| tags.tags);
-        let fires = spec.fire.fires(tags);
+        let held_tags = container_unit
+            .get::<UnitTags>()
+            .map_or(TagSet::NONE, |tags| tags.tags);
+        let fires = spec.rider_fires(tags, held_tags);
         let sees = spec.sight;
         let points = spec.fire.points().len();
         let mut riders = world

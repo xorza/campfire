@@ -7,8 +7,8 @@ use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::system::RunSystemOnce;
 use campfire_abilities::{Abilities, CastData};
 use campfire_actions::{
-    ActionData, ActionKeys, ActionRange, ActionSlots, Actions, RangeBonus, RangeField, SlotKind,
-    SlotTimes, Targeting, TimedSlots,
+    ActionData, ActionKeys, ActionProgress, ActionRange, ActionSlots, Actions, RangeBonus,
+    RangeField, SlotKind, SlotTimes, Targeting, TimedSlots,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Order, Release};
@@ -127,6 +127,7 @@ impl Rides {
                 capture: false,
                 payload: Box::new([]),
                 fire: FireSpec::None,
+                fire_when: None,
                 sight: false,
                 modifier: None,
                 open: None,
@@ -148,6 +149,7 @@ impl Rides {
                 capture: true,
                 payload: Box::new([]),
                 fire: FireSpec::None,
+                fire_when: None,
                 sight: true,
                 modifier: None,
                 open: None,
@@ -171,6 +173,7 @@ impl Rides {
                     count: 2,
                 }]),
                 fire: FireSpec::None,
+                fire_when: None,
                 sight: false,
                 modifier: None,
                 open: None,
@@ -428,8 +431,8 @@ fn a_free_building_takes_its_first_riders_side_until_it_empties_and_none_at_its_
     assert_eq!(failed(&mut game), []);
 }
 
-/// Gives `game` a pathing grid of 1 m cells from (−12, −12) to (12, 12), which the riders walk
-/// as circles of a half meter, and the bunker, which stands, a box 2 m wide.
+/// Gives `game` a pathing grid of 1 m cells from (−12, −12) to (12, 12), for riders and humvees
+/// of circles of a half meter, and the bunker, which stands, a box 2 m wide.
 fn grid(game: &mut Match, rides: Rides) {
     let bounds = Bounds::new([Num::int(-12); 2], [Num::int(12); 2]).unwrap();
     let walker = Walker {
@@ -439,7 +442,7 @@ fn grid(game: &mut Match, rides: Rides) {
     MapBook::amend(game, |_, map| map.bounds = bounds);
     Navigation::load_pathing(game, Grid::new(Num::ONE, bounds).unwrap(), [walker]);
     let mut walkers = ByIdBuilder::default();
-    for name in ["walking caster", "caster"] {
+    for name in ["walking caster", "caster", "humvee"] {
         walkers.set(Units::type_named(game, name).unwrap(), walker);
     }
     walkers.build().load_into(game);
@@ -455,6 +458,68 @@ fn outside(game: &Match, units: &[StableId]) -> Vec<Option<(i64, i64)>> {
     let rides = |unit| game.try_part::<Riding>(unit).is_some();
     let out = |&unit: &StableId| (!rides(unit)).then(|| ground(game, unit));
     units.iter().map(out).collect()
+}
+
+#[test]
+fn a_riders_walk_follows_a_container_that_drives_and_ends_short_of_one_walled_off() {
+    let (mut game, rides) = Rides::load();
+    grid(&mut game, rides);
+    let circle = BodyForm::new(BodyShape::circle(Num::HALF).unwrap(), Layer::FIRST);
+    for unit_type in [
+        Units::type_named(&game, "walking caster").unwrap(),
+        rides.humvee,
+    ] {
+        Units::give_type(&mut game, unit_type, circle);
+    }
+    // Walking circles of a half meter: a humvee at 2 m drives to 8 m, a meter a tick, from the tick
+    // its rider at the origin is ordered in: the rider follows it, a meter a tick, and comes within
+    // its reach of 1 m once it stops; the entry winds up 3 ticks and resolves.
+    let humvee = container(&mut game, rides.humvee, 2, 0, Some(0));
+    let follower = rider(&mut game, "walking caster", 0, 0, 0);
+    let to = GroundPoint::new(Num::int(8), Num::ZERO);
+    let orders = Order::payload(&[
+        Order::one(humvee, OrdersDirective::Move { to }),
+        Order::one(follower, OrdersDirective::Enter { target: humvee }),
+    ]);
+    game.step_with(&[(PlayerSlot::new(0), &orders)]);
+    game.steps(12);
+    assert_eq!(ground(&game, humvee), (16, 0));
+    assert_eq!(riders(&game, humvee), [follower]);
+    // A humvee at (−8, 0) ringed by eight bunkers of 2 m, whose inner faces stand a meter from
+    // it: no cell outside the ring lies within reach of it, so the rider's route ends short, at
+    // the cell nearest it, and its entry ends as it arrives; the rider takes the next order.
+    let walled = container(&mut game, rides.humvee, -8, 0, Some(0));
+    for (x, z) in [
+        (-10, -2),
+        (-10, 0),
+        (-10, 2),
+        (-8, -2),
+        (-8, 2),
+        (-6, -2),
+        (-6, 0),
+        (-6, 2),
+    ] {
+        Spawn::of(rides.bunker, (x, 0, z))
+            .team(Team::new(0))
+            .place(&mut game);
+    }
+    let walker = rider(&mut game, "walking caster", 0, 0, 0);
+    order(
+        &mut game,
+        0,
+        walker,
+        OrdersDirective::Enter { target: walled },
+    );
+    game.steps(12);
+    assert_eq!(game.part::<ActionProgress>(walker).in_progress(), None);
+    assert_eq!(riders(&game, walled), []);
+    let to = GroundPoint::new(Num::ZERO, Num::int(4));
+    order(&mut game, 0, walker, OrdersDirective::Move { to });
+    assert_eq!(
+        game.part::<Destination>(walker).get().map(|at| at.z),
+        Some(Num::int(4))
+    );
+    assert_eq!(failed(&mut game), []);
 }
 
 #[test]
@@ -884,5 +949,115 @@ fn a_flier_lands_for_its_riders_and_climbs_once_none_waits() {
     ];
     assert_eq!(trace(&mut game, 17), [&down[..], &up].concat());
     assert!(!is_out(&mut game, rider));
+    assert_eq!(failed(&mut game), []);
+}
+
+#[test]
+fn a_flier_over_a_static_body_lands_at_the_nearest_point_clear_of_it() {
+    let (mut game, rides) = Rides::load();
+    grid(&mut game, rides);
+    // A chinook of the humvee's room, a circle of a half meter on the second layer that flies a
+    // meter a tick at 8 m, climbing a meter a tick, over a bunker of 2 m at the origin.
+    let spec = game
+        .resource::<ById<UnitType, EnterSpec>>()
+        .get(rides.humvee)
+        .unwrap()
+        .clone();
+    let core = UnitTypeCore::default();
+    let chinook = Units::load_type(&mut game, TypeScope::Mode, "chinook", &core);
+    Abilities::give_combatant(&mut game, chinook);
+    Units::give_type(&mut game, chinook, spec);
+    let air = Layer::new(1);
+    let circle = |layer| BodyForm::new(BodyShape::circle(Num::HALF).unwrap(), layer);
+    Units::give_type(&mut game, chinook, circle(air));
+    Units::give_type(&mut game, chinook, MoveStep::new(Num::ONE).unwrap());
+    let walking = Units::type_named(&game, "walking caster").unwrap();
+    Units::give_type(&mut game, walking, circle(Layer::FIRST));
+    let hz = NonZeroI64::from(game.resource::<MatchRate>().hz()).get();
+    let flight = FlightData::new(Num::int(8), Num::int(hz), Num::int(3)).unwrap();
+    Navigation::load_flight(&mut game, chinook, flight);
+    let mut walkers = ByIdBuilder::default();
+    for (unit_type, layer) in [(walking, Layer::FIRST), (chinook, air)] {
+        walkers.set(
+            unit_type,
+            Walker {
+                layer,
+                radius: Num::HALF,
+            },
+        );
+    }
+    walkers.build().load_into(&mut game);
+    let bounds = Bounds::new([Num::int(-12); 2], [Num::int(12); 2]).unwrap();
+    let kinds = [Layer::FIRST, air].map(|layer| Walker {
+        layer,
+        radius: Num::HALF,
+    });
+    Navigation::load_pathing(&mut game, Grid::new(Num::ONE, bounds).unwrap(), kinds);
+    Spawn::of(rides.bunker, (0, 0, 0))
+        .team(Team::new(0))
+        .place(&mut game);
+    let flier = container(&mut game, chinook, 0, 0, Some(0));
+    game.steps(10);
+    assert_eq!(game.part::<Position>(flier).get().y, Num::int(8));
+    // A rider 4 m off is ordered in: the chinook, which would land on the bunker, flies to the
+    // nearest cell a walker of its radius stands in on the ground, whose center lies a half meter
+    // past the bunker's edge, (−0.5, −1.5) of the four at √2.5 m, the lowest by its number, and
+    // lands there; the rider follows it and enters.
+    let rider = rider(&mut game, "walking caster", 4, 0, 0);
+    order(
+        &mut game,
+        0,
+        rider,
+        OrdersDirective::Enter { target: flier },
+    );
+    game.steps(40);
+    assert_eq!(riders(&game, flier), [rider]);
+    assert_eq!(ground(&game, flier), (-1, -3));
+    assert_eq!(failed(&mut game), []);
+}
+
+#[test]
+fn a_riders_fire_follows_its_containers_tags() {
+    let (mut game, rides) = Rides::load();
+    let (slots, _) = arm(&mut game);
+    // Humvees whose riders fire while they hold `holding`, and while they do not: each takes the
+    // tag as its first rider is in, after the rider's fire is tested, so the first humvee's rider
+    // takes its fire as the tags change, and the second's never does
+    // (riders-and-upgrades.md, A rider's fire follows its container's tags).
+    let gated = |game: &mut Match, name, when| {
+        let spec = EnterSpec {
+            fire: FireSpec::Center(Filter::of_match(game, "all")),
+            fire_when: Some(Filter::of_match(game, when)),
+            ..game
+                .resource::<ById<UnitType, EnterSpec>>()
+                .get(rides.humvee)
+                .unwrap()
+                .clone()
+        };
+        let core = UnitTypeCore::default();
+        let humvee = Units::load_type(game, TypeScope::Mode, name, &core);
+        Abilities::give_combatant(game, humvee);
+        Units::give_type(game, humvee, spec);
+        humvee
+    };
+    let [held, unheld] = [
+        ("held humvee", "all:holding"),
+        ("unheld humvee", "all:!holding"),
+    ]
+    .map(|(name, when)| gated(&mut game, name, when));
+    // Each 20 m apart, its rider beside it, and a foe 1.5 m off it on z, within the weapon's 2 m.
+    let placed = [(0, held), (20, unheld)].map(|(x, humvee_type)| {
+        let humvee = container(&mut game, humvee_type, x, 0, Some(0));
+        let rider = gunner(&mut game, &slots, x + 1);
+        enter(&mut game, 0, rider, humvee);
+        (rider, foe(&mut game, i64::from(x) * 2, 3))
+    });
+    game.steps(12);
+    let fires = placed.map(|(rider, _)| game.try_part::<FiringRider>(rider).is_some());
+    assert_eq!(fires, [true, false]);
+    // The held humvee's rider struck 5 times by now, each 10, as the fire test's riders strike;
+    // the unheld one's foe stands whole.
+    let lives = placed.map(|(_, target)| Stats::health(&game, target));
+    assert_eq!(lives, [450, 500]);
     assert_eq!(failed(&mut game), []);
 }

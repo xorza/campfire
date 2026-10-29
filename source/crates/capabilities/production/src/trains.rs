@@ -15,12 +15,15 @@ use campfire_sim::{
     DueIndex, DueUnit, EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, SimWorld,
     StableId, UnitDues,
 };
-use campfire_stats::{Modifiers, PlayerModifiers, PoolBook, Stats, StatsWorld, UnitPools};
+use campfire_stats::{
+    Modifiers, PlayerModifiers, PoolBook, Stats, StatsWorld, TypeUpgrades, UnitPools,
+};
 use campfire_units::{
     Body, Dead, Facing, ForcedMove, GroundPoint, Leader, Leaving, LivingSpawns, MapBook, MoveStep,
     OpenCellAsk, OpenCellRun, Owner, SpawnAt, Spawner, Walk,
 };
 use campfire_values::{ActionId, Motion, Relation, Team, UnitTags, UnitType};
+use std::iter;
 
 use crate::door_times::DoorTimes;
 use crate::doors::Doors;
@@ -82,6 +85,7 @@ type Training = (
 /// living: its id, its owner, its queue, and the modifiers it carries.
 pub(crate) type Queues = (
     &'static StableId,
+    &'static UnitType,
     Option<&'static Owner>,
     &'static TrainQueue,
     Option<&'static Modifiers>,
@@ -93,17 +97,17 @@ pub(crate) type Queues = (
 pub struct Trains;
 
 impl Trains {
-    /// Starts each ordered train or research of the units the index of the orders holds, in Act,
-    /// by its unit's stable id: one whose unit's tags do not block production that passes the
-    /// core's checks, finds a place in its unit's queue, meets its `requires`, as a train with
-    /// supply finds room under its player's cap and as a research finds its modifier neither held
-    /// nor queued, pays its whole cost, in pools and player resources, goes on cooldown, and joins
-    /// the queue, where a train holds its supply (04-capabilities/production.md, Tags block
-    /// production). The order ends either way,
-    /// and the unit stays free. The holdings follow the units as each run starts, so the supply
-    /// and the units a requirement finds are those of the match as it stands, and each train that
-    /// joins holds its supply at once. A predicting client's form `F` pays nothing, as the unit's
-    /// pools and its player's resources are the server's.
+    /// Starts each ordered train or research of the units the index of the orders holds, in Act, by
+    /// its unit's stable id: one whose unit's tags do not block production that passes the core's
+    /// checks, finds a place in its unit's queue, meets its `requires`, as a train with supply
+    /// finds room under its player's cap and as a research finds neither its modifier nor one its
+    /// upgrades' conflicts hold back held or queued, pays its whole cost, in pools and player
+    /// resources, goes on cooldown, and joins the queue, where a train holds its supply
+    /// (04-capabilities/production.md, Tags block production). The order ends either way, and the
+    /// unit stays free. The holdings follow the units as each run starts, so the supply and the
+    /// units a requirement finds are those of the match as it stands, and each train that joins
+    /// holds its supply at once. A predicting client's form `F` pays nothing, as the unit's pools
+    /// and its player's resources are the server's.
     #[expect(
         clippy::too_many_arguments,
         reason = "a system takes each resource and query it reads"
@@ -162,14 +166,13 @@ impl Trains {
             };
             let researched = researching.is_some_and(|spec| {
                 let queues = units.p2();
-                Self::researched(
-                    spec,
-                    id,
-                    entity,
-                    &held_modifiers,
-                    &books.researches,
-                    &queues,
-                )
+                let check = ResearchCheck {
+                    players: &held_modifiers,
+                    researches: &books.researches,
+                    upgrades: books.upgrades.as_deref(),
+                    queues: &queues,
+                };
+                check.refuses(spec, id, entity)
             });
             let mut training = units.p1();
             let (
@@ -253,46 +256,6 @@ impl Trains {
             queue.push(queued, paid, now, &mut queues.of(id, entity));
             if let TrainAdmission::Holds { owner, supply } = admission {
                 holdings.reserve(entity, owner, supply);
-            }
-        }
-    }
-
-    /// Whether the research `spec`, ordered of the unit `id` of `entity`, is held or queued
-    /// already: a player research by its producer's player, or in the queue of any unit of that
-    /// player; a producer research by its producer, from itself, or in its own queue
-    /// (04-capabilities/production.md, An upgrade is a modifier). A player research of a producer
-    /// of no player counts as held, as no player could hold it.
-    pub(crate) fn researched<F: QueryFilter>(
-        spec: ResearchSpec,
-        id: StableId,
-        entity: Entity,
-        players: &PlayerRows<'_, '_, PlayerModifiers>,
-        researches: &ById<ActionId, ResearchSpec>,
-        queues: &Query<'_, '_, Queues, F>,
-    ) -> bool {
-        let queued_in = |queue: &TrainQueue| {
-            let mut queued = queue.entries().iter();
-            queued.any(|queued| researches.get(queued.action) == Some(&spec))
-        };
-        let (_, owner, queue, carried) = queues.get(entity).expect("a producer has a queue");
-        match spec.holder {
-            ResearchHolder::Producer => {
-                let held =
-                    carried.is_some_and(|carried| carried.get(spec.modifier, Some(id)).is_some());
-                held || queued_in(queue)
-            }
-            ResearchHolder::Player => {
-                let Some(owner) = owner else {
-                    return true;
-                };
-                let held = players
-                    .of(Some(owner))
-                    .is_some_and(|held| held.holds(spec.modifier));
-                let player = owner.player_slot();
-                held || queues.iter().any(|(_, unit_owner, queue, _)| {
-                    unit_owner.is_some_and(|unit_owner| unit_owner.player_slot() == player)
-                        && queued_in(queue)
-                })
             }
         }
     }
@@ -748,5 +711,64 @@ impl TrainPoints {
         world
             .run_system_with(run, OpenCellAsk { unit_type, near })
             .expect("the open cell's search runs on any world")
+    }
+}
+
+/// What a research's refusal reads: the players' modifiers, the researches, the unit types'
+/// upgrades, none in a match without stats, and the producers' queues.
+#[derive(Debug)]
+pub(crate) struct ResearchCheck<'a, 'w, 's, F: QueryFilter> {
+    pub(crate) players: &'a PlayerRows<'w, 's, PlayerModifiers>,
+    pub(crate) researches: &'a ById<ActionId, ResearchSpec>,
+    pub(crate) upgrades: Option<&'a ById<UnitType, TypeUpgrades>>,
+    pub(crate) queues: &'a Query<'w, 's, Queues, F>,
+}
+
+impl<F: QueryFilter> ResearchCheck<'_, '_, '_, F> {
+    /// Whether the research `spec`, ordered of the unit `id` of `entity`, is refused: its modifier,
+    /// or one that holds back an upgrade of it or that it holds back, by its producer's type's
+    /// upgrades, is held or queued already: a player research's by its producer's player, or in
+    /// the queue of any unit of that player; a producer research's by its producer, from itself, or
+    /// in its own queue (04-capabilities/production.md, An upgrade is a modifier;
+    /// riders-and-upgrades.md, A conflicting upgrade is refused). A player research of a producer
+    /// of no player counts as held, as no player could hold it.
+    pub(crate) fn refuses(&self, spec: ResearchSpec, id: StableId, entity: Entity) -> bool {
+        let (_, &unit_type, owner, queue, carried) =
+            self.queues.get(entity).expect("a producer has a queue");
+        let upgrades = self.upgrades.and_then(|upgrades| upgrades.get(unit_type));
+        let refused = || {
+            let conflicting = upgrades.into_iter();
+            let conflicting = conflicting.flat_map(|upgrades| upgrades.conflicting(spec.modifier));
+            iter::once(spec.modifier).chain(conflicting)
+        };
+        let queued_in = |queue: &TrainQueue| {
+            queue.entries().iter().any(|queued| {
+                self.researches.get(queued.action).is_some_and(|queued| {
+                    queued.holder == spec.holder && refused().any(|held| held == queued.modifier)
+                })
+            })
+        };
+        match spec.holder {
+            ResearchHolder::Producer => {
+                let held = carried.is_some_and(|carried| {
+                    refused().any(|held| carried.get(held, Some(id)).is_some())
+                });
+                held || queued_in(queue)
+            }
+            ResearchHolder::Player => {
+                let Some(owner) = owner else {
+                    return true;
+                };
+                let held = self
+                    .players
+                    .of(Some(owner))
+                    .is_some_and(|players| refused().any(|held| players.holds(held)));
+                let player = owner.player_slot();
+                held || self.queues.iter().any(|(_, _, unit_owner, queue, _)| {
+                    unit_owner.is_some_and(|unit_owner| unit_owner.player_slot() == player)
+                        && queued_in(queue)
+                })
+            }
+        }
     }
 }

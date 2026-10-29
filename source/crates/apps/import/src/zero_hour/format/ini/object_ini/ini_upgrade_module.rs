@@ -41,6 +41,8 @@ pub(crate) enum UpgradeEffect {
     /// `ObjectCreationUpgrade`: its object runs the creation list `list`, its `UpgradeObject`,
     /// none for none named.
     ObjectCreation { list: Option<String> },
+    /// `PassengersFireUpgrade`: its object's passengers fire from it.
+    PassengersFire,
     /// Any other upgrade module, by its class's name as the object writes it.
     Other(String),
 }
@@ -76,6 +78,7 @@ impl IniUpgradeModule {
                 hide: Vec::new(),
             },
             "objectcreationupgrade" => UpgradeEffect::ObjectCreation { list: None },
+            "passengersfireupgrade" => UpgradeEffect::PassengersFire,
             lower if lower.ends_with("upgrade") => UpgradeEffect::Other(class.to_owned()),
             _ => return None,
         };
@@ -99,6 +102,7 @@ impl IniUpgradeModule {
             UpgradeEffect::ModelCondition { .. } => "ModelConditionUpgrade",
             UpgradeEffect::SubObjects { .. } => "SubObjectsUpgrade",
             UpgradeEffect::ObjectCreation { .. } => "ObjectCreationUpgrade",
+            UpgradeEffect::PassengersFire => "PassengersFireUpgrade",
             UpgradeEffect::Other(class) => class,
         }
     }

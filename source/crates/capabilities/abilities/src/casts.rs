@@ -209,9 +209,11 @@ impl Casts {
             };
             if reach != RangeFit::Within {
                 let to = checked.walk_to(position.get(), body, reach, &targets);
-                match (walk.is_some(), to) {
-                    (true, Some(to)) => {
-                        Self::walk(walk.as_mut(), Some(to));
+                // A walk that arrived short of its goal ends its cast, as no path comes nearer
+                // (riders-and-upgrades.md, An approach that cannot reach ends).
+                match (walk.as_mut(), to) {
+                    (Some(walk), Some(to)) if !walk.gives_up(to) => {
+                        walk.to(Some(to));
                         progress.approach();
                     }
                     _ => progress.end(dues),

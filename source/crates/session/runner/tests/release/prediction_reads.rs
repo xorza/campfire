@@ -189,6 +189,7 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
         "campfire_combat::dying::Dying::die",
         "campfire_combat::dying::Dying::forget_attackers",
         "campfire_interaction::containers::Containers::aim",
+        "campfire_interaction::containers::Containers::arm",
         "campfire_interaction::containers::Containers::carry",
         "campfire_interaction::containers::Containers::fall",
         "campfire_interaction::containers::Containers::hold",

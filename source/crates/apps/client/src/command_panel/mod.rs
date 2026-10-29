@@ -49,7 +49,7 @@ use campfire_production::{
 };
 use campfire_script::{Filter, MatchNames};
 use campfire_sim::{EntityIndex, MatchRate, SimTick, StableId, Unpredicted};
-use campfire_stats::Modifiers;
+use campfire_stats::{Modifiers, TypeUpgrades};
 use campfire_units::{Dead, Owner, TypeOriginBook};
 use campfire_values::{ActionId, ModifierId, NameId, ResourceId, TagSet, UnitTags, UnitType};
 
@@ -246,7 +246,8 @@ type PanelNodes<'w, 's> = (
 );
 
 /// The books the panel reads: the actions, the builds, the researches, none in a mode of no
-/// research, the sales, none in a mode of none, and the actions' names.
+/// research, the sales, none in a mode of none, the actions' names, the trains, and the unit
+/// types' upgrades, none in a mode of no stats.
 type PanelBooks<'w> = (
     Res<'w, ActionBook>,
     Res<'w, BuildBook>,
@@ -254,6 +255,7 @@ type PanelBooks<'w> = (
     Option<Res<'w, ById<UnitType, SellSpec>>>,
     Res<'w, NameTexts<ActionId>>,
     Option<Res<'w, ById<ActionId, TrainSpec>>>,
+    Option<Res<'w, ById<UnitType, TypeUpgrades>>>,
 );
 
 /// The units the panel may show: each one's player, type, slots, train queue, site and its
@@ -423,7 +425,7 @@ impl CommandPanelPlugin {
             PanelUnits<'_, '_>,
             RiderTypes<'_, '_>,
         ),
-        (book, builds, researches, sales, names, trains): PanelBooks<'_>,
+        (book, builds, researches, sales, names, trains, upgrades): PanelBooks<'_>,
         (looks, hovered, mut pressable): (
             Res<'_, PanelLooks>,
             Res<'_, Hovered>,
@@ -492,11 +494,14 @@ impl CommandPanelPlugin {
             return;
         };
         root.set_if_neq(Visibility::Inherited);
-        let Ok((_, _, slots, queue, site, progress, carried, _, times, _, places)) =
+        let Ok((_, &unit_type, slots, queue, site, progress, carried, _, times, _, places)) =
             units.get(unit)
         else {
             return;
         };
+        let upgrades = upgrades
+            .as_deref()
+            .and_then(|upgrades| upgrades.get(unit_type));
         let now = tick.start();
         line.clear();
         for (at, &resource) in setup.resources.iter().enumerate() {
@@ -506,17 +511,15 @@ impl CommandPanelPlugin {
         }
         ui_style::set_text(&mut texts, *funds, &line);
         let hz = NonZeroU64::from(rate.hz()).get();
+        let player_holds = |modifier| own.holds(modifier);
+        let unit_holds = |modifier, source| {
+            carried.is_some_and(|carried| carried.get(modifier, Some(source)).is_some())
+        };
         let value = |button: Button| match button.does {
             Does::Action { slot, making, .. } => {
                 let held = slots.and_then(|slots| slots.slot(slot));
                 let ranked = held.and_then(|held| Some((book.get(held.action?)?, held.rank?)));
-                let done = making.done(
-                    id,
-                    |modifier| own.holds(modifier),
-                    |modifier, source| {
-                        carried.is_some_and(|carried| carried.get(modifier, Some(source)).is_some())
-                    },
-                );
+                let done = making.done(id, player_holds, unit_holds);
                 // A cast waits for its slot's ready tick and its player's, where its player keeps
                 // it.
                 let ready = |action: ActionId| {
@@ -549,8 +552,27 @@ impl CommandPanelPlugin {
             }
             Does::Command(_) | Does::Exit { .. } => ButtonValue::Nothing,
         };
+        // A research an upgrade's conflict holds back, held or in its unit's own queue.
+        let held_back = |button: Button| {
+            let Does::Action { making, .. } = button.does else {
+                return false;
+            };
+            making.held_back(upgrades, |spec| {
+                let queued = queue.is_some_and(|queue| {
+                    let mut entries = queue.entries().iter();
+                    entries.any(|entry| {
+                        researches
+                            .as_deref()
+                            .and_then(|researches| researches.get(entry.action))
+                            == Some(&spec)
+                    })
+                });
+                queued || Making::Research(spec).done(id, player_holds, unit_holds)
+            })
+        };
         pressable.0.extend(shown.buttons.iter().map(|&button| {
-            button.meets(requirements.as_deref(), |held| own.holds(held))
+            !held_back(button)
+                && button.meets(requirements.as_deref(), |held| own.holds(held))
                 && button.enabled(value(button), |costs| own.affords(costs))
                 && button.has_place(trains.as_deref(), places, queue)
         }));
@@ -1156,6 +1178,23 @@ impl Making {
             ResearchHolder::Player => player_holds(spec.modifier),
             ResearchHolder::Producer => unit_holds(spec.modifier, unit),
         }
+    }
+
+    /// Whether it is a research an upgrade's conflict holds back, by `upgrades`, its unit's type's:
+    /// a research of a modifier that `held` says is held or queued holds back each upgrade
+    /// conflicting with its own, as `TypeUpgrades::conflicting` gives them
+    /// (riders-and-upgrades.md, A conflicting upgrade is refused).
+    fn held_back(
+        self,
+        upgrades: Option<&TypeUpgrades>,
+        held: impl Fn(ResearchSpec) -> bool,
+    ) -> bool {
+        let Self::Research(spec) = self else {
+            return false;
+        };
+        let conflicting = upgrades.into_iter();
+        let mut conflicting = conflicting.flat_map(|upgrades| upgrades.conflicting(spec.modifier));
+        conflicting.any(|modifier| held(ResearchSpec { modifier, ..spec }))
     }
 
     /// A cast's button, while its unit's `tags` pass its action's `when`; none, hidden, while

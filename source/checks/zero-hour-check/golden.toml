@@ -3,8 +3,8 @@
 drive_ticks = 1711
 
 [fingerprints]
-game = "4c59f307b5cb0b739f8651e0744e44820d57c2c06194e515456e9fbe9011e6b8"
-rules = "15668b6ed5b27018936f5a5f42069b4f4b66a0051e2df10dd0bf2ece44adc50d"
+game = "1fc387af31b4a440c2ae07d134b0412c9f761e2ce9f87d440bc93f0783373356"
+rules = "c45513af404cb02f0fa70ebe61b5d17348d1424483a551f31f146ad2935f540f"
 
 [map]
 heights = [270, 340]
@@ -66,8 +66,8 @@ powers_dropped = [40, 25, 9, 0, 0, 0]
 
 [upgraded]
 researches = 70
-modules = 391
-dropped = [289, 0, 0, 7, 0, 14, 0, 116]
+modules = 418
+dropped = [274, 0, 0, 7, 0, 14, 0, 116]
 
 [supplied]
 nodes = 4
@@ -87,7 +87,7 @@ dropped = [0, 0, 15, 4, 1, 9, 0, 12, 6, 0, 0, 1, 0, 0, 0, 0, 14, 4]
 systems = 559
 lists = 398
 textures = 46
-fires = 69
+fires = 73
 hits = 0
 trails = 3
 ends = 32
@@ -106,7 +106,7 @@ dropped = [1, 31, 2, 0, 0, 4]
 [sounds]
 sounds = 465
 lists = 278
-fires = 92
+fires = 96
 voiced = 631
 files = 1604
 tracks = 33
@@ -114,14 +114,14 @@ playlists = 13
 dropped = [2, 7, 0, 0, 32, 0, 7, 11, 168, 0]
 
 [fought]
-weapons = 103
+weapons = 107
 dropped = [0, 0, 9, 0, 0, 1, 2, 10, 8, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 2, 0, 29]
 armors = 53
 kinds = 38
 unliving = 20
 wounded = 0
 second_lives = 4
-preferring = 7
+preferring = 8
 unpreferred = 9
 retaliating = 165
 

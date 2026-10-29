@@ -900,3 +900,77 @@ fn fixed_damage() -> BonusData {
 fn garrison_range() -> BonusData {
     BonusData::from(RulesNames::default().garrison_range)
 }
+
+#[test]
+fn a_portable_structures_weapons_arm_its_carrier_by_its_upgrades_tag_past_its_own_slots() {
+    // A carrier of a cannon whose upgrade makes a turret of flak and missiles inside it, as the
+    // Overlord's makes its Gattling cannon (riders-and-upgrades.md, A portable structure is a
+    // part of its carrier).
+    let objects = "Object Carrier
+  WeaponSet
+    Conditions = None
+    Weapon = PRIMARY Cannon
+  End
+  Behavior = ObjectCreationUpgrade ModuleTag_01
+    UpgradeObject = OCL_Turret
+    TriggeredBy = Upgrade_Turret
+  End
+End
+Object Turret
+  KindOf = PORTABLE_STRUCTURE
+  WeaponSet
+    Conditions = None
+    Weapon = PRIMARY Flak
+    Weapon = SECONDARY Missiles
+  End
+End
+";
+    let mut rules = ZeroHourRules {
+        objects: ObjectIni::of(&[objects]),
+        ..ZeroHourRules::default()
+    };
+    let list = "ObjectCreationList OCL_Turret\n  CreateObject\n    ObjectNames = Turret\n    \
+                ContainInsideSourceObject = Yes\n  End\nEnd\n";
+    rules.creation_lists.read(list.as_bytes()).unwrap();
+    let gun = |name: &str| {
+        format!("Weapon {name}\n  PrimaryDamage = 5\n  DelayBetweenShots = 100\nEnd\n")
+    };
+    let guns: String = ["Cannon", "Flak", "Missiles"].map(gun).concat();
+    rules.weapons.read(guns.as_bytes()).unwrap();
+    let mut names = ImportNames::default();
+    let carrier = rules.objects.object(b"Carrier").unwrap();
+    names.unit_type(carrier, &rules).unwrap();
+    let import = CombatImport::of(&rules, &mut names.into_production().into_projectiles()).unwrap();
+    // Its own cannon in its first slot, then the turret's two in the slots of a second set, each
+    // named for the turret and armed while it holds the upgrade's tag.
+    let declared = |name: &str| DeclaredName::new(name).unwrap();
+    let slots = &import.weapon_slots[&TypeName::named("carrier")];
+    let named = |names: &[&str]| names.iter().map(|&name| declared(name)).collect::<Vec<_>>();
+    assert_eq!(
+        *slots,
+        [
+            named(&["weapon_cannon"]),
+            vec![],
+            vec![],
+            named(&["weapon_flak_turret"]),
+            named(&["weapon_missiles_turret"]),
+        ]
+    );
+    let when = |weapon: &str| {
+        let weapon = &import.actions[&declared(weapon)];
+        weapon
+            .keys
+            .when
+            .as_ref()
+            .map(|when| when.filter().to_string())
+    };
+    assert_eq!(when("weapon_cannon"), None);
+    assert_eq!(
+        when("weapon_flak_turret"),
+        Some("all:upgrade_turret_created".to_owned())
+    );
+    assert_eq!(
+        when("weapon_missiles_turret"),
+        Some("all:upgrade_turret_created".to_owned())
+    );
+}

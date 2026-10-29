@@ -255,15 +255,23 @@ impl UpgradeImport {
             UpgradeEffect::SubObjects { .. } => {
                 ("subobjects".to_owned(), EffectModifier::tagged(&tag()?))
             }
-            // An upgrade that makes a transport inside its object opens the object's entry by its
-            // tag (04-capabilities/interaction.md, A bunker is an entry a tag opens).
+            // An upgrade that makes a portable structure inside its object gives it the
+            // structure's part by its tag: a transport's entry opens, and a cannon's weapons arm
+            // (04-capabilities/interaction.md, A bunker is an entry a tag opens;
+            // riders-and-upgrades.md, A portable structure is a part of its carrier).
             UpgradeEffect::ObjectCreation { .. }
-                if portable_structure::transport(rules, module).is_some() =>
+                if portable_structure::structure(rules, module).is_some() =>
             {
                 let tag =
                     portable_structure::tag(module).map_err(|_| UpgradeDropCause::LongName)?;
                 let tag = tag.ok_or(UpgradeDropCause::NoCondition)?;
                 ("created".to_owned(), EffectModifier::tagged(&tag))
+            }
+            UpgradeEffect::PassengersFire => {
+                let tag =
+                    portable_structure::fire_tag(module).map_err(|_| UpgradeDropCause::LongName)?;
+                let tag = tag.ok_or(UpgradeDropCause::NoCondition)?;
+                ("fire".to_owned(), EffectModifier::tagged(&tag))
             }
             UpgradeEffect::ObjectCreation { .. } | UpgradeEffect::Other(_) => {
                 return Err(UpgradeDropCause::Effect);

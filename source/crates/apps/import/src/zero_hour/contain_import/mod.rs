@@ -22,6 +22,7 @@ use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::game_data_ini::GarrisonBonus;
 use crate::zero_hour::format::ini::object_ini::IniObject;
 use crate::zero_hour::format::ini::object_ini::ini_contain::{ContainClass, IniContain};
+use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::UpgradeEffect;
 use crate::zero_hour::format::ini::object_ini::object_kinds::{ObjectKind, ObjectKinds};
 use crate::zero_hour::game_time;
 use crate::zero_hour::import_names::TypedObject;
@@ -133,6 +134,23 @@ impl ContainImport {
                     continue;
                 }
             };
+            // A transport whose riders fire by an upgrade lets its infantry fire while it holds
+            // the upgrade's tag, as `PassengersFireUpgrade` does (riders-and-upgrades.md, A
+            // rider's fire follows its container's tags).
+            let upgraded = object.upgrades().iter().find(|module| {
+                module.effect == UpgradeEffect::PassengersFire && !module.triggers.is_empty()
+            });
+            if let Some(module) = upgraded.filter(|_| enter.fire == FireData::None) {
+                let tag = portable_structure::fire_tag(module)?.expect("a module of a trigger");
+                let tagged = |name: &DeclaredName| {
+                    TagFilterData::new([FilterTag {
+                        name: name.clone(),
+                        negated: false,
+                    }])
+                };
+                enter.fire = FireData::Center(tagged(&names.infantry));
+                enter.fire_when = Some(tagged(&tag));
+            }
             // A payload of no rider makes none, as `createPayload` counts up to it.
             let payload = contain.payload.as_ref();
             if let Some(payload) = payload.filter(|payload| payload.count > 0) {
@@ -286,6 +304,7 @@ impl ContainImport {
             capture: garrison && !object.kinds().faction(),
             payload: Vec::new(),
             fire,
+            fire_when: None,
             sight: garrison,
             modifier: garrison.then(|| names.garrisoned.clone()),
             open: None,

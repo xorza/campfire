@@ -13,6 +13,7 @@ use bevy_ecs::system::{Query, Res, ResMut, StaticSystemParam};
 use bevy_ecs::world::{DeferredWorld, Mut, World};
 use campfire_common::Tick;
 
+use crate::passes_resumed::PassesResumed;
 use crate::prediction_started::PredictionStarted;
 use crate::sim_update::{TickEndSystems, end_tick};
 use crate::stable_id::StableId;
@@ -358,6 +359,7 @@ impl<P: TimedProcess> DueIndex<P> {
         world.add_observer(Self::rebuild);
         world.add_observer(Self::predicted);
         world.add_observer(Self::enabled);
+        world.add_observer(Self::resumed);
         if cfg!(debug_assertions) && P::KEPT == TimedKept::BySetters {
             schedule.add_systems(Self::audit.in_set(TickEndSystems).before(end_tick));
         }
@@ -404,11 +406,31 @@ impl<P: TimedProcess> DueIndex<P> {
         units: Query<'_, '_, (&StableId, P::Parts), Allow<Disabled>>,
         index: Option<ResMut<'_, Self>>,
     ) {
-        let entity = enabled.entity;
+        Self::push_again(enabled.entity, &books, &units, index);
+    }
+
+    /// Pushes a unit out of the world that the passes take again, whose entry a pass that found no
+    /// unit dropped while they skipped it.
+    fn resumed(
+        resumed: On<'_, '_, PassesResumed>,
+        books: StaticSystemParam<'_, '_, P::Books>,
+        units: Query<'_, '_, (&StableId, P::Parts), Allow<Disabled>>,
+        index: Option<ResMut<'_, Self>>,
+    ) {
+        Self::push_again(resumed.entity, &books, &units, index);
+    }
+
+    /// Pushes the unit of `entity`, in the world or out of it, at its time to come, if any.
+    fn push_again(
+        entity: Entity,
+        books: &StaticSystemParam<'_, '_, P::Books>,
+        units: &Query<'_, '_, (&StableId, P::Parts), Allow<Disabled>>,
+        index: Option<ResMut<'_, Self>>,
+    ) {
         let (Some(mut index), Ok((&id, parts))) = (index, units.get(entity)) else {
             return;
         };
-        if let Some(at) = P::due(&books, parts) {
+        if let Some(at) = P::due(books, parts) {
             index.push(at, id, entity);
         }
     }

@@ -15,7 +15,7 @@ use crate::held_places::HeldPlaces;
 use crate::holdings::Holdings;
 use crate::production_books::{ProductionBooks, TrainAdmission, TrainAsk};
 use crate::train_queue::TrainQueue;
-use crate::trains::{Queues, Trains};
+use crate::trains::{Queues, ResearchCheck};
 
 /// What tells whether a unit may start the train, the research or the build one of its slots
 /// holds: the
@@ -104,8 +104,13 @@ impl StartChecks<'_, '_> {
         match action.kind {
             ActionKind::Research
                 if books.researches.get(checked.id).is_some_and(|&spec| {
-                    let researches = &books.researches;
-                    Trains::researched(spec, id, entity, &self.modifiers, researches, &self.queues)
+                    let check = ResearchCheck {
+                        players: &self.modifiers,
+                        researches: &books.researches,
+                        upgrades: books.upgrades.as_deref(),
+                        queues: &self.queues,
+                    };
+                    check.refuses(spec, id, entity)
                 }) =>
             {
                 false

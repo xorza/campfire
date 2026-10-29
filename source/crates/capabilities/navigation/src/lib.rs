@@ -20,7 +20,7 @@ use campfire_script::{ApiVersion, EventPhase, Status};
 use campfire_sim::{Capability, SimEdgeSystems, SimSystems};
 use campfire_units::{
     BodyUnit, Dead, DeclaredTags, FlightGoal, Layer, MapBook, MoveStep, OnWings, OpenCellAsk,
-    OpenCellRun, SpawnCallbacks, UnitTracker, UnitsSystems, WallBook,
+    OpenCellRun, SpawnCallbacks, UnitGrid, UnitTracker, UnitsSystems, WallBook,
 };
 use campfire_values::{EngineTag, PathId, TagProperties, UnitType};
 
@@ -338,6 +338,7 @@ impl Module for Navigation {
                 StaticTracking::track_static_bodies,
                 Walking::collide,
                 Walking::keep_in_bounds,
+                UnitGrid::before_reading(Fliers::find_ground),
                 Fliers::fly,
             )
                 .chain(),

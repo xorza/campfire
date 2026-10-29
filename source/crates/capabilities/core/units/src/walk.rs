@@ -42,13 +42,22 @@ impl WalkItem<'_, '_> {
     pub fn goal(&self) -> Option<Vec3> {
         self.destination.get()
     }
+
+    /// Whether the unit gives up a walk to `target`: it stands, as it arrived short of `target`.
+    pub fn gives_up(&self, target: Vec3) -> bool {
+        gives_up(self.destination.get(), self.arrived, target)
+    }
 }
 
 impl WalkReadOnlyItem<'_, '_> {
     /// Whether the unit gives up a walk to `target`: it stands, as it arrived short of `target`.
     pub fn gives_up(&self, target: Vec3) -> bool {
-        self.destination.get().is_none() && short(self.arrived, Some(target))
+        gives_up(self.destination.get(), self.arrived, target)
     }
+}
+
+fn gives_up(goal: Option<Vec3>, arrived: Option<&ArrivedShort>, target: Vec3) -> bool {
+    goal.is_none() && short(arrived, Some(target))
 }
 
 fn short(arrived: Option<&ArrivedShort>, target: Option<Vec3>) -> bool {
@@ -86,6 +95,7 @@ mod tests {
         let mut walks = world.query::<Walk>();
         walks.get_mut(&mut world, unit).unwrap().to(Some(short));
         assert_eq!(goal(&world, unit), None);
+        assert!(walks.get_mut(&mut world, unit).unwrap().gives_up(short));
         walks.get_mut(&mut world, unit).unwrap().to(Some(other));
         assert_eq!(goal(&world, unit), Some(other));
         assert!(!gives_up(&mut world, unit, short));

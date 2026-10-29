@@ -503,6 +503,17 @@ impl RoutePlanner {
         goal: Vec3,
         work: &mut u32,
     ) -> Option<usize> {
+        self.nearest_open_where(walkable, goal, work, |_| true)
+    }
+
+    /// The cell `nearest_open` gives of those `accepts` takes too.
+    pub(crate) fn nearest_open_where(
+        &self,
+        walkable: Walkable<'_>,
+        goal: Vec3,
+        work: &mut u32,
+        accepts: impl Fn(usize) -> bool,
+    ) -> Option<usize> {
         let grid = walkable.clearance.grid();
         let columns = grid.columns();
         let (low, high) = walkable.short.map_or_else(
@@ -522,10 +533,10 @@ impl RoutePlanner {
         let mut best: Option<(u128, usize)> = None;
         let mut visit = |best: &mut Option<(u128, usize)>, x: usize, z: usize| {
             *work += 1;
-            if !Self::passable(&self.overlay, walkable, x, z) {
+            let at = z * columns + x;
+            if !Self::passable(&self.overlay, walkable, x, z) || !accepts(at) {
                 return;
             }
-            let at = z * columns + x;
             let candidate = (grid.center_distance(at, goal), at);
             if best.is_none_or(|best| candidate < best) {
                 *best = Some(candidate);

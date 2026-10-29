@@ -179,6 +179,9 @@ Object Helix
     ExitDelay = 100
     PassengersAllowedToFire = No
   End
+  Behavior = PassengersFireUpgrade ModuleTag_34
+    TriggeredBy = Upgrade_HelixBunker
+  End
 End
 ";
 
@@ -259,6 +262,7 @@ fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes()
             name: rules.names.infantry.clone(),
             negated: false,
         }])),
+        fire_when: None,
         sight: false,
         modifier: None,
         open: None,
@@ -308,8 +312,10 @@ fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes()
     );
     // The fortress takes its bunker's 5 infantry, which fire, once it holds its bunker's upgrade's
     // tag, the upgrade's name suffixed `created`; the Helix 5 infantry or vehicles but an aircraft,
-    // each 100 ms apart, which do not fire (04-capabilities/interaction.md, A bunker is an entry a
-    // tag opens). The tower of no bunker's upgrade goes.
+    // each 100 ms apart, its infantry firing once it holds its passengers' upgrade's tag, the
+    // upgrade's name suffixed `fire` (04-capabilities/interaction.md, A bunker is an entry a tag
+    // opens; riders-and-upgrades.md, A rider's fire follows its container's tags). The tower of no
+    // bunker's upgrade goes.
     let opened = FilterTag {
         name: DeclaredName::new("upgrade_fortressbunker_created").unwrap(),
         negated: false,
@@ -328,7 +334,10 @@ fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes()
         EnterData {
             riders: filters(&["all:infantry:!aircraft", "all:vehicle:!aircraft"]),
             exit_ms: 100,
-            fire: FireData::None,
+            fire_when: Some(TagFilterData::new([FilterTag {
+                name: DeclaredName::new("upgrade_helixbunker_fire").unwrap(),
+                negated: false,
+            }])),
             ..humvee.clone()
         }
     );
@@ -348,6 +357,7 @@ fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes()
         capture: true,
         payload: Vec::new(),
         fire: FireData::Points(vec![point(10, -5), point(-10, -5)]),
+        fire_when: None,
         sight: true,
         modifier: Some(DeclaredName::new("garrisoned").unwrap()),
         open: None,

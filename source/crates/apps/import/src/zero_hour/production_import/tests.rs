@@ -158,6 +158,7 @@ fn a_factions_base_is_what_its_start_builds_and_trains_once_each_but_its_faction
         capture: false,
         payload: Vec::new(),
         fire: FireData::None,
+        fire_when: None,
         sight: false,
         modifier: None,
         open: None,

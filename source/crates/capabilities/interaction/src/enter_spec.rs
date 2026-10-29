@@ -29,6 +29,7 @@ pub struct EnterSpec {
     pub capture: bool,
     pub payload: Box<[RiderPayload]>,
     pub fire: FireSpec,
+    pub fire_when: Option<Filter>,
     pub sight: bool,
     pub modifier: Option<ModifierId>,
     pub open: Option<Filter>,
@@ -78,6 +79,17 @@ impl EnterSpec {
     /// with `relation`.
     pub fn admits(&self, relation: Relation, tags: TagSet) -> bool {
         self.riders.selects(relation, tags)
+    }
+
+    /// Whether a rider of `rider` fires from a container of it of `tags`: one its fire takes,
+    /// while the container's tags pass its `fire_when` (riders-and-upgrades.md, A rider's fire
+    /// follows its container's tags).
+    pub fn rider_fires(&self, rider: TagSet, tags: TagSet) -> bool {
+        self.fire.fires(rider)
+            && self
+                .fire_when
+                .as_ref()
+                .is_none_or(|when| when.selects_tags(tags))
     }
 
     /// Whether a container of it of `tags` takes riders: one of no `open`, or of tags it selects
@@ -152,6 +164,10 @@ impl EnterSpec {
                 .open
                 .as_ref()
                 .map(|open| Filter::resolve(open.filter(), tags));
+            let fire_when = data
+                .fire_when
+                .as_ref()
+                .map(|when| Filter::resolve(when.filter(), tags));
             let modifier = data.modifier.as_ref().map(|name| {
                 let modifier =
                     modifiers.and_then(|book| book.names().named((unit.package, name.as_str())));
@@ -168,6 +184,7 @@ impl EnterSpec {
                 capture: data.capture,
                 payload: payload.collect::<Result<_, BookError>>()?,
                 fire,
+                fire_when: fire_when.transpose().map_err(unknown)?,
                 sight: data.sight,
                 modifier: modifier.transpose()?,
                 open: open.transpose().map_err(unknown)?,

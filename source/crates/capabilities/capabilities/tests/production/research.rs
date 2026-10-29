@@ -225,3 +225,75 @@ fn a_types_upgrades_hold_while_its_players_and_its_own_modifiers_meet_them() {
     assert_eq!(upgraded(&game, later), []);
     assert_eq!(upgraded(&game, own), [tough]);
 }
+
+#[test]
+fn a_research_is_refused_while_its_player_holds_or_queues_one_its_upgrade_conflicts_with() {
+    // The barracks type takes `gunned` by `gun` unless `tower`, as Zero Hour's Overlord takes one
+    // of its upgrades. Player 0's first barracks researches `gun`, its second `tower`, each for
+    // the player in 2 ticks and 40 gold of its 100.
+    let mut game = ordering_match();
+    let shop = Shop::place(&mut game);
+    let [gun, gunned, tower] = ["gun", "gunned", "tower"].map(|name| {
+        let data = ModifierData::default();
+        Stats::load_modifier(&mut game, PackageIndex::MODE, name, &data, None);
+        Stats::modifier(&game, PackageIndex::MODE, name).unwrap()
+    });
+    let upgrade = TypeUpgrade {
+        triggers: Box::new([gun]),
+        all: false,
+        conflicts: Box::new([tower]),
+        when: None,
+        below: None,
+        modifier: gunned,
+    };
+    let upgrades = TypeUpgrades(Box::new([upgrade]));
+    Shop::give(&mut game, shop.barracks, upgrades.clone());
+    let player = PlayerSlot::new(0);
+    Players::spawn(&mut game, 1, 1);
+    game.player_resources_mut(player)
+        .unwrap()
+        .add(shop.gold, 100)
+        .unwrap();
+    let entity = game.player_entity(player).unwrap();
+    game.entity_mut(entity).insert(PlayerModifiers::default());
+    let cost = ResourceAmount {
+        resource: shop.gold,
+        amount: 40,
+    };
+    let [by_gun, by_tower] = [gun, tower].map(|modifier| {
+        let holder = ResearchHolder::Player;
+        Production::add_research(&mut game, modifier, holder, Ticks::new(2), Some(cost))
+    });
+    let [gunner, builder] = [(); 2].map(|()| Production::allocate_id(&mut game));
+    for (id, x, research) in [(gunner, 10, by_gun), (builder, 20, by_tower)] {
+        let queue = TrainQueue::default();
+        shop.producer(
+            &mut game,
+            id,
+            x,
+            Team::new(0),
+            Some(player),
+            research,
+            queue,
+        );
+    }
+    let queued = |game: &Match, id| game.part::<TrainQueue>(id).entries().len();
+    let gold = |game: &Match| game.player_resources(player).unwrap().amount(shop.gold);
+    // Tick 0: `gun` joins and pays 40. Tick 1: `tower`, whose conflict is queued, is refused and
+    // pays nothing. Ticks 2 and 3: `gun` held, `tower` is refused again; the gold stays at 60.
+    Production::order_train(&mut game, gunner);
+    game.step();
+    assert_eq!((queued(&game, gunner), gold(&game)), (1, 60));
+    Production::order_train(&mut game, builder);
+    game.step();
+    assert_eq!((queued(&game, builder), gold(&game)), (0, 60));
+    game.step();
+    assert!(game.player_modifiers_mut(player).unwrap().holds(gun));
+    Production::order_train(&mut game, builder);
+    game.step();
+    assert_eq!((queued(&game, builder), gold(&game)), (0, 60));
+    // Of `gun` alone, the upgrade's conflicts are `tower`, and of `tower` its triggers, `gun`.
+    assert_eq!(upgrades.conflicting(gun).collect::<Vec<_>>(), [tower]);
+    assert_eq!(upgrades.conflicting(tower).collect::<Vec<_>>(), [gun]);
+    assert_eq!(upgrades.conflicting(gunned).count(), 0);
+}

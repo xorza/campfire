@@ -6,7 +6,7 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
     // A list that makes a bunker of a transport inside its object, and one that makes it beside.
     let mut rules = ZeroHourRules {
         objects: ObjectIni::of(&[
-            "Object Bunker\n Behavior = TransportContain M\n  Slots = 5\n End\nEnd\n",
+            "Object Bunker\n KindOf = PORTABLE_STRUCTURE\n Behavior = TransportContain M\n  Slots = 5\n End\nEnd\n",
         ]),
         ..ZeroHourRules::default()
     };
@@ -165,6 +165,15 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
     assert_eq!(
         import.effects[&entry.modifier],
         EffectModifier::tagged(&declared("upgrade_a_created"))
+    );
+    // Passengers that fire by an upgrade fire while their container holds the first trigger's
+    // tag suffixed `fire` (riders-and-upgrades.md, A rider's fire follows its container's tags).
+    let fire = module(UpgradeEffect::PassengersFire, &["Upgrade_A"]);
+    let entry = import.module(sources, &fire, &[]).unwrap();
+    assert_eq!(entry.modifier, declared("upgrade_a_fire"));
+    assert_eq!(
+        import.effects[&entry.modifier],
+        EffectModifier::tagged(&declared("upgrade_a_fire"))
     );
     // An armor's module sets no condition its look tests, nor a radar's, whose modifier gives
     // the radar's tag.
