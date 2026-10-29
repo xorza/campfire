@@ -9,6 +9,7 @@ use campfire_client_files::{
 };
 use campfire_combat::{BarrelData, UnitOffset};
 use campfire_common::DeclaredName;
+use campfire_math::Num;
 use campfire_values::PackagePath;
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +19,7 @@ use crate::zero_hour::airfield_bones::{AirfieldBones, PlaceBones};
 use crate::zero_hour::animation_drop_cause::AnimationDropCause;
 use crate::zero_hour::animation_import::AnimationEnds;
 use crate::zero_hour::barrel_recoil::BarrelRecoil;
-use crate::zero_hour::carried_look::CarriedLook;
+use crate::zero_hour::carried_look::{CarriedLook, CarriedParts};
 use crate::zero_hour::draw_sets::DrawSets;
 use crate::zero_hour::dropped::Dropped;
 use crate::zero_hour::error::{ModelError, NameClash, NameError, ZeroHourError};
@@ -45,7 +46,7 @@ use crate::zero_hour::model_converter::ConvertedModel;
 use crate::zero_hour::model_converter::Converter;
 use crate::zero_hour::model_converter::SkippedModel;
 use crate::zero_hour::model_converter::WrittenModel;
-use crate::zero_hour::model_nodes::NodeChanges;
+use crate::zero_hour::model_nodes::{HostNode, ModelBarrel, NodeChanges};
 use crate::zero_hour::portable_structure;
 use crate::zero_hour::production_bones::ProductionBones;
 use crate::zero_hour::state_drop_cause::StateDropCause;
@@ -164,6 +165,15 @@ impl<'i> ModelWriter<'i> {
             animations: self.converter.animations,
         }
     }
+}
+
+/// A model as it rests: the draw module that draws it, its name, and its pivots' poses as its
+/// default state's first animation places them.
+#[derive(Debug)]
+struct AtRest<'d> {
+    draw: &'d DrawModule,
+    model: &'d str,
+    pristine: Vec<RigidPose>,
 }
 
 /// What the models of a draw module's states take beside their states: their object's scale,
@@ -397,15 +407,106 @@ impl ModelWriter<'_> {
                 hide: Vec::new(),
             }];
             carried.bone.clone_from(&draw.container_bone);
-            let look = CarriedLook::new(
-                ImportName::latin(&structure.name).declared()?,
-                carried.model.clone(),
+            let boned = rules.variations.fielded(&rules.objects, object);
+            let launches = self.carried_launches(boned, draw, structure)?;
+            let parts = CarriedParts {
                 fire_bones,
-                std::mem::take(&mut carried.rounds),
-            );
+                rounds: std::mem::take(&mut carried.rounds),
+                launches,
+            };
+            let structure_name = ImportName::latin(&structure.name).declared()?;
+            let look = CarriedLook::new(structure_name, carried.model.clone(), parts);
             models.push((carried, look));
         }
         Ok(models)
+    }
+
+    /// The barrels each weapon slot of `structure`, drawn by `draw` at a bone of the model of
+    /// `object`, its carrier, the object whose model gives its type's bones, launches from, in the
+    /// carrier's unit's frame at its scale: those of the structure's default state's model as its
+    /// first animation places it, at the bone as the carrier's default model rests, at the
+    /// structure's scale (riders-and-upgrades.md, A carried model's barrels are its carrier's);
+    /// none of a model the package lacks, or of a bone the carrier's model lacks.
+    fn carried_launches(
+        &mut self,
+        object: &IniObject,
+        draw: &DrawModule,
+        structure: &IniObject,
+    ) -> Result<[Vec<BarrelData>; 3], ZeroHourError> {
+        let mut launches: [Vec<BarrelData>; 3] = Default::default();
+        let Some(bone) = draw.container_bone.as_deref() else {
+            return Ok(launches);
+        };
+        let Some(host) = self.rest_pose(object.draws(), bone)? else {
+            return Ok(launches);
+        };
+        let default = draw
+            .states()
+            .next()
+            .expect("a module has its default state");
+        let Some(model) = default.drawn.model else {
+            return Ok(launches);
+        };
+        let animated = self.rested(default.animation)?;
+        let WrittenModel::Nodes { nodes, .. } = self.model(model)? else {
+            return Ok(launches);
+        };
+        let pristine = nodes.pristine(animated.as_deref());
+        let host = HostNode {
+            pose: host,
+            scale: structure.scale().get() / object.scale().get(),
+        };
+        for (of_slot, weapon) in launches.iter_mut().zip(&default.drawn.look.weapons) {
+            for barrel in nodes.launches_on(weapon, &pristine, host) {
+                of_slot.push(barrel_data(barrel, object.scale(), model)?);
+            }
+        }
+        Ok(launches)
+    }
+
+    /// The pose at rest, on W3D's axes, of the node `bone` of the model `at_rest` gives of
+    /// `draws`, where a model drawn at that bone stands; none of a model the package lacks or a
+    /// bone it lacks.
+    fn rest_pose(
+        &mut self,
+        draws: &[DrawModule],
+        bone: &str,
+    ) -> Result<Option<RigidPose>, ZeroHourError> {
+        let Some(rest) = self.at_rest(draws)? else {
+            return Ok(None);
+        };
+        let WrittenModel::Nodes { nodes, .. } = self.model(rest.model)? else {
+            return Ok(None);
+        };
+        Ok(nodes.pivot_rest(bone, &rest.pristine))
+    }
+
+    /// `draws`' first module of the `W3DModelDraw` family, its default state's model, and that
+    /// model's pivots' poses as the state's first animation places them; none of a module of no
+    /// model, or of a model the package lacks.
+    fn at_rest<'d>(
+        &mut self,
+        draws: &'d [DrawModule],
+    ) -> Result<Option<AtRest<'d>>, ZeroHourError> {
+        let drawn = draws.iter().find(|draw| draw.kind == DrawKind::Family);
+        let Some((draw, model)) = drawn.and_then(|draw| Some((draw, draw.model.as_deref()?)))
+        else {
+            return Ok(None);
+        };
+        let default = draw
+            .states()
+            .next()
+            .expect("a module has its default state");
+        let animated = self.rested(default.animation)?;
+        let WrittenModel::Nodes { nodes, .. } = self.model(model)? else {
+            return Ok(None);
+        };
+        let pristine = nodes.pristine(animated.as_deref());
+        Ok(Some(AtRest {
+            draw,
+            model,
+            pristine,
+        }))
     }
 
     /// The look of `variation`, a build variation of the object of `parent`: its draws and its
@@ -702,28 +803,18 @@ impl ModelWriter<'_> {
             airfield: None,
             dock: None,
         };
-        let drawn = draws.iter().find(|draw| draw.kind == DrawKind::Family);
-        let Some((draw, model)) = drawn.and_then(|draw| Some((draw, draw.model.as_ref()?))) else {
+        let Some(AtRest {
+            draw,
+            model,
+            pristine,
+        }) = self.at_rest(draws)?
+        else {
             return Ok(none);
         };
-        let default = draw
-            .states()
-            .next()
-            .expect("a module has its default state");
-        let animated = self.rested(default.animation)?;
         let WrittenModel::Nodes { nodes, .. } = self.model(model)? else {
             return Ok(none);
         };
-        let pristine = nodes.pristine(animated.as_deref());
-        let beyond = || ZeroHourError::Model {
-            model: model.clone(),
-            error: ModelError::Bound,
-        };
-        let number = |value: f32| game_float::to_num(value).map_err(|_| beyond());
-        let point = |at: Vec3| {
-            let [x, y, z] = (at * scale.get()).to_array().map(number);
-            UnitOffset::new([x?, y?, z?]).ok_or_else(beyond)
-        };
+        let point = |at: Vec3| unit_offset(at * scale.get(), model);
         let pivot = |bone: Option<&String>| {
             let at = bone.and_then(|bone| nodes.pivot_point(bone, &pristine));
             at.map(point).transpose()
@@ -731,9 +822,7 @@ impl ModelWriter<'_> {
         let mut barrels: [Vec<BarrelData>; 3] = Default::default();
         for (of_slot, weapon) in barrels.iter_mut().zip(&draw.look.weapons) {
             for barrel in nodes.launches(weapon, &pristine) {
-                let [x, y, z] = barrel.way.to_array().map(number);
-                let data = BarrelData::new(point(barrel.at)?, [x?, y?, z?]);
-                of_slot.push(data.ok_or_else(beyond)?);
+                of_slot.push(barrel_data(barrel, scale, model)?);
             }
         }
         let track_width =
@@ -1026,6 +1115,38 @@ impl DrawKeys {
             }
         }
     }
+}
+
+/// The error of a point of the model `model` past the engine's bound.
+fn beyond(model: &str) -> ZeroHourError {
+    ZeroHourError::Model {
+        model: model.to_owned(),
+        error: ModelError::Bound,
+    }
+}
+
+/// `values` in the engine's numbers, of the model `model`; an error for one past its bound.
+fn numbers(values: Vec3, model: &str) -> Result<[Num; 3], ZeroHourError> {
+    let number = |value: f32| game_float::to_num(value).map_err(|_| beyond(model));
+    let [x, y, z] = values.to_array().map(number);
+    Ok([x?, y?, z?])
+}
+
+/// The point `at` of a unit's frame, in the game's units, of the model `model`; an error for a
+/// point past the engine's bound.
+fn unit_offset(at: Vec3, model: &str) -> Result<UnitOffset, ZeroHourError> {
+    UnitOffset::new(numbers(at, model)?).ok_or_else(|| beyond(model))
+}
+
+/// `barrel` of the model `model`, of its unit's frame at `scale`; an error for a point past the
+/// engine's bound.
+fn barrel_data(
+    barrel: ModelBarrel,
+    scale: ModelScale,
+    model: &str,
+) -> Result<BarrelData, ZeroHourError> {
+    let at = unit_offset(barrel.at * scale.get(), model)?;
+    BarrelData::new(at, numbers(barrel.way, model)?).ok_or_else(|| beyond(model))
 }
 
 #[cfg(test)]

@@ -47,6 +47,24 @@ pub(crate) struct ModelBarrel {
     pub(crate) way: Vec3,
 }
 
+/// Where a carried model stands on its host's model: the pose at rest, on W3D's axes, of the
+/// host's node it is drawn at, and its own scale over its host's, as the client stands it rigid at
+/// that node at its own scale alone (riders-and-upgrades.md, A model may be drawn at another's
+/// bone).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct HostNode {
+    pub(crate) pose: RigidPose,
+    pub(crate) scale: f32,
+}
+
+impl HostNode {
+    /// A model's own frame, of no host.
+    pub(crate) const OWN: Self = Self {
+        pose: RigidPose::IDENTITY,
+        scale: 1.0,
+    };
+}
+
 impl ModelNodes {
     /// The names of the drawn sub-objects `look` leaves hidden, as `W3DModelDraw` sets a state:
     /// those hidden by their flag; then each hide or show in order, also over the sub-objects on
@@ -232,18 +250,42 @@ impl ModelNodes {
         weapon: &WeaponBones,
         pristine: &[RigidPose],
     ) -> Vec<ModelBarrel> {
+        self.launches_on(weapon, pristine, HostNode::OWN)
+    }
+
+    /// The launches `launches` gives, of the model drawn at `host`, in its host model's frame
+    /// (riders-and-upgrades.md, A carried model's barrels are its carrier's).
+    pub(crate) fn launches_on(
+        &self,
+        weapon: &WeaponBones,
+        pristine: &[RigidPose],
+        host: HostNode,
+    ) -> Vec<ModelBarrel> {
         let barrels = self.barrel_pivots(weapon, |weapon| &weapon.launch);
         if barrels.iter().all(Option::is_none) {
             return Vec::new();
         }
-        let placed = |pose: RigidPose| ModelBarrel {
-            at: axes::y_up(pose.translation.to_array()).into(),
-            way: axes::y_up(pose.rotation.rotate(Vec3::X).to_array()).into(),
+        let placed = |pose: RigidPose| {
+            let scaled = RigidPose {
+                translation: pose.translation * host.scale,
+                rotation: pose.rotation,
+            };
+            let pose = host.pose.then(scaled);
+            ModelBarrel {
+                at: axes::y_up(pose.translation.to_array()).into(),
+                way: axes::y_up(pose.rotation.rotate(Vec3::X).to_array()).into(),
+            }
         };
         barrels
             .into_iter()
             .map(|pivot| placed(pivot.map_or(RigidPose::IDENTITY, |pivot| pristine[pivot])))
             .collect()
+    }
+
+    /// The pose of its pivot `name`, of either case, of the poses `pristine`, on W3D's axes; none
+    /// for a name of no pivot.
+    pub(crate) fn pivot_rest(&self, name: &str, pristine: &[RigidPose]) -> Option<RigidPose> {
+        Some(pristine[self.pivot(name)?])
     }
 
     /// The point of its pivot `name`, of either case, of the poses `pristine`, on glTF's axes;

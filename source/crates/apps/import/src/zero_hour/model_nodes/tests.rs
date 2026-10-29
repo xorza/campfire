@@ -270,6 +270,42 @@ fn a_slots_barrels_launch_from_their_launch_bones_or_the_models_place() {
         }
     );
     assert_eq!(rail(None, &rest).len(), 1);
+    // Drawn at half its scale at a host's node 10 m along `x`, turned a quarter about W3D's `z`,
+    // which takes `x` to `y`: the rail's (2, 0, 4), halved to (1, 0, 2), turns to (0, 1, 2) and
+    // moves to (10, 1, 2), on glTF's axes (10, 2, −1), still pointing up; the barrel of no rail
+    // stands at the node, (10, 0, 0), pointing along its `x`, now W3D's `y`, glTF's `−z`; each
+    // within 2⁻¹⁸, as the turns' `f32` steps round (riders-and-upgrades.md, A carried model's
+    // barrels are its carrier's).
+    let host = HostNode {
+        pose: RigidPose {
+            translation: [10.0, 0.0, 0.0].into(),
+            rotation: Quaternion::from_array([
+                0.0,
+                0.0,
+                std::f32::consts::FRAC_1_SQRT_2,
+                std::f32::consts::FRAC_1_SQRT_2,
+            ]),
+        },
+        scale: 0.5,
+    };
+    let railed = WeaponBones {
+        fire_fx: Some("fire".to_owned()),
+        launch: Some("Rail".to_owned()),
+        ..WeaponBones::default()
+    };
+    let carried = tank.launches_on(&railed, &rest, host);
+    let near = |got: Vec3, want: Vec3| got.abs_diff_eq(want, 1.0 / 262_144.0);
+    assert_eq!(carried.len(), 2);
+    assert!(
+        near(carried[0].at, Vec3::new(10.0, 2.0, -1.0)),
+        "{carried:?}"
+    );
+    assert!(near(carried[0].way, Vec3::Y), "{carried:?}");
+    assert!(
+        near(carried[1].at, Vec3::new(10.0, 0.0, 0.0)),
+        "{carried:?}"
+    );
+    assert!(near(carried[1].way, Vec3::NEG_Z), "{carried:?}");
     let missing = WeaponBones {
         fire_fx: Some("fire".to_owned()),
         launch: Some("missing".to_owned()),

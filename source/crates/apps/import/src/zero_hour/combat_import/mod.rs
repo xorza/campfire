@@ -3,13 +3,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_client_files::ClientUnit;
 use campfire_codec::TomlValue;
-use campfire_combat::{ArmorShare, BarrelsData, StreakData};
+use campfire_combat::{ArmorShare, BarrelData, BarrelsData, StreakData};
 use campfire_common::DeclaredName;
 use campfire_projectiles::{ProjectileData, ProjectileDeliveryData};
 use campfire_values::{FilterTag, Number, Stat, TagFilterData};
 use serde::Serialize;
 
 use crate::zero_hour::additions::Additions;
+use crate::zero_hour::carried_look::CarriedLook;
 use crate::zero_hour::combat_import::converted_shot::{ConvertedShot, WeaponShot};
 use crate::zero_hour::dropped::Losses;
 use crate::zero_hour::error::ZeroHourError;
@@ -518,16 +519,25 @@ impl CombatImport {
     }
 
     /// Gives each type of `additions` the barrels of its weapons that fire a projectile: of each
-    /// weapon slot of the type, the barrels its model's bones give the slot, as Zero Hour launches
-    /// the slot's weapon of each set from them (04-capabilities/combat.md, A shot leaves its
-    /// weapon's barrel); a weapon in two slots takes the first's.
+    /// weapon slot of the type, the barrels its model's bones give the slot, or the model of the
+    /// structure it carries whose weapons take the slot, as Zero Hour launches the slot's weapon
+    /// of each set from them (04-capabilities/combat.md, A shot leaves its weapon's barrel;
+    /// riders-and-upgrades.md, A carried model's barrels are its carrier's); a weapon in two slots
+    /// takes the first's.
     pub(crate) fn barrels(&self, additions: &mut Additions) {
         for (_, added) in additions.iter_mut() {
-            let Some(bones) = &added.bones else {
-                continue;
-            };
+            let own = added.bones.iter().flat_map(|bones| {
+                (0..)
+                    .zip(&bones.barrels)
+                    .map(|(slot, barrels)| (slot, barrels.as_slice()))
+            });
+            let carried = added.carried.iter().flat_map(CarriedLook::launches);
+            let mut slots: Vec<(usize, &[BarrelData])> = own.chain(carried).collect();
+            slots.sort_by_key(|&(slot, _)| slot);
             let mut of_type = BarrelsData::default();
-            let slotted = added.weapon_slots.iter().zip(&bones.barrels);
+            let slotted = slots
+                .iter()
+                .filter_map(|&(slot, of_slot)| Some((added.weapon_slots.get(slot)?, of_slot)));
             for (weapons, of_slot) in slotted.filter(|(_, of_slot)| !of_slot.is_empty()) {
                 let launches = |weapon: &&DeclaredName| {
                     let fired = self.actions.get(*weapon);
@@ -537,7 +547,7 @@ impl CombatImport {
                     of_type
                         .0
                         .entry(weapon.clone())
-                        .or_insert_with(|| of_slot.clone());
+                        .or_insert_with(|| of_slot.to_vec());
                 }
             }
             if !of_type.0.is_empty() {

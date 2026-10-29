@@ -17,8 +17,8 @@ use campfire_combat::PreAttackEach;
 use campfire_combat::ScatterData;
 use campfire_combat::SplashData;
 use campfire_combat::StageData;
+use campfire_combat::UnitOffset;
 use campfire_combat::WeaponValue;
-use campfire_combat::{BarrelData, UnitOffset};
 use campfire_math::Num;
 use campfire_projectiles::{CruiseData, ProjectileHits, SteerData};
 use campfire_values::FilterData;
@@ -29,7 +29,7 @@ use campfire_values::Scalar;
 use campfire_values::Speed;
 
 use super::*;
-use crate::zero_hour::carried_look::CarriedLook;
+use crate::zero_hour::carried_look::CarriedParts;
 use crate::zero_hour::error::{NameClash, NameError};
 use crate::zero_hour::format::ini::armor_ini::samples::ARMORS;
 use crate::zero_hour::format::ini::locomotor_ini::samples;
@@ -872,7 +872,9 @@ fn a_types_weapons_that_fire_a_projectile_take_their_slots_barrels() {
     // upgraded set; its secondary a weapon of no projectile, then the Tank Hunter's again. The
     // primary's one barrel goes to both of its weapons; the secondary's to none, as its first
     // weapon fires no projectile and its second takes the primary's already. A type its model
-    // gives no bones takes none.
+    // gives no bones takes none. A turret each carries arms their fourth slot with a weapon that
+    // fires one, which takes the barrel of the turret's own first slot, of no bones of the type
+    // too (riders-and-upgrades.md, A carried model's barrels are its carrier's).
     let mut ini = WeaponIni::default();
     ini.read(MISSILE_WEAPONS.as_bytes()).unwrap();
     let mut rules = ZeroHourRules {
@@ -888,15 +890,19 @@ fn a_types_weapons_that_fire_a_projectile_take_their_slots_barrels() {
             delivers.then(|| ProjectileDeliveryData::one(DeclaredName::new("missile").unwrap()));
         (id(name), weapon)
     };
+    let turret_shot = DeclaredName::new("weapon_oneshot_turret").unwrap();
     let slots = vec![
         vec![id("TankHunter"), id("BuggyRocket")],
         vec![id("OneShot"), id("TankHunter")],
+        vec![],
+        vec![turret_shot.clone()],
     ];
     let combat = CombatImport {
         actions: BTreeMap::from([
             delivered("TankHunter", true),
             delivered("BuggyRocket", true),
             delivered("OneShot", false),
+            (turret_shot.clone(), delivered("OneShot", true).1),
         ]),
         ..CombatImport::default()
     };
@@ -913,16 +919,29 @@ fn a_types_weapons_that_fire_a_projectile_take_their_slots_barrels() {
         ..ModelBones::default()
     };
     additions.type_mut(&TypeName::named("hunter")).bones = Some(bones);
+    let turret = DeclaredName::new("turret").unwrap();
+    let parts = CarriedParts {
+        launches: [vec![barrel(7)], Vec::new(), Vec::new()],
+        ..CarriedParts::default()
+    };
+    let model = PackagePath::parse("client/models/turret.glb").unwrap();
+    for unit in ["hunter", "bare"] {
+        let mut carried = CarriedLook::new(turret.clone(), model.clone(), parts.clone());
+        carried.arm(&turret, 3);
+        additions.type_mut(&TypeName::named(unit)).carried = vec![carried];
+    }
     combat.barrels(&mut additions);
     let hunter = BarrelsData(BTreeMap::from([
         (id("BuggyRocket"), vec![barrel(1)]),
         (id("TankHunter"), vec![barrel(1)]),
+        (turret_shot.clone(), vec![barrel(7)]),
     ]));
+    let bare = BarrelsData(BTreeMap::from([(turret_shot, vec![barrel(7)])]));
     let barrels: Vec<(&str, &BarrelsData)> = additions
         .iter()
         .filter_map(|(name, added)| Some((name.as_str(), added.barrels.as_ref()?)))
         .collect();
-    assert_eq!(barrels, [("hunter", &hunter)]);
+    assert_eq!(barrels, [("bare", &bare), ("hunter", &hunter)]);
 }
 
 /// A weapon's rate bonus of every weapon's stats, the veterancy's and the propaganda towers'.
@@ -1002,14 +1021,19 @@ End
         CarriedLook::new(
             declared("turret"),
             path("turret"),
-            vec![bones(0, 0, "flak"), bones(1, 0, "missiles")],
-            vec![rounds(0)],
+            CarriedParts {
+                fire_bones: vec![bones(0, 0, "flak"), bones(1, 0, "missiles")],
+                rounds: vec![rounds(0)],
+                ..CarriedParts::default()
+            },
         ),
         CarriedLook::new(
             declared("tower"),
             path("tower"),
-            vec![bones(0, 0, "horn")],
-            Vec::new(),
+            CarriedParts {
+                fire_bones: vec![bones(0, 0, "horn")],
+                ..CarriedParts::default()
+            },
         ),
     ];
     let mut names = names.into_production().into_projectiles();

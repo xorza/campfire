@@ -271,6 +271,14 @@ team's units or once stuck, and a mover braked to a stop counted stuck, on the i
   the Red Guards that walked past them; with neither exception, a Red Guard stood braked to a stop
   behind the second crawler, which the Helix had moved, for the rest of the play, as a mover
   braked to a stop counted no stuck tick.
+- **The bases play's stalls, by cause, 30 October 2026.** Four runs, each of a 1 s probe of the
+  stuck units: as the golden holds it, tick 9,681 and 737 stalls; with the gait's rule turned off,
+  tick 15,093 and 849; with a mover braked to a stop counted as no stuck walker, as before, tick
+  11,243 and 394; with both, Batch 2's tick 9,607 and 208. In the first, 282 of the samples are
+  China's supply trucks, of which two, 167 and 168, stand within 9 m of each other by the supply
+  center at (1,033, −401) for 96 and 126 samples, each walking to its own goal; with the mover
+  counted as before, no supply truck is among the samples. GLA's Angry Mob members are the most of
+  the rest: 555 samples with the gait's rule, 333 without.
 - **The garrison's slower Rebel.** Of the two Rebels, the one that starts among the base's units
   walks east 90 m round them before it turns for the building, and arrives in tick 985 against
   the other's 750; the golden's 824 was measured before the brake, with no probe of its way.

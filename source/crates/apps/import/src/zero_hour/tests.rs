@@ -20,8 +20,9 @@ use campfire_client_files::{
 };
 use campfire_codec::Toml;
 use campfire_combat::{
-    ArmorShare, AttackData, BonusData, ClipData, ClipRefill, CombatData, ModeCombatData, OnDeath,
-    PitchData, ScatterData, SplashData, TurretData, UnitOffset, WeaponValue,
+    ArmorShare, AttackData, BarrelData, BonusData, ClipData, ClipRefill, CombatData,
+    ModeCombatData, OnDeath, PitchData, ScatterData, SplashData, TurretData, UnitOffset,
+    WeaponValue,
 };
 use campfire_common::DeclaredName;
 use campfire_math::{Num, Rounding};
@@ -53,7 +54,7 @@ use crate::zero_hour::additions::Additions;
 use crate::zero_hour::animation_drop_cause::AnimationDropCause;
 use crate::zero_hour::animation_import::ConvertedAnimation;
 use crate::zero_hour::button_drop_cause::ButtonDropCause;
-use crate::zero_hour::carried_look::CarriedLook;
+use crate::zero_hour::carried_look::{CarriedLook, CarriedParts};
 use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::contain_import::ContainImport;
 use crate::zero_hour::dropped::Dropped;
@@ -1802,7 +1803,11 @@ fn a_portable_structures_model_is_drawn_at_its_carriers_bone_while_its_upgrades_
     // holds the upgrade's tag (riders-and-upgrades.md, A model may be drawn at another's bone).
     // The turret's first slot flashes the tank's `MuzzleFX`, which its model hides as the turret's
     // state does, and which waits, of the turret's own slot, for the slots its weapons take
-    // (riders-and-upgrades.md, A carried model's barrels are its carrier's).
+    // (riders-and-upgrades.md, A carried model's barrels are its carrier's). It launches from that
+    // bone too: in the turret's model, `MUZZLEFX01` stands 1 up the `TURRET` pivot's `y`, which a
+    // half turn about `z` at (1, 2, 3) takes to (1, 1, 3); drawn at the carrier's `TURRET`, the same
+    // pose, it stands at (1, 2, 3) + (−1, −1, 3) = (0, 1, 6), its two half turns none, so along
+    // `x`: on glTF's axes (0, 6, −1).
     let FixtureInstall {
         test_dir: _held,
         install,
@@ -1826,6 +1831,7 @@ Object Turret
     DefaultConditionState
       Model = Tank
       WeaponMuzzleFlash = PRIMARY MuzzleFX
+      WeaponLaunchBone = PRIMARY MuzzleFX
     End
   End
 End
@@ -1862,8 +1868,21 @@ End
     let turret = CarriedLook::new(
         DeclaredName::new("turret").unwrap(),
         PackagePath::parse("client/models/tank.glb").unwrap(),
-        vec![flash],
-        Vec::new(),
+        CarriedParts {
+            fire_bones: vec![flash],
+            rounds: Vec::new(),
+            launches: [
+                vec![
+                    BarrelData::new(
+                        UnitOffset::new([0, 6, -1].map(Num::int)).unwrap(),
+                        [Num::ONE, Num::ZERO, Num::ZERO],
+                    )
+                    .unwrap(),
+                ],
+                Vec::new(),
+                Vec::new(),
+            ],
+        },
     );
     let added = looks.additions.get(&TypeName::named("carrier")).unwrap();
     assert_eq!(added.carried, [turret]);
