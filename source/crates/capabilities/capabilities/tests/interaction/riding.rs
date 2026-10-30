@@ -1138,11 +1138,13 @@ fn a_flier_lands_for_its_riders_and_climbs_once_none_waits() {
 }
 
 #[test]
-fn a_flier_over_a_static_body_lands_at_the_nearest_point_clear_of_it() {
+fn a_flier_over_a_static_body_lands_where_zero_hours_transport_lands() {
     let (mut game, rides) = Rides::load();
     grid(&mut game, rides);
     // A chinook of the humvee's room, a circle of a half meter on the second layer that flies a
-    // meter a tick at 8 m, climbing a meter a tick, over a bunker of 2 m at the origin.
+    // meter a tick at 8 m, climbing a meter a tick, over a bunker of 2 m at the origin; the mode
+    // sets no landing, so its probe is the chinook's radius, its ring the grid's cell of 1 m and
+    // its spiral the grid's cells.
     let spec = game
         .resource::<ById<UnitType, EnterSpec>>()
         .get(rides.humvee)
@@ -1184,10 +1186,14 @@ fn a_flier_over_a_static_body_lands_at_the_nearest_point_clear_of_it() {
     let flier = container(&mut game, chinook, 0, 0, Some(0));
     game.steps(10);
     assert_eq!(game.part::<Position>(flier).get().y, Num::int(8));
-    // A rider 4 m off is ordered in: the chinook, which would land on the bunker, flies to the
-    // nearest cell a walker of its radius stands in on the ground, whose center lies a half meter
-    // past the bunker's edge, (−0.5, −1.5) of the four at √2.5 m, the lowest by its number, and
-    // lands there; the rider follows it and enters.
+    // A rider 4 m off is ordered in: the chinook, which would land on the bunker, takes the first
+    // point of its rings where its probe clears (riders-and-upgrades.md, A flier lands where Zero
+    // Hour's transport lands). Each point of the ring of 1 m lies within the bunker or on its edge;
+    // the first of the ring of 2 m, at 0°, (2, 0), lies 1 m past the edge, more than the probe's
+    // half meter, and 2 m from the rider, more than the 1 m of their radii. The spiral's first cell
+    // is that point's, [2, 3] × [0, 1], whose center (2.5, 0.5) a walker of its radius stands in,
+    // 1.5 m past the bunker's edge and √2.5 m from the rider. The chinook flies there and lands,
+    // though its rider walks under it first, and the rider enters.
     let rider = rider(&mut game, "walking caster", 4, 0, 0);
     order(
         &mut game,
@@ -1197,7 +1203,7 @@ fn a_flier_over_a_static_body_lands_at_the_nearest_point_clear_of_it() {
     );
     game.steps(40);
     assert_eq!(riders(&game, flier), [rider]);
-    assert_eq!(ground(&game, flier), (-1, -3));
+    assert_eq!(ground(&game, flier), (5, 1));
     assert_eq!(failed(&mut game), []);
 }
 

@@ -573,6 +573,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `layers` | navigation | since 1.0 |
 | `spawn_tags` | navigation | since 1.0 |
 | `moves` | navigation | since 1.0 |
+| `landing` | navigation | since 1.0 |
 
 ### A unit type's `vision`
 

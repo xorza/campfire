@@ -4,7 +4,7 @@ drive_ticks = 1711
 
 [fingerprints]
 game = "4c31cf587f38a45a0657afc58beb81692942ae3f817d1a19d04a93d01693d363"
-rules = "eb4084de6d20209e818b0863096d1a5a8949dafc39310a8f6997d2fe24b5fd2c"
+rules = "c228bb42f46331208ea7d7d52edf84d7268fd97db5fc68de8f4914e05bdf9b32"
 
 [map]
 heights = [270, 340]
@@ -184,8 +184,8 @@ evacuated = 9
 [entry]
 out = 57
 crawler = 60
-helix = 837
-bunker = 75
+helix = 767
+bunker = 743
 
 [garrison]
 garrisoned = 985

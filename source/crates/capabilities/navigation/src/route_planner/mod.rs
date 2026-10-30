@@ -535,6 +535,61 @@ impl RoutePlanner {
         self.nearest_open_where(walkable, goal, work, |_| true)
     }
 
+    /// The first cell a walker on `walkable` may stand in that `accepts` takes, of the square
+    /// spiral of `cells` cells about the cell of `start`, that cell first, then rings outward, each
+    /// a step along a column, one along a row, two back along the column, two back along the row,
+    /// and so on, as Zero Hour's `adjustToLandingDestination` walks its cells; each cell counted in
+    /// `work`, one off the grid among them.
+    pub(crate) fn spiral_open_where(
+        &self,
+        walkable: Walkable<'_>,
+        start: Vec3,
+        (cells, work): (usize, &mut u32),
+        accepts: impl Fn(usize) -> bool,
+    ) -> Option<usize> {
+        let grid = walkable.clearance.grid();
+        let columns = grid.columns();
+        let first = grid.nearest_cell(start);
+        let index = |at: usize| i64::try_from(at).expect("a grid's cells fit an i64");
+        let (mut column, mut row) = (index(first % columns), index(first / columns));
+        let mut visit = |column: i64, row: i64| {
+            *work += 1;
+            let (column, row) = (usize::try_from(column).ok()?, usize::try_from(row).ok()?);
+            let cell = row * columns + column;
+            (Self::passable(&self.overlay, walkable, column, row) && accepts(cell)).then_some(cell)
+        };
+        let mut left = cells;
+        if left == 0 {
+            return None;
+        }
+        left -= 1;
+        if let Some(cell) = visit(column, row) {
+            return Some(cell);
+        }
+        let mut delta = 1;
+        let mut sign = 1;
+        loop {
+            for along_column in [true, false] {
+                for _ in 0..delta {
+                    if left == 0 {
+                        return None;
+                    }
+                    left -= 1;
+                    if along_column {
+                        column += sign;
+                    } else {
+                        row += sign;
+                    }
+                    if let Some(cell) = visit(column, row) {
+                        return Some(cell);
+                    }
+                }
+            }
+            delta += 1;
+            sign = -sign;
+        }
+    }
+
     /// The cell `nearest_open` gives of those `accepts` takes too.
     pub(crate) fn nearest_open_where(
         &self,

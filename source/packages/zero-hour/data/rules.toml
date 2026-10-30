@@ -124,12 +124,16 @@ blocks = ["move"]
 
 [tags.continuous_fire_slow]
 
-# The tags of the markers its players start at and their starting units rally at; and its layers,
+# The tags of the markers its players start at and their starting units rally at; its layers,
 # the ground and the air its helicopters fly in (04-capabilities/navigation.md, Fliers share a
-# layer).
+# layer); and where a transport lands: the first point a sphere of 5 clears on rings 5 apart, as
+# `tryPosition` tests and `findPositionAround` spaces them, then the first of 400 cells about it
+# its body clears, as `adjustToLandingDestination` walks them (riders-and-upgrades.md, A flier
+# lands where Zero Hour's transport lands).
 [navigation]
 spawn_tags = ["start", "rally"]
 layers = ["ground", "air"]
+landing = { probe = "5", ring = "5", cells = 400 }
 
 # A skirmish's end, as the original's `VictoryConditions` keeps it: a player whose last living
 # building that counts for victory dies is out of play, and its other units die, as

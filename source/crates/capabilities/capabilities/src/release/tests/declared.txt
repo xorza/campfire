@@ -113,6 +113,7 @@ book navigation ById<UnitType, UnitNavigationData>
 book navigation ById<UnitType, FlightData>
 book navigation ById<UnitType, MovementModel>
 book navigation CrowdBook
+book navigation LandingBook
 book navigation NavigationBook
 book navigation WallBook
 book vision ById<UnitType, Sight>

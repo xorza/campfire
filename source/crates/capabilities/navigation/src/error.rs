@@ -69,6 +69,9 @@ pub enum NavigationDataError {
     /// A path has no waypoint.
     #[error("path \"{0}\" has no waypoint")]
     EmptyPath(DeclaredName),
+    /// The mode's landing search takes rings of no gap, which never reach past its first.
+    #[error("the landing's rings need a positive gap")]
+    LandingRing,
     /// The unit type walks and has a box body, which only a type that stands still has.
     #[error("a box body on a type that walks")]
     BoxWalks,

@@ -279,6 +279,21 @@ team's units or once stuck, and a mover braked to a stop counted stuck, on the i
   center at (1,033, −401) for 96 and 126 samples, each walking to its own goal; with the mover
   counted as before, no supply truck is among the samples. GLA's Angry Mob members are the most of
   the rest: 555 samples with the gait's rule, 333 without.
+- **What holds the supply trucks, traced 30 October 2026.** Truck 168, of radius 18.4, stands at
+  (1,032.9, −400.8) from tick 1,650 to about 6,450, facing west, touching the unit 156, of radius
+  19.7, which stands at (995, −405), 38.1 m off, dead ahead; its next waypoint is (1,035, −375),
+  north. Each tick the brake lets it 0, as 156 stands within its cone along its facing, and its
+  driver takes that 0 as its speed (`ZeroHourDriver::speed`), so it neither drives on, nor backs,
+  nor turns toward the waypoint; stuck, it plans again and again to routes whose first waypoint
+  stays north. Truck 167 stands so behind the units 162 and 181. Zero Hour's `blockedBy` takes no
+  unit as blocked while it moves backwards, and a blocked unit that must still turn toward its
+  path is not stuck (`AIUpdateInterface::processCollision`, `needToRotate`).
+- **What brakes the Angry Mob, traced 30 October 2026.** Of two mob members stuck the most, 313
+  and 341, 3,389 of 3,433 brakes are by a unit that walks, nearly all members of their own mob
+  and a Rebel, each letting them 0. Zero Hour's `blockedBy` takes infantry as blocked by
+  infantry only while both face the same way, the dot of their directions over 0.25, and lets
+  the rest walk through each other; the engine refused soldiers that pass through each other
+  (04-capabilities/navigation.md, Who may move whom is the game's).
 - **The garrison's slower Rebel.** Of the two Rebels, the one that starts among the base's units
   walks east 90 m round them before it turns for the building, and arrives in tick 985 against
   the other's 750; the golden's 824 was measured before the brake, with no probe of its way.

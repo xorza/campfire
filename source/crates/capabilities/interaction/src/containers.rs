@@ -390,7 +390,8 @@ impl Containers {
     /// to leave it, once it walks nowhere, where its body has room on the ground, and lifts it
     /// again once none does; once it is on the ground, each unit that waits for it enters again,
     /// and a unit that took another order or went comes no more (04-capabilities/navigation.md, A
-    /// flier lands for its riders; riders-and-upgrades.md, A flier lands where it has room).
+    /// flier lands for its riders; riders-and-upgrades.md, A flier lands where Zero Hour's
+    /// transport lands).
     pub(crate) fn land(
         mut containers: Landers<'_, '_>,
         mut boarders: Boarders<'_, '_>,
@@ -453,7 +454,9 @@ impl Containers {
             let lands = riders.wants_ground();
             if let Some(mut goal) = goal {
                 if lands {
-                    goal.set_if_neq(FlightGoal::Land);
+                    if !goal.is_landing() {
+                        *goal = FlightGoal::Land;
+                    }
                 } else if riders.lands() {
                     goal.set_if_neq(FlightGoal::Height);
                 }

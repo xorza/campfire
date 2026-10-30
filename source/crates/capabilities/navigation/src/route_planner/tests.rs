@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
@@ -527,4 +528,75 @@ fn a_route_costs_what_a_search_of_every_cell_finds() {
             }
         }
     }
+}
+
+#[test]
+fn a_spiral_visits_each_cell_once_in_zero_hours_order() {
+    // An open 5 × 5 grid from the center cell (2, 2): a step along the column, one along the row,
+    // two back along each, three on along each, four back along each, then four of the five on
+    // along the column, 1 + 1 + 1 + 2 + 2 + 3 + 3 + 4 + 4 + 4 = 25 cells, each once, as
+    // `adjustToLandingDestination` walks them; none accepted, so none found, and 25 counted.
+    let Walled { grid, statics } = walled(&["....."; 5]);
+    let clearance = grid.clearance(walker());
+    let walkable = Walkable::of(clearance, &statics);
+    let planner = RoutePlanner::new(clearance.grid());
+    let start = quarters(10, 10);
+    let visited = RefCell::new(Vec::new());
+    let mut work = 0;
+    let found = planner.spiral_open_where(walkable, start, (25, &mut work), |cell| {
+        visited.borrow_mut().push(cell);
+        false
+    });
+    assert_eq!(found, None);
+    assert_eq!(work, 25);
+    let order = [
+        (2, 2),
+        (3, 2),
+        (3, 3),
+        (2, 3),
+        (1, 3),
+        (1, 2),
+        (1, 1),
+        (2, 1),
+        (3, 1),
+        (4, 1),
+        (4, 2),
+        (4, 3),
+        (4, 4),
+        (3, 4),
+        (2, 4),
+        (1, 4),
+        (0, 4),
+        (0, 3),
+        (0, 2),
+        (0, 1),
+        (0, 0),
+        (1, 0),
+        (2, 0),
+        (3, 0),
+        (4, 0),
+    ];
+    assert_eq!(
+        visited.into_inner(),
+        order.map(|(column, row)| row * 5 + column)
+    );
+
+    // Posts on (2, 2) and (3, 2) leave them out, untested; the first cell accepted, (1, 1), the
+    // 7th visited, is found with 7 counted, and a spiral of 6 cells stops short of it, with 6.
+    let Walled { grid, statics } = walled(&[".....", ".....", "..##.", ".....", "....."]);
+    let clearance = grid.clearance(walker());
+    let walkable = Walkable::of(clearance, &statics);
+    let planner = RoutePlanner::new(clearance.grid());
+    let visited = RefCell::new(Vec::new());
+    let accepts = |cell: usize| {
+        visited.borrow_mut().push(cell);
+        cell == 6
+    };
+    let mut work = 0;
+    let found = planner.spiral_open_where(walkable, start, (7, &mut work), accepts);
+    assert_eq!((found, work), (Some(6), 7));
+    assert_eq!(visited.take(), [18, 17, 16, 11, 6]);
+    let mut work = 0;
+    let found = planner.spiral_open_where(walkable, start, (6, &mut work), accepts);
+    assert_eq!((found, work), (None, 6));
 }
