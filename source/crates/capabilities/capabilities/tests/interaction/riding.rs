@@ -41,7 +41,7 @@ use campfire_units::internals::Spawn;
 use campfire_units::{
     BodyForm, BodyShape, Dead, Destination, FiringRider, GroundPoint, Layer, Leaving, Life,
     Lifespan, MapBook, MoveStep, Owner, RiderFate, RidersCalledOut, SeeingRider, SeenBy, StatId,
-    StatusTags, UnitTypeCore, Units,
+    StatusTags, UnitTypeCore, Units, UnitsWorld,
 };
 use campfire_values::{
     FilterData, ModifierId, Number, PackageIndex, Rank, Ranked, Scalar, Share, Team, TeamSet,
@@ -709,7 +709,10 @@ fn riders_leave_each_exit_time_apart_at_the_free_cell_nearest_their_container() 
     // The second leaves in the tick of its exit, 12, at the center of the free cell nearest the
     // humvee, (−0.5, −0.5), of the four as near the lower first; the evacuation of tick 13 lets
     // the first out in tick 14, the exit time of 2 ticks after the second, and the third in 16.
+    // The third's life is drained as it rides: no death reads a rider, so it lives inside, and
+    // dies as it comes out (04-capabilities/interaction.md, A rider dies as it comes out).
     assert_eq!(game.now().get(), 12);
+    game.drain_life(units[2]);
     order(
         &mut game,
         0,
@@ -724,22 +727,27 @@ fn riders_leave_each_exit_time_apart_at_the_free_cell_nearest_their_container() 
     assert_eq!(outside(&game, &units), [cell, cell, None]);
     game.step();
     assert_eq!(outside(&game, &units), [cell, cell, None]);
+    assert!(game.try_part::<Dead>(units[2]).is_none());
     game.step();
     assert_eq!(outside(&game, &units), [cell, cell, cell]);
     assert!(!holding(&game, humvee));
+
     // Out, each is in the world again, and the last, out this tick, leaves through its team's
     // units.
     for &unit in &units {
         assert!(!is_out(&mut game, unit));
     }
     assert!(game.part::<Leaving>(units[2]).get());
-    // An exit of a unit that does not ride in it does nothing.
+    // An exit of a unit that does not ride in it does nothing; the drained third dies as the
+    // deaths of that tick find it, the tick after it came out.
+    assert!(game.try_part::<Dead>(units[2]).is_none());
     order(
         &mut game,
         0,
         humvee,
         OrdersDirective::Exit { rider: units[0] },
     );
+    assert!(game.try_part::<Dead>(units[2]).is_some());
     assert_eq!(failed(&mut game), []);
 }
 

@@ -1,6 +1,7 @@
 //! Zero Hour's skirmish, its rules package's script played by a test mode (09-zero-hour.md, Eight
 //! teams of one; 09-zero-hour.md, Defeat by the last building that counts).
 
+use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::world::World;
 use campfire_combat::{Combat, DamageCause};
 use campfire_common::PlayerSlot;
@@ -96,7 +97,9 @@ fn a_skirmish_starts_each_held_slot_and_ends_as_the_last_team_with_a_building_st
     // life, in tick 0: it dies as the tick's deaths find it, and the mode, which hears it then,
     // holds that bot out of play and takes its dozer's life whole; two teams hold a building
     // that counts, so the match goes on, and the center stays dead until its decay. The dozer
-    // dies in the next tick's deaths.
+    // dies in the next tick's deaths. The third's dozer rides, out of the world, so its life
+    // goes too, but no death finds it while it rides (04-capabilities/interaction.md, A rider dies
+    // as it comes out).
     let mut fixed = skirmish([
         PlayerSlotPlan::Player,
         PlayerSlotPlan::Bot,
@@ -104,6 +107,8 @@ fn a_skirmish_starts_each_held_slot_and_ends_as_the_last_team_with_a_building_st
     ]);
     let center = one(&fixed, "center", 1);
     let dozer = one(&fixed, "dozer", 1);
+    let rider = one(&fixed, "dozer", 2);
+    fixed.game_mut().insert_parts(rider, Disabled);
     destroy(&mut fixed, &[center]);
     let world = fixed.game();
     assert!(MatchUnits::of(world).unit(center).contains::<Dead>());
@@ -115,9 +120,9 @@ fn a_skirmish_starts_each_held_slot_and_ends_as_the_last_team_with_a_building_st
     assert!(MatchUnits::of(fixed.game()).unit(dozer).contains::<Dead>());
     // The third's center dies alike, and the match ends, player 1's team, the first, the
     // winner. The match runs no stage after it ends, so the center stays dead and that bot's
-    // dozer does not die, its life gone.
+    // dozer, which rides, does not die, its life gone.
     let center = one(&fixed, "center", 2);
-    let dozer = one(&fixed, "dozer", 2);
+    let dozer = rider;
     destroy(&mut fixed, &[center]);
     let world = fixed.game();
     assert!(MatchUnits::of(world).unit(center).contains::<Dead>());

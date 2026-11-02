@@ -1,7 +1,9 @@
 use bevy_ecs::change_detection::{CheckChangeTicks, DetectChanges, Ref, Tick};
 use bevy_ecs::entity::{Entities, Entity};
+use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::lifecycle::{Insert, Remove};
 use bevy_ecs::observer::On;
+use bevy_ecs::query::Allow;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, Res, ResMut, SystemChangeTick, SystemParam};
 use bevy_ecs::world::World;
@@ -57,14 +59,16 @@ struct HeldCount {
     count: u32,
 }
 
-/// The units the players own as the holdings follow them: what supply counts of each, in a mode
-/// that counts it, the queues, by change tick, and whether an entity a share names still stands.
+/// The units the players own as the holdings follow them, riders among them, which leave the world
+/// but not their player's count: what supply counts of each, in a mode that counts it, the queues,
+/// by change tick, and whether an entity a share names still stands (04-capabilities/production.md,
+/// A rider counts for its player).
 #[derive(SystemParam, Debug)]
 pub(crate) struct OwnedUnits<'w, 's> {
     rules: Res<'w, SupplyBook>,
     costs: Res<'w, SupplyCostBook>,
-    units: Query<'w, 's, (Entity, &'static Owner, SupplyParts)>,
-    queues: Query<'w, 's, (Entity, Ref<'static, TrainQueue>)>,
+    units: Query<'w, 's, (Entity, &'static Owner, SupplyParts), Allow<Disabled>>,
+    queues: Query<'w, 's, (Entity, Ref<'static, TrainQueue>), Allow<Disabled>>,
     entities: &'w Entities,
     ticks: SystemChangeTick,
 }

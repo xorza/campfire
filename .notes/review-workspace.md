@@ -36,15 +36,6 @@ The coordinator checked these bugs in the code: play-1, play-2, combat-1 (the ra
 
 Batches go most impactful first. A batch that needs another stands after it. Each batch ends with `cargo drive check` and `cargo drive test` passing, as AGENTS.md's workflow says. An item marked **Decide** waits for the owner's choice between the options it names.
 
-### 2. Riders in every unit count
-
-Files: `capabilities/production/src/holdings.rs`, `capabilities/production/src/production_column.rs`, `capabilities/mode/src/victory.rs`, `apps/client/src/view/minimap/mod.rs`, `capabilities/capabilities/tests/interaction/riding.rs`, `capabilities/capabilities/tests/mode/`.
-
-- [ ] **play-1.** `holdings.rs:66`: `OwnedUnits::units` is a plain query, so it skips every rider. The observers at `:179` mark no unit as it starts or stops riding. A unit that walks into a container keeps the share it had outside. A payload rider never counts, even after it leaves. A full recount (each restore, because `Holdings` is a cache) drops every rider. A live server and its restored world then admit different trains and meet different `requires.units`. The view's `supply` (`production_column.rs:225`) sums view rows, which leave riders out. Target: the holdings read `Allow<Disabled>`. `Add<Disabled>` and `Remove<Disabled>` mark the unit. The view's supply reads the holdings.
-- [ ] **play-2.** `victory.rs:134,165`: the `kill_all` drain reads `QueryState<LivingUnit, Without<Dead>>`, which skips riders. When the drained container falls, its riders walk out alive, owned by a player who is out of play. The same query leaves riders out of the holders count. Target: the drain and the count read `Allow<Disabled>`.
-- [ ] **apps-1.** `minimap/mod.rs:414`: (a) the `||` short-circuits, so on a frame where a unit leaves, the `revived` reader is not read. Its revivals then cost a second full write and upload of the image on the next frame. (b) The drawing skips a `Disabled` rider, but `ChangedUnits` (`:118`) has no trigger for `Disabled`. So a rider's dot stays until another change redraws the map. Target: read both removal readers before the test. `Add<Disabled>` and `Remove<Disabled>` mark the minimap dirty.
-- [ ] **play-14.** Add the missing cases to the nearest tests: train against a supply cap and a requirement with a unit inside, live and after a restore, and compare the hashes. Kill a fallen player whose unit rides.
-
 ### 3. Interaction and orders
 
 Files: `capabilities/interaction/src/{entering,containers,use_orders,interaction_rules,enter_spec}.rs`, `capabilities/orders/src/{unit_orders,acquiring}.rs`, `capabilities/production/src/builder.rs`, `capabilities/capabilities/tests/interaction/{mod,riding}.rs`, `capabilities/capabilities/tests/{abilities,stats}/mod.rs`, `capabilities/capabilities/tests/abilities/timing.rs`.
@@ -214,6 +205,9 @@ Files: `session/protocol/src/session_log/{journal_replay,journal_shape}.rs`, `se
 ## Changed
 
 - **testing-11 (part).** `CI_SCALE` cites the runners' measured speed, 3.5 to 6 times an M5's, which the `ci` profile records: with testing-5's choice both profiles end a test at 30 s, so their ratio, 1, no longer says how much slower CI is.
+- **play-1.** The holdings read `Allow<Disabled>`, and no observer of `Disabled` marks a unit, as its share does not change while it rides. The view's supply adds its riders', which the column counts in `begin` through a query of `Disabled` units kept for its world, not the holdings: a view reads its units as its phase begins, and the holdings follow only at a train and at the tick's end, so a script read a supply a tick behind its rows.
+- **play-2.** Beside the count and the drain reading `Allow<Disabled>`, `drain_life` reaches a rider through the new `SimWorld::simulated_entity_of`, and a rider's life reads as changed as it comes out, so a rider the drain reached dies then: the deaths read no rider, and without both the drain did nothing to one (04-capabilities/interaction.md, A rider dies as it comes out). The count reads a unit's life, so a drained rider no longer holds its player in play.
+- **play-14.** The supply test makes a depot ride and spawns one inside, live and after an in-place restore; the requirement test meets its need with a riding depot; the skirmish's third player's dozer rides as its center falls, and the drain takes its life; the exit test drains a rider, which dies the tick after it comes out.
 
 ## Decisions
 

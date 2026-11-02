@@ -7,6 +7,7 @@ use bevy::camera::{Camera, Camera3d};
 use bevy::color::ColorToPacked;
 use bevy::ecs::change_detection::{DetectChanges, DetectChangesMut, Ref};
 use bevy::ecs::component::Component;
+use bevy::ecs::entity_disabling::Disabled;
 use bevy::ecs::lifecycle::RemovedComponents;
 use bevy::ecs::message::MessageWriter;
 use bevy::ecs::query::{Added, Allow, Changed, Or, With, Without};
@@ -110,8 +111,9 @@ const INSET_PX: f32 = 12.0;
 /// The color of the camera's view on the minimap.
 const VIEW: [u8; 3] = [255, 255, 255];
 
-/// The units the minimap draws whose place, team or owner changed, or that died, since its last
-/// frame; those that left or lived again are read apart, as their parts went.
+/// The units the minimap draws whose place, team or owner changed, that died, or that entered a
+/// container, which draws no rider, since its last frame; those that left, lived again or came
+/// out of a container are read apart, as their parts went.
 type ChangedUnits<'w, 's> = Query<
     'w,
     's,
@@ -122,8 +124,10 @@ type ChangedUnits<'w, 's> = Query<
             Changed<Team>,
             Changed<Owner>,
             Added<Dead>,
+            Added<Disabled>,
         )>,
         Allow<Unpredicted>,
+        Allow<Disabled>,
     ),
 >;
 
@@ -392,7 +396,7 @@ impl MinimapView {
         mut view: ResMut<'_, Self>,
         mut images: ResMut<'_, Assets<Image>>,
         own: OwnPlayer<'_, '_>,
-        (units, changed, mut gone, mut revived): (
+        (units, changed, mut gone, mut revived, mut out): (
             Query<
                 '_,
                 '_,
@@ -402,6 +406,7 @@ impl MinimapView {
             ChangedUnits<'_, '_>,
             RemovedComponents<'_, '_, Position>,
             RemovedComponents<'_, '_, Dead>,
+            RemovedComponents<'_, '_, Disabled>,
         ),
         (colors, camera): (
             Res<'_, MatchColors>,
@@ -409,10 +414,10 @@ impl MinimapView {
         ),
         node: Single<'_, '_, Ref<'_, Visibility>, With<MinimapNode>>,
     ) {
-        // Each frame reads the units that left or lived again, so a frame that shows again reads
-        // none of before.
-        let units_changed =
-            gone.read().count() > 0 || revived.read().count() > 0 || !changed.is_empty();
+        // Each frame reads every reader of the units that left, lived again or came out, so a
+        // frame that shows again reads none of before.
+        let removed = gone.read().count() + revived.read().count() + out.read().count();
+        let units_changed = removed > 0 || !changed.is_empty();
         if **node == Visibility::Hidden {
             return;
         }

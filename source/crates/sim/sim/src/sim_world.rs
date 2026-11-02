@@ -1,5 +1,5 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::entity_disabling::DefaultQueryFilters;
+use bevy_ecs::entity_disabling::{DefaultQueryFilters, Disabled};
 use bevy_ecs::world::{EntityRef, Mut, World};
 use campfire_common::StateHash;
 
@@ -23,6 +23,11 @@ pub trait SimWorld {
     /// `Unpredicted` hides a unit a predicting client holds as its authority sent it: the unit a
     /// query that names no disabling component finds, for a system that reaches units by id.
     fn queried_entity_of(&self, id: StableId) -> Option<Entity>;
+
+    /// The entity of `id` as `queried_entity_of` finds it, or while only `Disabled` hides it, as
+    /// it hides a rider, which leaves the world but stays in the match: the unit a query that
+    /// allows `Disabled` finds.
+    fn simulated_entity_of(&self, id: StableId) -> Option<Entity>;
 
     /// Runs one sim tick in a world no `App` updates, so it clears the change trackers after the
     /// tick, as an `App` does after each frame.
@@ -73,6 +78,18 @@ impl SimWorld for World {
         let filters = self.resource::<DefaultQueryFilters>();
         let hidden = filters
             .disabling_ids()
+            .any(|component| unit.contains_id(component));
+        (!hidden).then_some(entity)
+    }
+
+    fn simulated_entity_of(&self, id: StableId) -> Option<Entity> {
+        let entity = self.entity_of(id)?;
+        let unit = self.entity(entity);
+        let disabled = self.components().component_id::<Disabled>();
+        let filters = self.resource::<DefaultQueryFilters>();
+        let hidden = filters
+            .disabling_ids()
+            .filter(|&component| Some(component) != disabled)
             .any(|component| unit.contains_id(component));
         (!hidden).then_some(entity)
     }

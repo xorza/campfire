@@ -1,7 +1,8 @@
 use std::ops::Range;
 
-use bevy_ecs::query::ROQueryItem;
-use bevy_ecs::world::World;
+use bevy_ecs::entity_disabling::Disabled;
+use bevy_ecs::query::{QueryState, ROQueryItem, With};
+use bevy_ecs::world::{World, WorldId};
 use campfire_common::PlayerSlot;
 use campfire_declarations::ById;
 use campfire_math::Num;
@@ -35,16 +36,23 @@ pub(crate) type RowReads = (
 );
 
 /// What production adds to the script view: what each unit counts for of its player's supply,
-/// what it carries, builds, trains and holds, a row each; the mode's supply rules and costs, by
-/// which scripts read each player's supply as the view read the match; and the trains' unit
-/// types, by which they read a queue.
+/// what it carries, builds, trains and holds, a row each; what the riders, which leave the world
+/// and its rows, count for, by player (04-capabilities/production.md, A rider counts for its
+/// player); the mode's supply rules and costs, by which scripts read each player's supply as the
+/// view read the match; and the trains' unit types, by which they read a queue.
 #[derive(Debug, Default)]
 pub struct ProductionColumn {
     rows: KeptRows<ProductionRows>,
+    riding: Vec<SupplySums>,
+    riders: Option<(WorldId, Riders)>,
     costs: SupplyCostBook,
     rules: Option<ModeSupplyData>,
     trains: ById<ActionId, TrainSpec>,
 }
+
+/// The riders, units that leave the world as `Disabled`, with what supply counts of each, of the
+/// world the query was made for.
+type Riders = QueryState<(&'static Owner, SupplyParts), With<Disabled>>;
 
 /// A unit's row of the production column: its player, none for a unit no player owns, what it
 /// counts for, the amount it carries, the share of its site's time its progress reached, none
@@ -157,11 +165,12 @@ impl ViewColumn for ProductionColumn {
         self.rules = world.resource::<SupplyBook>().0;
         self.trains = world.resource::<ById<ActionId, TrainSpec>>().clone();
         let costs = world.resource::<SupplyCostBook>();
-        if costs.same(&self.costs) {
-            return false;
+        let refill = !costs.same(&self.costs);
+        if refill {
+            self.costs = costs.clone();
         }
-        self.costs = costs.clone();
-        true
+        self.count_riders(world);
+        refill
     }
 
     /// None: it reads no team's sight.
@@ -221,18 +230,47 @@ impl ProductionColumn {
         &self.costs
     }
 
-    /// `player_slot`'s supply as `view` read the match; `None` in a mode with no supply.
+    /// `player_slot`'s supply as `view` read the match, its riders' among it; `None` in a mode
+    /// with no supply.
     pub(crate) fn supply(view: &View, player_slot: PlayerSlot) -> Option<ReadSupply> {
         view.column(|column: &Self| {
             let rules = column.rules?;
             let sums = column.rows.now().sums.get(player_slot.index());
-            let total = sums.copied().unwrap_or_default();
+            let mut total = sums.copied().unwrap_or_default();
+            if let Some(riding) = column.riding.get(player_slot.index()) {
+                total.used += riding.used;
+                total.given += riding.given;
+            }
             Some(ReadSupply {
                 used: total.used,
                 cap: total.cap(u64::from(rules.max)),
             })
         })
         .flatten()
+    }
+
+    /// Counts what the riders of `world` count for, by player, as the column's costs say; the
+    /// query of the riders made again for another world.
+    fn count_riders(&mut self, world: &World) {
+        self.riding.clear();
+        if self.riders.as_ref().is_none_or(|(id, _)| *id != world.id()) {
+            self.riders = world
+                .try_query_filtered()
+                .map(|riders| (world.id(), riders));
+        }
+        let Some((_, riders)) = &mut self.riders else {
+            return;
+        };
+        for (owner, parts) in riders.iter(world) {
+            let Some(unit) = parts.unit() else {
+                continue;
+            };
+            let at = owner.player_slot().index();
+            if self.riding.len() <= at {
+                self.riding.resize(at + 1, SupplySums::default());
+            }
+            self.riding[at].add(self.costs.unit(unit));
+        }
     }
 
     /// Fills a row of the script view with what the unit counts for of its player's supply, what

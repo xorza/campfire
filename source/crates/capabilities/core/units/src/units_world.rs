@@ -24,8 +24,8 @@ pub trait UnitsWorld {
     fn allegiance_of(&self, unit: StableId) -> Option<Allegiance>;
 
     /// Takes `unit`'s life whole, when the sim simulates it and it lives: it dies as the next
-    /// tick's deaths find it, with no killer. A predicting client takes none of a unit it holds
-    /// as the server sent it, which `Unpredicted` hides.
+    /// tick's deaths find it, with no killer, a rider as it comes out. A predicting client takes
+    /// none of a unit it holds as the server sent it, which `Unpredicted` hides.
     fn drain_life(&mut self, unit: StableId);
 
     /// Kills `unit`, a unit of no life that lives, as its last damage would kill one of life:
@@ -64,7 +64,7 @@ impl UnitsWorld for World {
     }
 
     fn drain_life(&mut self, unit: StableId) {
-        let Some(entity) = self.queried_entity_of(unit) else {
+        let Some(entity) = self.simulated_entity_of(unit) else {
             return;
         };
         let dead = self.get::<Dead>(entity).is_some();

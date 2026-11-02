@@ -580,6 +580,11 @@ impl Containers {
         let mut out = world.entity_mut(unit);
         out.remove::<(Riding, FiringRider, SeeingRider)>();
         *out.get_mut::<Position>().expect("a rider stands") = Position::from(position);
+        // The deaths read no rider, so one whose life a drain took while it rode dies as it comes
+        // out (04-capabilities/interaction.md, A rider dies as it comes out).
+        if let Some(mut life) = out.get_mut::<Life>() {
+            life.set_changed();
+        }
         if let Some(mut leaving) = out.get_mut::<Leaving>() {
             Leaving::set(&mut leaving, true);
         }
