@@ -16,10 +16,10 @@ use serde::{Deserialize, Serialize};
 /// behind a unit that blocks it).
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct BrakedStep(Option<Num>);
+pub(crate) struct BrakedStep(Option<Num>);
 
 impl BrakedStep {
-    pub const fn get(self) -> Option<Num> {
+    pub(crate) const fn get(self) -> Option<Num> {
         self.0
     }
 

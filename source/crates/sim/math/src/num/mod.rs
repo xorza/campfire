@@ -117,6 +117,25 @@ impl Num {
         if up { self.floor() + 1 } else { self.floor() }
     }
 
+    /// Its distance from 0, of a number other than `MIN`, which has no positive of its size: a
+    /// caller whose number may be `MIN`, as one read from outside, takes `checked_abs`.
+    #[must_use]
+    pub const fn abs(self) -> Self {
+        debug_assert!(
+            self.0 != i64::MIN,
+            "the distance of a number from 0 fits a number"
+        );
+        Self(self.0.wrapping_abs())
+    }
+
+    /// Its distance from 0; `None` for `MIN`, which has no positive of its size.
+    pub const fn checked_abs(self) -> Option<Self> {
+        match self.0.checked_abs() {
+            Some(bits) => Some(Self(bits)),
+            None => None,
+        }
+    }
+
     pub const fn checked_add(self, rhs: Self) -> Option<Self> {
         match self.0.checked_add(rhs.0) {
             Some(bits) => Some(Self(bits)),

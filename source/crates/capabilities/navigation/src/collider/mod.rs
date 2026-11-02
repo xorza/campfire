@@ -22,7 +22,7 @@ pub(crate) mod contact;
 /// which pins it against the other walkers. A unit that cannot walk, such as a tower or a
 /// building, is never pushed; only such a unit has a box.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Collider {
+pub(crate) struct Collider {
     pub id: StableId,
     pub(crate) entity: Entity,
     pub(crate) point: Vec3,
@@ -113,8 +113,7 @@ impl Collider {
         if let Some((body, at, mover)) = self.boxed(other) {
             return body.push_out(at, mover.point, mover.space()).is_some();
         }
-        let dx = i128::from(other.point.x.to_bits() - self.point.x.to_bits());
-        let dz = i128::from(other.point.z.to_bits() - self.point.z.to_bits());
+        let [dx, dz] = self.point.ground_offset_bits(other.point);
         let space = i128::from(self.space().to_bits() + other.space().to_bits());
         dx * dx + dz * dz < space * space
     }
@@ -298,7 +297,7 @@ impl Collider {
     }
 
     /// The radius of a body that may be pushed, which is a circle.
-    pub fn radius(&self) -> Num {
+    pub(crate) fn radius(&self) -> Num {
         match self.shape {
             Shape::Circle(radius) => radius.get(),
             Shape::Box(_) => panic!("a box is never pushed, so it has no radius to reach by"),
@@ -322,8 +321,7 @@ impl Collider {
         if !self.may_separate(other) {
             return None;
         }
-        let dx = i128::from(other.point.x.to_bits() - self.point.x.to_bits());
-        let dz = i128::from(other.point.z.to_bits() - self.point.z.to_bits());
+        let [dx, dz] = self.point.ground_offset_bits(other.point);
         let reach = i128::from(self.shape.bound().to_bits() + other.shape.bound().to_bits());
         let square = dx * dx + dz * dz;
         (square < reach * reach).then_some(Overlap { dx, dz, reach })
@@ -386,11 +384,7 @@ impl Collider {
     /// faces, which a walker's step goes within 11.25° of.
     fn went_into(&self, other: &Self) -> bool {
         self.going.is_some_and(|way| {
-            let off = [
-                i128::from(other.point.x.to_bits() - self.point.x.to_bits()),
-                i128::from(other.point.z.to_bits() - self.point.z.to_bits()),
-            ];
-            Bearing::of(&way, off).in_cone()
+            Bearing::of(&way, self.point.ground_offset_bits(other.point)).in_cone()
         })
     }
 

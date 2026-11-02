@@ -135,10 +135,7 @@ impl Blocking {
                 {
                     return ControlFlow::Continue(());
                 }
-                let off = [
-                    bits(unit.position.x - walker.position.x),
-                    bits(unit.position.z - walker.position.z),
-                ];
+                let off = walker.position.ground_offset_bits(unit.position);
                 let bearing = Bearing::of(&way, off);
                 let held = match unit.way {
                     Some(_) => bearing.in_cone(),
@@ -176,12 +173,7 @@ impl Blocking {
     /// Whether `unit` walks at `walker`, which lies within the 45° cone of its way.
     fn head_on(walker: &Blocker, unit: &Blocker) -> bool {
         unit.way.is_some_and(|way| {
-            let bits = |value: Num| i128::from(value.to_bits());
-            let off = [
-                bits(walker.position.x - unit.position.x),
-                bits(walker.position.z - unit.position.z),
-            ];
-            Bearing::of(&way, off).in_cone()
+            Bearing::of(&way, unit.position.ground_offset_bits(walker.position)).in_cone()
         })
     }
 

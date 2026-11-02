@@ -27,7 +27,7 @@ pub(crate) mod bench;
 /// bodies. Derived from the bodies, not state: each change of them changes only the buckets of
 /// the bodies it touched.
 #[derive(Resource, Debug)]
-pub struct BodyIndex {
+pub(crate) struct BodyIndex {
     levels: CellLevels,
     /// The bodies, by stable id.
     bodies: Vec<IndexedBody>,
@@ -171,7 +171,7 @@ impl IndexedBody {
 
 impl BodyIndex {
     /// An empty index for walkers at most `widest` in radius, 0 when none has a body.
-    pub fn new(widest: Num) -> Self {
+    pub(crate) fn new(widest: Num) -> Self {
         // With no walker of a body any width serves, and a bucket of 0 divides by 0.
         let widest = if widest > Num::ZERO {
             widest
@@ -202,7 +202,7 @@ impl BodyIndex {
 
     /// Makes `bodies`, sorted by stable id, the index's bodies; whether they changed. The
     /// bodies the change took away and put in stay for `removed` and `added`.
-    pub fn update(&mut self, bodies: &[IndexedBody]) -> bool {
+    pub(crate) fn update(&mut self, bodies: &[IndexedBody]) -> bool {
         debug_assert!(bodies.is_sorted_by_key(|body| body.id));
         self.filled = true;
         self.removed.clear();
@@ -307,12 +307,8 @@ impl BodyIndex {
     }
 
     /// How many static bodies the index holds.
-    pub const fn len(&self) -> usize {
+    pub(crate) const fn len(&self) -> usize {
         self.bodies.len()
-    }
-
-    pub const fn is_empty(&self) -> bool {
-        self.len() == 0
     }
 
     /// Calls `visit` once with each body of `layer` whose bounding box meets the square `reach`
@@ -337,7 +333,7 @@ impl BodyIndex {
 
     /// Whether `hit` holds of a body of `layer` whose bounding box meets the square `reach` from
     /// `point` on each side, as `near` visits them, stopping at the first.
-    pub fn any_near(
+    pub(crate) fn any_near(
         &self,
         layer: Layer,
         point: Vec3,
@@ -356,7 +352,7 @@ impl BodyIndex {
 
     /// Whether a body of `walker`'s layer comes closer to `segment` than the walker's radius,
     /// exactly: whether the walker along it would overlap one.
-    pub fn blocks(&self, segment: Segment, walker: Walker) -> bool {
+    pub(crate) fn blocks(&self, segment: Segment, walker: Walker) -> bool {
         self.blocks_where(segment, walker, |_| true)
     }
 

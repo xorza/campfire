@@ -125,6 +125,8 @@ fn within_is_exact_at_the_boundary() {
     let (from, to) = (v(1, 0, 1), v(4, 9, 5));
     assert_eq!(to.ground(), v(4, 0, 5));
     assert_eq!(from.ground_offset(to), v(3, 0, 4));
+    // In bits, `[x, z]`: 3 m and 4 m, each 2²⁴ bits a meter.
+    assert_eq!(from.ground_offset_bits(to), [3 << 24, 4 << 24]);
     let reaches = [five - Num::EPSILON, five, five + Num::EPSILON]
         .map(|radius| from.within_ground(to, radius));
     assert_eq!(reaches, [false, true, true]);

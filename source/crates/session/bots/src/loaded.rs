@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use campfire_math::{Num, Vec3};
+use campfire_geometry::GridReach;
+use campfire_math::Vec3;
 use campfire_names::Filter;
 use campfire_units::{GroundPoint, OrderRefs};
 use campfire_values::{ActionId, ItemId, PerkId};
@@ -29,11 +30,7 @@ impl OrderRefs for Loaded {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LoadedPlace {
     At(GroundPoint),
-    Near {
-        near: GroundPoint,
-        gap: Num,
-        steps: u32,
-    },
+    Near { near: GroundPoint, reach: GridReach },
 }
 
 /// An action's name as a bot's start resolved it: the actions of that name, one for each package

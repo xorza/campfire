@@ -3,19 +3,49 @@ use std::sync::LazyLock;
 
 use campfire_math::{Num, Vec3};
 
+use crate::error::GridReachError;
+
 /// The order of every search, the grid's steps within `GridSearch::MAX_STEPS` of the center, by
 /// square distance, then by angle: about 51,000 steps, built once, as a match that searches
 /// loads, so no search orders its points again and no tick builds it.
 static ORDER: LazyLock<Box<[[i16; 2]]>> = LazyLock::new(GridSearch::order);
 
-/// A search of the ground grid of `gap` round `position`, within `steps` gaps of it, for the
-/// nearest point a test passes: by distance, then by angle from `+x`, as a facing turns, each
-/// compared exactly (04-capabilities/navigation.md, A script finds room near a point).
+/// A search of the ground grid of its reach's gap round `position`, within its reach's steps of
+/// it, for the nearest point a test passes: by distance, then by angle from `+x`, as a facing
+/// turns, each compared exactly (04-capabilities/navigation.md, A script finds room near a point).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GridSearch {
     pub position: Vec3,
-    pub gap: Num,
-    pub steps: u32,
+    pub reach: GridReach,
+}
+
+/// How far a grid search reaches: the gap of its grid, above 0, and how many gaps, at most
+/// `GridSearch::MAX_STEPS`, checked where it is read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GridReach {
+    gap: Num,
+    steps: u32,
+}
+
+impl GridReach {
+    /// The reach of `steps` gaps of `gap`; an error for a gap not above 0 or steps past the most.
+    pub const fn new(gap: Num, steps: u32) -> Result<Self, GridReachError> {
+        if gap.to_bits() <= 0 {
+            return Err(GridReachError::Gap(gap));
+        }
+        if steps > GridSearch::MAX_STEPS {
+            return Err(GridReachError::Steps(steps));
+        }
+        Ok(Self { gap, steps })
+    }
+
+    pub const fn gap(self) -> Num {
+        self.gap
+    }
+
+    pub const fn steps(self) -> u32 {
+        self.steps
+    }
 }
 
 impl GridSearch {
@@ -34,13 +64,8 @@ impl GridSearch {
     pub fn nearest(self, mut passes: impl FnMut(Vec3) -> bool) -> Option<Vec3> {
         let Self {
             position,
-            gap,
-            steps,
+            reach: GridReach { gap, steps },
         } = self;
-        debug_assert!(
-            gap > Num::ZERO && steps <= Self::MAX_STEPS,
-            "a search of a positive gap, within its steps"
-        );
         let gap_bits = i128::from(gap.to_bits());
         let most = i64::from(steps) * i64::from(steps);
         let step = |count: i16| {
@@ -103,8 +128,7 @@ mod tests {
             let mut visited = Vec::new();
             let search = GridSearch {
                 position: Vec3::new(Num::int(10), Num::ZERO, Num::int(10)),
-                gap: Num::ONE,
-                steps,
+                reach: GridReach::new(Num::ONE, steps).unwrap(),
             };
             let found = search.nearest(|at| {
                 visited.push([at.x, at.z].map(|axis| axis.to_int().unwrap() - 10));
@@ -114,6 +138,19 @@ mod tests {
             visited
         };
         assert_eq!(visited(1), [[0, 0], [1, 0], [0, -1], [-1, 0], [0, 1]]);
+        // A reach of no gap, or past the most steps, is refused where it is read; 128 is the
+        // most.
+        let gap = -Num::ONE;
+        assert_eq!(GridReach::new(gap, 1), Err(GridReachError::Gap(gap)));
+        assert_eq!(
+            GridReach::new(Num::ZERO, 1),
+            Err(GridReachError::Gap(Num::ZERO))
+        );
+        assert_eq!(
+            GridReach::new(Num::ONE, 129),
+            Err(GridReachError::Steps(129))
+        );
+        assert_eq!(GridReach::new(Num::ONE, 128).map(GridReach::steps), Ok(128));
         let two = visited(2);
         assert_eq!(two.len(), 13);
         assert_eq!(&two[5..9], [[1, -1], [-1, -1], [-1, 1], [1, 1]]);

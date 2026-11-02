@@ -154,6 +154,13 @@ impl Vec3 {
             .expect("Vec3 overflow in ground_offset")
     }
 
+    /// The offset from here to `to` on the ground plane, `[x, z]` in bits, which an exact test of
+    /// distance or bearing squares in an `i128`.
+    pub const fn ground_offset_bits(self, to: Self) -> [i128; 2] {
+        let offset = self.ground_offset(to);
+        [offset.x.to_bits() as i128, offset.z.to_bits() as i128]
+    }
+
     /// Whether each of its coordinates lies within ±`BOUND`, as a place's does.
     pub const fn within_bound(self) -> bool {
         let bound = Self::BOUND.to_bits().unsigned_abs();

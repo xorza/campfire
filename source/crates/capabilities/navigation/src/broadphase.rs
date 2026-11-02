@@ -226,7 +226,13 @@ pub(crate) mod internals {
     /// on both axes, of a radius from 0.2 to 1.19 m, on one of `layers` layers, and that may be
     /// pushed, and walks, at random. A scene of one layer draws no layer. With `boxes`, a body
     /// that may not be pushed is a box as wide and as deep as its circle, at a whole degree.
-    pub fn scene(seed: u64, count: usize, span: u64, layers: u8, boxes: bool) -> Vec<Collider> {
+    pub(crate) fn scene(
+        seed: u64,
+        count: usize,
+        span: u64,
+        layers: u8,
+        boxes: bool,
+    ) -> Vec<Collider> {
         let mut ids = IdAllocator::default();
         let mut world = World::new();
         let bodies = KernelScene::new(seed).bodies(count, span, layers, boxes);

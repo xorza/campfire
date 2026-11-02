@@ -260,7 +260,7 @@ impl TickSpan {
     /// span is past `2^31`.
     pub const fn unsigned_abs(self) -> PositiveTickSpan {
         PositiveTickSpan {
-            value: Num::from_bits(self.value.to_bits().abs()),
+            value: self.value.abs(),
         }
     }
 

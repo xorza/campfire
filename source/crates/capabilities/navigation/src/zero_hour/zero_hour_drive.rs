@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, Rounding, Vec3};
 use campfire_sim::SimComponent;
 use campfire_states::{Replication, SentPredicted};
 use campfire_units::{MoveStep, UnitEntity};
@@ -75,12 +75,16 @@ impl SimComponent for ZeroHourDrive {
     const NAME: &'static str = "navigation.zero_hour_drive";
     type Host = UnitEntity;
 
-    // Of a unit that walks, its velocity within the world's bound and its factor from 0 to its
-    // most; a count past its locomotor's wait braking reads alike.
+    // Of a unit that walks, its velocity within the world's bound and of a square a number
+    // holds, as its speed squares it, and its factor from 0 to its most; a count past its
+    // locomotor's wait braking reads alike.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let [x, z] = self.velocity;
+        let square = |value: Num| value.checked_mul(value, Rounding::NearestEven);
+        let squared = square(x).zip(square(z)).and_then(|(x, z)| x.checked_add(z));
         world.get::<MoveStep>(entity).is_some()
             && Vec3::new(x, Num::ZERO, z).within_bound()
+            && squared.is_some()
             && (Num::ZERO..=Self::MAX_FACTOR).contains(&self.factor)
     }
 }
@@ -88,4 +92,26 @@ impl SimComponent for ZeroHourDrive {
 impl Replication for ZeroHourDrive {
     const KIND: DataKind = DataKind::Prediction;
     type Sending = SentPredicted;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_restored_velocity_is_one_whose_speed_squares() {
+        // A number holds up to 2³⁹ m, so a velocity of 2¹⁹ m a tick along one axis squares to
+        // 2³⁸ and checks, and one of 2¹⁹ along both sums to 2³⁹, past it, though each lies within
+        // the world's bound of 2²⁰ m.
+        let mut world = World::new();
+        let walker = world.spawn(MoveStep::new(Num::ONE).unwrap()).id();
+        let half = Num::int(1 << 19);
+        let of = |velocity| ZeroHourDrive {
+            velocity,
+            ..ZeroHourDrive::default()
+        };
+        assert!(of([half, Num::ZERO]).check(&world, walker));
+        assert!(!of([half, half]).check(&world, walker));
+        assert!(of([half, half]).velocity.iter().all(|&at| at < Vec3::BOUND));
+    }
 }

@@ -123,8 +123,8 @@ fn a_body_is_a_volume_on_its_ground_and_its_center_lies_halfway_up_it() {
         at(Num::HALF * 3)
     );
     let volume = Body::volume(Some(&tall), position, &planar);
-    assert_eq!(volume.base.position, at(Num::HALF * 9));
-    assert_eq!(volume.height, Num::int(2));
+    assert_eq!(volume.base().position, at(Num::HALF * 9));
+    assert_eq!(volume.height(), Num::int(2));
     // A point in space gives its position back; a spatial map's are the same. The ground's
     // one coarse cell is 4 m high, and a spatial map has no ground.
     assert_eq!(planar.position(at(Num::HALF * 9)), position);

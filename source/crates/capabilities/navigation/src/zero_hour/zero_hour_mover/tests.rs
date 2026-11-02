@@ -1,6 +1,8 @@
 use std::cell::Cell;
 use std::num::NonZeroU32;
 
+use campfire_math::SinCos;
+
 use super::*;
 
 /// The halves and quarters of a meter, exact in a `Num`.

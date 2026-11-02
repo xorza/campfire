@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::system::SystemState;
 use campfire_combat::{Combat, DamageCause};
-use campfire_geometry::{Bounds, Grid, Polygon};
+use campfire_geometry::{Bounds, Grid, GridReach, Polygon};
 use campfire_names::Filter;
 use campfire_navigation::{Navigation, Walker};
 use campfire_orders::OrdersDirective;
@@ -1046,8 +1046,7 @@ fn a_place_search_takes_the_nearest_point_of_its_grid_where_its_build_passes() {
             builder,
             slot: 0,
             near: GroundPoint::new(Num::ZERO, Num::ZERO),
-            gap: Num::ONE,
-            steps,
+            reach: GridReach::new(Num::ONE, steps).unwrap(),
             angle: Num::int(angle),
         })
     };

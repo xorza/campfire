@@ -12,7 +12,7 @@ use crate::path_walker::PathWalker;
 
 /// The walk of each path walker along its path.
 #[derive(Debug)]
-pub struct PathFollowing;
+pub(crate) struct PathFollowing;
 
 impl PathFollowing {
     /// Sends each path walker with no attack target and no cast walking in range, on its path, to

@@ -85,8 +85,8 @@ impl Wings {
             if let Some(way) = way {
                 facing.set_if_neq(facing.toward(way, turn.copied()).facing);
             }
-            let along = SinCos::of_degrees(facing.degrees());
-            let moved = Vec3::new(at.x + along.cos * speed, at.y, at.z - along.sin * speed);
+            let [x, z] = facing.way();
+            let moved = Vec3::new(at.x + x * speed, at.y, at.z + z * speed);
             position.set_if_neq(Position::from(moved));
             if !walks {
                 continue;
@@ -99,17 +99,9 @@ impl Wings {
                 route.advance();
                 progress.restart();
             }
-            if route.read().ahead().is_empty() && route.asked().is_none() {
-                let goal = route.goal();
-                Destination::route_to(&mut destination, None);
-                ArrivedAt::set(&mut arrived, goal);
-                if let Some(goal) = goal {
-                    held.set_if_neq(HeldPlace::new(goal));
-                }
-                if route.is_reached() {
-                    route.clear();
-                    progress.restart();
-                }
+            let end = route.end_walk(&mut destination, &mut arrived, &mut progress);
+            if let Some(goal) = end.and_then(|end| end.goal) {
+                held.set_if_neq(HeldPlace::new(goal));
             }
         }
     }

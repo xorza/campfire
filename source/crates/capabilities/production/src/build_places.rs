@@ -1,7 +1,7 @@
 use bevy_ecs::query::{Allow, With, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_actions::ActionSlots;
-use campfire_geometry::GridSearch;
+use campfire_geometry::{GridReach, GridSearch};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 use campfire_units::{Dead, GroundPoint, Owner};
@@ -40,15 +40,14 @@ pub struct BuildPlaces<'w, 's, S: TeamSight> {
 }
 
 /// A search for the place of a build: the builder, the place among its slots of the build's
-/// action, the point the search starts from, the gap of its grid and how many gaps it reaches,
-/// and the angle the build's box turns.
+/// action, the point the search starts from, how far its grid reaches, and the angle the build's
+/// box turns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlaceSearch {
     pub builder: StableId,
     pub slot: u8,
     pub near: GroundPoint,
-    pub gap: Num,
-    pub steps: u32,
+    pub reach: GridReach,
     pub angle: Num,
 }
 
@@ -62,8 +61,7 @@ impl<S: TeamSight> BuildPlaces<'_, '_, S> {
             builder,
             slot,
             near,
-            gap,
-            steps,
+            reach,
             angle,
         } = search;
         let (from, &team, slots, _) = self.builders.get(self.index.get(builder)?).ok()?;
@@ -71,8 +69,7 @@ impl<S: TeamSight> BuildPlaces<'_, '_, S> {
         let body = spec.form.at(angle);
         let grid = GridSearch {
             position: Vec3::new(near.x, from.get().y, near.z),
-            gap,
-            steps,
+            reach,
         };
         let found = grid.nearest(|at| self.placement.passes(team, at, body, spec));
         found.map(GroundPoint::under)

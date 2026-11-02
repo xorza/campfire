@@ -2,6 +2,7 @@ use std::ops::Range;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy_ecs::resource::Resource;
+use bevy_ecs::system::ResMut;
 use bevy_ecs::world::World;
 use campfire_declarations::Cache;
 use campfire_geometry::Grid;
@@ -244,6 +245,15 @@ impl RoutePlanner {
     /// Starts a tick's work.
     pub(crate) fn begin_tick(&mut self) {
         *self.spent.get_mut() = 0;
+    }
+
+    /// Starts the tick's work as the tick begins, so every scan of the tick, a spawn's, a
+    /// teleport's, collision's and a landing's as a route's, counts against one limit
+    /// (04-capabilities/navigation.md, One work limit for every route).
+    pub(crate) fn begin(planner: Option<ResMut<'_, Self>>) {
+        if let Some(mut planner) = planner {
+            planner.begin_tick();
+        }
     }
 
     /// Whether this tick did all the work it may: the plan that met the limit finished, and the

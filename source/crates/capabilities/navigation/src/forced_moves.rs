@@ -20,7 +20,7 @@ use crate::walker::Walker;
 
 /// The forced moves of the units: their dashes, knock backs and teleports.
 #[derive(Debug)]
-pub struct ForcedMoves;
+pub(crate) struct ForcedMoves;
 
 impl ForcedMoves {
     /// Moves each unit a forced move moves, by stable id, once the units walked, so a dash at a

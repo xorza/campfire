@@ -103,7 +103,9 @@ impl Progress {
         {
             *nearest = Nearest {
                 waypoint: to,
-                distance: nearest.distance + from.ground_offset(to).length(),
+                distance: nearest
+                    .distance
+                    .saturating_add(from.ground_offset(to).length()),
             };
         }
     }
@@ -222,6 +224,21 @@ mod tests {
         assert_eq!(
             progress.track(here + Vec3::from((1, 0, 0)), farther, step),
             2
+        );
+        // A nearest of the most a number holds, as a snapshot may give, stays there as its goal
+        // moves on, where the sum would pass it.
+        let mut restored = Progress {
+            toward: Some(Nearest {
+                waypoint: farther,
+                distance: Num::MAX,
+            }),
+            stuck: 0,
+            stuck_asks: 0,
+        };
+        restored.goal_moved(farther, moved);
+        assert_eq!(
+            restored.toward.map(|nearest| nearest.distance),
+            Some(Num::MAX)
         );
     }
 }

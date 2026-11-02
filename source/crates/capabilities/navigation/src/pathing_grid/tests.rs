@@ -226,7 +226,7 @@ fn a_wall_blocks_its_cells_and_those_a_walker_comes_closer_to_and_no_body_opens_
     index.clear();
     let built = PathingGrid::new(cells, walkers, &terrain);
     assert_eq!(format!("{grid:?}"), format!("{built:?}"));
-    assert!(!index.is_filled() && index.is_empty());
+    assert!(!index.is_filled() && index.len() == 0);
 }
 
 #[test]
