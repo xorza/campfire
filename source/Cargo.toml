@@ -304,8 +304,6 @@ getrandom = { version = "=0.4.3", default-features = false }
 gltf-json = { version = "=1.4.1", default-features = false }
 httparse = { version = "=1.10.1", default-features = false }
 libc = { version = "=0.2.191", default-features = false }
-# The importer's transcendental functions, in software, so every OS writes the same package
-# (09-zero-hour.md, One reproducible package).
 libm = { version = "=0.2.16", default-features = false }
 miniz_oxide = { version = "=0.9.1", default-features = false }
 naga = { version = "=30.0.1", default-features = false }
@@ -347,11 +345,11 @@ windows = { version = "=0.62.2", default-features = false }
 xmltree = { version = "=0.12.0", default-features = false }
 zeroize = { version = "=1.9.1", default-features = false }
 
-# Opt-level 1, not 0, keeps the debug build's scripted matches and sweeps inside their time
-# bounds (02-engine-core.md, The workspace's own code builds at opt-level 1).
+
 [profile.dev]
 opt-level = 1
 debug = "line-tables-only"
+lto = "off"
 
 [profile.dev.package."*"]
 opt-level = 3
