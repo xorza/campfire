@@ -5,7 +5,7 @@ use std::future;
 use std::sync::Arc;
 
 use campfire_codec::Json;
-use campfire_common::ErrorReport;
+use campfire_common::{ErrorReport, NamedEnum};
 use campfire_console::{
     CameraAsk, CameraPose, ConsoleAnswer, ConsoleAsk, ConsoleEvent, Detail, EventLevel, FieldValue,
     GameRole, NearestNames, PaceAsk, PaceStatus, Reply, RunAsk, RunStop, RunTo, SessionStatus,
@@ -84,7 +84,7 @@ const EVENTS: u32 = 50;
 
 /// The tools, in the one order `tools/list` gives.
 fn tools() -> Vec<Tool> {
-    ToolName::ALL.into_iter().map(tool_of).collect()
+    ToolName::ALL.iter().copied().map(tool_of).collect()
 }
 
 /// The tool `name`: its title, description, schema and effect.
@@ -462,7 +462,7 @@ impl ServerHandler for GameTools {
     }
 
     fn get_tool(&self, name: &str) -> Option<Tool> {
-        ToolName::parse(name).map(tool_of)
+        ToolName::named(name).map(tool_of)
     }
 
     /// Calls the tool the request names; a failure is the call's result, which says what to
@@ -472,8 +472,8 @@ impl ServerHandler for GameTools {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
-        let Some(name) = ToolName::parse(&request.name) else {
-            let names = ToolName::ALL.into_iter().map(ToolName::name);
+        let Some(name) = ToolName::named(&request.name) else {
+            let names = ToolName::ALL.iter().copied().map(ToolName::name);
             let nearest = NearestNames::of(&request.name, names);
             let nearest: Vec<&str> = nearest.iter().collect();
             return Err(ErrorData::invalid_params(

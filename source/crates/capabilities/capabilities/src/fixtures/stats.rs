@@ -7,9 +7,10 @@ use campfire_declarations::internals::BookLoad;
 use campfire_math::Num;
 use campfire_sim::StableId;
 use campfire_stats::{
-    Application, AuraData, ModifierData, NewInstance, PoolBook, PoolData, Reapply, StatBook,
-    StatRule, Stats, StatsData,
+    Application, AuraData, ModifierBook, ModifierData, NewInstance, PoolBook, PoolData, Reapply,
+    StatBook, StatRule, Stats, StatsData,
 };
+use campfire_units::internals::TEST_PACKAGE;
 use campfire_units::{UnitTypeCore, Units};
 use campfire_values::Names;
 use campfire_values::{EngineStat, ModifierId, Stat, UnitType};
@@ -32,6 +33,13 @@ pub trait StatsFixtures {
 
     /// An application of the aura `id` of `radius`, one stack with no end, carried by `carrier`.
     fn aura(id: ModifierId, carrier: StableId, radius: Num) -> Application;
+
+    /// Loads the modifiers that grant the test tags, each of its tag's name, in the package
+    /// `TEST_PACKAGE`, after every other, unless the match loaded them.
+    fn load_test_modifiers(world: &mut World);
+
+    /// Whether the match loaded the modifiers that grant the test tags.
+    fn loads_test_modifiers(world: &World) -> bool;
 }
 
 impl StatsFixtures for Stats {
@@ -118,5 +126,26 @@ impl StatsFixtures for Stats {
             reapply: Reapply::Refresh,
             max_stacks: None,
         }
+    }
+
+    fn load_test_modifiers(world: &mut World) {
+        if Self::loads_test_modifiers(world) {
+            return;
+        }
+        let mut tags = Units::test_tags();
+        tags.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+        for (name, _) in tags {
+            let grants = ModifierData {
+                tags: vec![name.clone()],
+                ..ModifierData::default()
+            };
+            Self::load_modifier(world, TEST_PACKAGE, name.as_str(), &grants, None);
+        }
+    }
+
+    fn loads_test_modifiers(world: &World) -> bool {
+        let (first, _) = &Units::test_tags()[0];
+        world.get_resource::<ModifierBook>().is_some()
+            && Self::modifier(world, TEST_PACKAGE, first.as_str()).is_some()
     }
 }

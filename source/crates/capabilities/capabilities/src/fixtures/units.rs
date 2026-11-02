@@ -14,6 +14,7 @@ use campfire_values::{
     Block, DamageKind, Names, RelationSet, ResourceId, Stat, TagProperties, UnitType,
 };
 
+use crate::fixtures::stats::StatsFixtures;
 use crate::release::Release;
 
 /// The test fixtures of `Units` that need a crate above its own.
@@ -49,7 +50,7 @@ impl UnitsFixtures for Units {
             .into_iter()
             .chain([properties.is_hidden(), properties.detects()]);
         let entity = world.unit_entity(id);
-        Release::load_test_modifiers(world);
+        Stats::load_test_modifiers(world);
         for ((name, _), wanted) in Self::test_tags().iter().zip(wanted) {
             let modifier = Stats::modifier(world, TEST_PACKAGE, name.as_str()).unwrap();
             let held = world

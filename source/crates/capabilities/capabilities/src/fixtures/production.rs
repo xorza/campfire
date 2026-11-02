@@ -12,7 +12,8 @@ use campfire_units::{BodyForm, BodyShape, BuildTarget, GroundPoint, Layer, SeenB
 use campfire_values::{Team, TeamSet, UnitType};
 
 use crate::fixtures::navigation::NavigationFixtures;
-use crate::order::{Directive, Order};
+use crate::order::Order;
+use crate::order::directive::Directive;
 
 /// The test fixtures of `Production` that need a crate above its own.
 pub trait ProductionFixtures {

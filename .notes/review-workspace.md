@@ -36,18 +36,6 @@ The coordinator checked these bugs in the code: play-1, play-2, combat-1 (the ra
 
 Batches go most impactful first. A batch that needs another stands after it. Each batch ends with `cargo drive check` and `cargo drive test` passing, as AGENTS.md's workflow says. An item marked **Decide** waits for the owner's choice between the options it names.
 
-### 9. Declarations and lists
-
-Files: `capabilities/capabilities/src/order/mod.rs` (and a new `order/directive.rs`), `capabilities/capabilities/src/release/{match_core.rs,mod.rs,installer.rs}`, `capabilities/capabilities/src/release/tests/{declaration_audit.rs,declared.txt}`, `capabilities/capabilities/src/match_probe/`, `capabilities/capabilities/src/fixtures/{stats,units}.rs`, the four modules that read a directive (`orders`, `production`, `progression`, `items`), `apps/client/src/{engine_text.rs,view/match_colors.rs}`, `apps/mcp/src/tool_name.rs`.
-
-- [ ] **cap-1.** `order/mod.rs:62`: `Directive::DECODERS` must match the enum, and its test compares it with another hand list. A missing variant makes `MatchCore::count_unread` count every command of that capability as unaddressed, and `Order::of_payload` refuse it. Target: each module declares the directive it reads. The `ReleaseCatalog` walk records its decoder, and the test's exhaustive match checks each variant.
-- [ ] **cap-7.** `order/mod.rs:26`: `Directive` stands on its own in `Order`'s file. Move it to `order/directive.rs`.
-- [ ] **cap-2.** `declaration_audit.rs:540-635`: 34 observers, 5 removals, 3 one-shot runs, 8 server parts and 13 engine tags are inline arrays. 33 commits since 2026-09-01 changed the file. Target: the audit writes each kind into `declared.txt` beside the parts and books.
-- [ ] **cap-4.** `match_probe/probe_spec.rs:98`, `match_probe/mod.rs:293,385,412,439`, `match_probe/error.rs:29-32`: `ProbeState` parses its names by hand, and the probe prints one activity set as "walk" in the table and "walking" in the counts. Target: `ProbeState` derives `NamedEnum`, and the table and the counts print `Activity`'s names.
-- [ ] **cap-5.** `release/mod.rs:661`: `Release::load_test_modifiers` and `loads_test_modifiers` are fixtures of stats' modifiers. Move them to `StatsFixtures`.
-- [ ] **cap-6.** `release/installer.rs:41`: only the `Debug` impl reads `Installer::set`. Remove the field.
-- [ ] **apps-2.** `engine_text.rs:84,105`: `EngineText::text` `expect`s each message "as a test proves", but the test reads a hand list of 9 variants, so a new message with no `en.ftl` entry panics in the client. `tool_name.rs:19` hand-writes what `NamedEnum` derives. `match_colors.rs:97` keeps `Tint::ALL` by hand. Target: `EnumAll` on `EngineMessage` and `Tint`, `NamedEnum` on `ToolName`.
-
 ### 10. The script core
 
 Files: `capabilities/core/script/src/scripts/{call_start.rs,call_extension.rs,frame/mod.rs,view_api.rs,script_facts/}`, `capabilities/core/values/src/`, `capabilities/abilities/src/casts.rs`, `capabilities/navigation/src/navigation_effect.rs`, `capabilities/core/deliveries/src/deliveries_api.rs`, `capabilities/core/declarations/src/book_cx/mod.rs`, `capabilities/core/units/src/{unit_types.rs,units.rs,units_api.rs,lib.rs}`, `capabilities/core/names/src/{name_tables.rs,lib.rs}`, `capabilities/capabilities/src/books/load_names.rs`, `capabilities/core/actions/src/action_data/`, `capabilities/mode/` (its uncalled script names), `docs/design/06-script-api.md`, the test packages.
@@ -139,6 +127,7 @@ Files: `session/protocol/src/session_log/{journal_replay,journal_shape}.rs`, `se
 - **ses-2.** `InputAck` decodes only seqs a `u64` holds and ticks in order; across acks, `SentInputs::acknowledge` refuses one that places an input before one ahead of it, the inputs as they were, and the client logs it as the new `InputAckRefused`, as the order across acks no decode can see.
 - **ses-3.** `ReportDir::read` gives a `ReadReport` of both or `ReportError::OtherSession`; the client now reads the log as its command line opens the report, where it read the facts alone, and `Connection::open` takes the played server by value to move the log into the replay; the client's tests take `campfire-harness` as a dev-dependency to play the log.
 - **testing-7.** The roles, the books and the sets read `syn`, but `errors` still finds an error by the binding named `error`: a binding's type is not in the syntax, so no parse can tell an error from another value.
+- **cap-1.** `Directive::DECODERS` stays a list beside the enum, and its test now checks it against one directive of each variant, which the exhaustive `variant` match keeps whole: a module cannot declare its decoder, as `Directive` lives in the crate above every module, and a declaration in a lower crate cannot name it.
 
 ## Decisions
 

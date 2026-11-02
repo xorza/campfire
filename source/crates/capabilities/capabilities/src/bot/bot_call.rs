@@ -9,7 +9,7 @@ use campfire_script::{
 use campfire_sim::StableId;
 use campfire_values::{ActionId, Scalar};
 
-use crate::order::Directive;
+use crate::order::directive::Directive;
 use crate::order::named_refs::NamedRefs;
 
 /// What a bot's think reads besides the match, and what it gives: the bot's own params, which lie

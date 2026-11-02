@@ -1,7 +1,7 @@
 use std::num::{NonZeroU32, NonZeroU64, ParseIntError};
 use std::str::FromStr;
 
-use campfire_common::{DeclaredName, PlayerSlot, StableNumber};
+use campfire_common::{DeclaredName, NamedEnum, PlayerSlot, StableNumber};
 use campfire_sim::StableId;
 use campfire_units::UnitTypeBook;
 use campfire_values::{Team, TypeScope};
@@ -95,15 +95,7 @@ impl FromStr for ProbeUnitsSpec {
                         .collect(),
                 )
             }
-            "state" => Self::State(match value {
-                "idle" => ProbeState::Idle,
-                "walking" => ProbeState::Walking,
-                "stuck" => ProbeState::Stuck,
-                "working" => ProbeState::Working,
-                "fighting" => ProbeState::Fighting,
-                "acting" => ProbeState::Acting,
-                _ => return Err(ProbeSpecError::State),
-            }),
+            "state" => Self::State(ProbeState::named(value).ok_or(ProbeSpecError::State)?),
             _ => return Err(ProbeSpecError::Units),
         })
     }

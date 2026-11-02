@@ -14,8 +14,7 @@ use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::schedule::{InternedSystemSet, SystemSet};
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem, System};
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, CastSpends};
-use campfire_combat::{BarrelTurns, ClipShots, ShotStreak};
+use campfire_actions::CastSpends;
 use campfire_common::EnumAll;
 use campfire_declarations::NamesFn;
 use campfire_declarations::{
@@ -25,10 +24,7 @@ use campfire_declarations::{
 };
 use campfire_deliveries::Deliverers;
 use campfire_names::MatchNames;
-use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
 use campfire_players::Player;
-use campfire_production::{Builder, Gatherer, PlayerSupply};
-use campfire_progression::Experience;
 use campfire_script::{
     ApiBuilder, CallExtension, CallParams, EventPhase, HookDecl, ModeEvents, PlannedCapability,
     RowReads, Status, ViewColumn,
@@ -38,14 +34,11 @@ use campfire_sim::{
     SimSystems, TimedProcess,
 };
 use campfire_states::{NotSent, Replication, StateTypes};
-use campfire_stats::Modifiers;
 use campfire_store::internals::PinnedFile;
-use campfire_units::{
-    AtWork, BodyUnit, Dead, DeliveryEntity, OpenCellRun, Owner, SeenBy, TrackLevels, UnitEntity,
-};
+use campfire_units::{BodyUnit, DeliveryEntity, UnitEntity};
 use campfire_values::{EngineTag, MatchScope, NameId, Named as NamedId, Names, TagProperties};
 use campfire_visibility::DataKind;
-use campfire_vision::{SeenCells, VisionColumn};
+use campfire_vision::VisionColumn;
 use serde::{Deserialize, Serialize};
 
 use crate::release::Release;
@@ -512,7 +505,8 @@ impl OwnResources for DeclarationAudit {
     }
 }
 
-/// Each part a module declares, by its host, and each book, by its module's capability.
+/// Each part a module declares, by its host, each book, by its module's capability, and each
+/// observer, removal reader, run, server part and engine tag, in the modules' order.
 const DECLARED: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/src/release/tests/declared.txt"
@@ -533,107 +527,26 @@ fn the_modules_declarations_keep_every_rule_between_them() {
         let by = book.declared_by.map_or("core", Capability::name);
         writeln!(declared, "book {by} {}", book.ty.short()).unwrap();
     }
+    // The observers, the parts whose removals a module reads, which reach it as the tick ages
+    // them, the runs out of the schedule and the parts a server derives, which the installer adds
+    // for their modules; and the engine tags, whose numbers keep while the module list keeps its
+    // order.
+    for observer in &audit.observers {
+        writeln!(declared, "observer {observer}").unwrap();
+    }
+    for removed in &audit.removals {
+        writeln!(declared, "removals {}", removed.short()).unwrap();
+    }
+    for run in &audit.one_shots {
+        writeln!(declared, "run {}", run.short()).unwrap();
+    }
+    for (holder, part) in &audit.server_parts {
+        writeln!(declared, "server {} {}", holder.short(), part.short()).unwrap();
+    }
+    for tag in &audit.engine_tags {
+        writeln!(declared, "engine_tag {}", tag.name()).unwrap();
+    }
     PinnedFile::new(Path::new(DECLARED)).pin(declared.as_bytes(), 1 << 16);
-    // The observers, the runs out of the schedule and the parts a server derives, which the
-    // installer adds for their modules.
-    assert_eq!(
-        audit.observers,
-        [
-            "Scripts::refill_view",
-            "ViewReader::disabled",
-            "ViewReader::enabled",
-            "UnitTracker<GridUnits>::aged",
-            "UnitTracker<GridUnits>::lost_body",
-            "UnitTracker<GridUnits>::disabled",
-            "UnitTracker<GridUnits>::enabled",
-            "Lifespan::revived",
-            "OrderSteps::forget_gone",
-            "Level::raise",
-            "Aiming::revived",
-            "HeldHits::drop_died",
-            "UnitTracker<StaticBodies>::aged",
-            "UnitTracker<StaticBodies>::disabled",
-            "UnitTracker<StaticBodies>::enabled",
-            "StaticBodies::part_removed",
-            "StaticBodies::state_inserted",
-            "StaticBodies::state_removed",
-            "Route::rewritten",
-            "Flying::lose_teleported",
-            "Flying::lose_died",
-            "ProductionOrders::ordered",
-            "TrainQueue::revived",
-            "Holdings::inserted",
-            "Holdings::removed",
-            "Holdings::aged",
-            "ShopIndex::typed",
-            "ShopIndex::untyped",
-            "Containers::ordered",
-            "Containers::called_out",
-            "UseOrders::ordered",
-            "NextTurn<Acquire>::revived",
-            "NextTurn<Ai>::revived",
-        ]
-    );
-    // The parts whose removals a module reads, which reach it as the tick ages them.
-    let removals: Vec<&str> = audit.removals.iter().map(|ty| ty.name).collect();
-    assert_eq!(
-        removals,
-        [
-            type_name::<Dead>(),
-            type_name::<Modifiers>(),
-            type_name::<Owner>(),
-            type_name::<Dead>(),
-            type_name::<Dead>(),
-            type_name::<Gatherer>(),
-        ]
-    );
-    let runs: Vec<&str> = audit.one_shots.iter().map(|ty| ty.name).collect();
-    assert_eq!(
-        runs,
-        [
-            type_name::<StaticTrackingRun>(),
-            type_name::<RoomMakingRun>(),
-            type_name::<OpenCellRun>()
-        ]
-    );
-    let server: Vec<(&str, &str)> = audit
-        .server_parts
-        .iter()
-        .map(|(holder, part)| (holder.name, part.name))
-        .collect();
-    assert_eq!(
-        server,
-        [
-            (type_name::<Experience>(), type_name::<TrackLevels>()),
-            (type_name::<ActionSlots>(), type_name::<BarrelTurns>()),
-            (type_name::<ActionSlots>(), type_name::<ClipShots>()),
-            (type_name::<ActionSlots>(), type_name::<ShotStreak>()),
-            (type_name::<UnitEntity>(), type_name::<SeenBy>()),
-            (type_name::<Player>(), type_name::<SeenCells>()),
-            (type_name::<Player>(), type_name::<PlayerSupply>()),
-            (type_name::<Builder>(), type_name::<AtWork>()),
-        ]
-    );
-    // The engine tags keep their numbers while the module list keeps its order.
-    let engine: Vec<&str> = audit.engine_tags.iter().map(|tag| tag.name()).collect();
-    assert_eq!(
-        engine,
-        [
-            "avatar",
-            "dead",
-            "air_target",
-            "on_wings",
-            "projectile",
-            "area",
-            "constructing",
-            "node",
-            "drop_off",
-            "gathering",
-            "being_built",
-            "airfield_held",
-            "holding"
-        ]
-    );
 }
 
 /// A state type of no kind, which a test declares.

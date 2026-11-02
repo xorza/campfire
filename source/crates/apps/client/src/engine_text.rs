@@ -2,6 +2,7 @@ use std::fmt;
 
 use bevy::ecs::resource::Resource;
 use campfire_client_files::PanelCommand;
+use campfire_common::EnumAll;
 use fluent_bundle::FluentResource;
 use fluent_bundle::concurrent::FluentBundle;
 use unic_langid::LanguageIdentifier;
@@ -15,7 +16,7 @@ pub(crate) struct EngineText {
 }
 
 /// A message of the engine's own, each a message of its file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
 pub(crate) enum EngineMessage {
     Victory,
     Defeat,
@@ -101,23 +102,10 @@ mod tests {
 
     use super::*;
 
-    /// Every message, so one no test lists fails the text's check.
-    const ALL: [EngineMessage; 9] = [
-        EngineMessage::Victory,
-        EngineMessage::Defeat,
-        EngineMessage::MatchEnded,
-        EngineMessage::Sell,
-        EngineMessage::Stop,
-        EngineMessage::AttackMove,
-        EngineMessage::Rally,
-        EngineMessage::Exit,
-        EngineMessage::Evacuate,
-    ];
-
     #[test]
     fn the_engine_s_file_gives_each_of_its_messages_and_no_other() {
         let text = EngineText::english();
-        let shown = ALL.map(|message| text.text(message));
+        let shown = EngineMessage::ALL.map(|message| text.text(message));
         assert_eq!(
             shown,
             [
@@ -140,6 +128,6 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(ids, ALL.map(EngineMessage::id));
+        assert_eq!(ids, EngineMessage::ALL.map(EngineMessage::id));
     }
 }
