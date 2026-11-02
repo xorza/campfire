@@ -95,7 +95,7 @@ struct State {
 
 /// A book as declared: its type, and the capability of the module that declares it.
 #[derive(Debug)]
-struct DeclaredBook {
+struct BookDecl {
     ty: Named,
     declared_by: Option<Capability>,
 }
@@ -129,7 +129,7 @@ struct DeclarationAudit {
     requires: Vec<(Named, Named)>,
     hosts: Vec<(Named, Option<Vec<TypeId>>)>,
     checks: Vec<Named>,
-    books: Vec<DeclaredBook>,
+    books: Vec<BookDecl>,
     columns: Vec<Named>,
     call_extensions: Vec<Named>,
     /// Each part: its host, the kinds the host takes, and its type.
@@ -397,7 +397,7 @@ impl Declarations for DeclarationAudit {
     fn rule(&mut self, _: RuleFn) {}
 
     fn book<B: Book>(&mut self, _: BuildFn<B>) {
-        self.books.push(DeclaredBook {
+        self.books.push(BookDecl {
             ty: Named::of::<B>(),
             declared_by: self.capability,
         });

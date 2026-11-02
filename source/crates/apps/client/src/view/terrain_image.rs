@@ -201,7 +201,7 @@ fn usize_of(side: u32) -> usize {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod reach_in {
     use bevy::math::UVec2;
 
     use crate::view::terrain_image::TerrainImage;
@@ -223,7 +223,7 @@ mod tests {
     use campfire_store::internals::TestDir;
 
     use super::*;
-    use crate::view::package_source::internals::package;
+    use crate::view::package_source::reach_in::package;
 
     /// A KTX2 file of `side` × `side` texels at three levels, each texel its column, its row and
     /// its level, opaque.

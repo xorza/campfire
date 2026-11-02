@@ -36,6 +36,37 @@ pub(crate) fn common_and_each_proxy_depend_on_their_listed_crates_alone(workspac
     }
 }
 
+/// The crates a proxy reaches for the others, by the proxy's directory: the formats through
+/// `codec`, the temporary files through `store`, and Bevy's task pools through `app-threads`.
+const PROXIED: [(&str, &[&str]); 3] = [
+    (
+        "base/codec",
+        &["base64", "png", "postcard", "serde_json", "toml"],
+    ),
+    ("base/store", &["tempfile"]),
+    ("base/app-threads", &["bevy_tasks"]),
+];
+
+pub(crate) fn only_a_proxy_depends_on_the_crates_it_proxies(workspace: &Workspace) {
+    // A crate that depends on a proxied crate reaches past its proxy each call the bans' lists do
+    // not name, so no crate but its proxy names one, in its dependencies or its tests'.
+    let mut reaching = Vec::new();
+    for krate in workspace.crates() {
+        let names = (krate.manifest.dependencies())
+            .chain(krate.manifest.dev_dependencies())
+            .map(|(name, _)| name);
+        for name in names {
+            let proxied = PROXIED.iter().find(|(_, crates)| crates.contains(&name));
+            if let Some(&(proxy, _)) = proxied
+                && krate.path != format!("crates/{proxy}")
+            {
+                reaching.push(format!("{}: {name}", krate.path));
+            }
+        }
+    }
+    assert_eq!(reaching, Vec::<String>::new());
+}
+
 /// The crate of `common`'s derives, which `common` alone names and re-exports, so a caller takes
 /// a trait and its derive from one path, as serde re-exports `serde_derive`.
 pub(crate) const COMMON_DERIVE: &str = "campfire-common-derive";
@@ -779,6 +810,73 @@ pub(crate) fn a_dev_dependency_turns_on_internals_that_gate_code(workspace: &Wor
         })
         .collect();
     assert_eq!(found, Vec::<String>::new());
+}
+
+pub(crate) fn the_default_members_are_the_build_that_ships(workspace: &Workspace) {
+    // Each member but those that unify `internals`, by its directory under `source/`, sorted, so a
+    // cargo command at the root with no `--workspace` builds what ships.
+    let crates = workspace.crates();
+    let unifying = unifying_internals(crates);
+    let mut expected: Vec<&str> = crates
+        .iter()
+        .filter(|krate| !unifying.contains(krate.name.as_str()))
+        .map(|krate| krate.path.as_str())
+        .collect();
+    expected.sort_unstable();
+    let manifest = WorkspaceManifest::parse(&read(source().join("Cargo.toml").to_str().unwrap()));
+    assert_eq!(manifest.default_members(), expected);
+    assert!(unifying.contains("campfire-harness"));
+}
+
+pub(crate) fn each_optional_dependency_is_named_by_dep_and_has_no_implicit_feature(
+    workspace: &Workspace,
+) {
+    let found: Vec<String> = workspace
+        .crates()
+        .iter()
+        .flat_map(|krate| {
+            let implicit = krate.manifest.implicit_features().into_iter();
+            implicit.map(|name| format!("{} {name}", krate.name))
+        })
+        .collect();
+    assert_eq!(found, Vec::<String>::new());
+}
+
+pub(crate) fn an_optional_dependency_is_named_by_library_code(workspace: &Workspace) {
+    let crates = workspace.crates();
+    let mut found = Vec::new();
+    for (krate, library) in crates
+        .iter()
+        .zip(workspace.code_by_crate(SourceFile::library))
+    {
+        for name in tests_only_optional(&krate.manifest, &library) {
+            found.push(format!("{} {name}", krate.name));
+        }
+    }
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn the_name_checks_fail_on_what_breaks_them() {
+    // A proxy's source that names another proxy's call or one of no proxy's, a wrapped `use`
+    // too, but not its own, nor a name a comment or a string holds.
+    let [store, platform, _, _, codec, _, _] = &PROXIES;
+    let text = "use std::{\n    fs::File,\n};\nlet map: HashMap<u8, u8>;\nlet n = 1;";
+    assert_eq!(foreign_names(codec, text), ["std::fs", "HashMap"]);
+    let mentioned = "/// As `std::fs` reads.\nfn f() { g(\"HashMap\"); }";
+    assert_eq!(foreign_names(codec, mentioned), Vec::<&str>::new());
+    assert_eq!(
+        foreign_names(store, "use std::fs::File;"),
+        Vec::<&str>::new()
+    );
+    // A name two proxies list is each one's; one only the platform lists is not the store's.
+    let os = "use std::fs::File;\nlibc::close(fd);";
+    assert_eq!(foreign_names(platform, os), Vec::<&str>::new());
+    assert_eq!(foreign_names(store, os), ["libc::"]);
+}
+
+#[test]
+fn an_internals_that_gates_no_code_is_found() {
     // `a` depends on `b`, `c` and `d`, and dev-depends on each with `internals`: `b`'s feature
     // only passes the feature on, so it is found; `c` gates code in a source and `d` requires the
     // feature for a target, so neither is. `e` dev-depends on `b` with no dependency on it, a
@@ -819,20 +917,8 @@ pub(crate) fn a_dev_dependency_turns_on_internals_that_gate_code(workspace: &Wor
     assert_eq!(found, [vec!["b"], vec![], vec![], vec![], vec![]]);
 }
 
-pub(crate) fn the_default_members_are_the_build_that_ships(workspace: &Workspace) {
-    // Each member but those that unify `internals`, by its directory under `source/`, sorted, so a
-    // cargo command at the root with no `--workspace` builds what ships.
-    let crates = workspace.crates();
-    let unifying = unifying_internals(crates);
-    let mut expected: Vec<&str> = crates
-        .iter()
-        .filter(|krate| !unifying.contains(krate.name.as_str()))
-        .map(|krate| krate.path.as_str())
-        .collect();
-    expected.sort_unstable();
-    let manifest = WorkspaceManifest::parse(&read(source().join("Cargo.toml").to_str().unwrap()));
-    assert_eq!(manifest.default_members(), expected);
-    assert!(unifying.contains("campfire-harness"));
+#[test]
+fn a_crate_unifies_internals_by_a_required_dependency() {
     // A crate that turns `internals` on by a required dependency unifies it, and so does one that
     // depends on it; an optional one, a dev-dependency, or an outside crate's, does not.
     let krate = |name: &str, dependencies: &str| Crate {
@@ -872,32 +958,8 @@ pub(crate) fn the_default_members_are_the_build_that_ships(workspace: &Workspace
     );
 }
 
-pub(crate) fn each_optional_dependency_is_named_by_dep_and_has_no_implicit_feature(
-    workspace: &Workspace,
-) {
-    let found: Vec<String> = workspace
-        .crates()
-        .iter()
-        .flat_map(|krate| {
-            let implicit = krate.manifest.implicit_features().into_iter();
-            implicit.map(|name| format!("{} {name}", krate.name))
-        })
-        .collect();
-    assert_eq!(found, Vec::<String>::new());
-}
-
-pub(crate) fn an_optional_dependency_is_named_by_library_code(workspace: &Workspace) {
-    let crates = workspace.crates();
-    let mut found = Vec::new();
-    for (krate, library) in crates
-        .iter()
-        .zip(workspace.code_by_crate(SourceFile::library))
-    {
-        for name in tests_only_optional(&krate.manifest, &library) {
-            found.push(format!("{} {name}", krate.name));
-        }
-    }
-    assert_eq!(found, Vec::<String>::new());
+#[test]
+fn an_optional_dependency_only_a_test_names_is_found() {
     // An optional dependency that only a test names is found: in a `tests/` file, a `tests.rs`, or
     // an item `#[cfg(test)]` holds; one that `internals` code or a bench names is not, nor a
     // required one.
@@ -928,23 +990,4 @@ pub(crate) fn an_optional_dependency_is_named_by_library_code(workspace: &Worksp
         let found = tests_only_optional(manifest, &library(path, text));
         assert_eq!(found, ["c-d", "e"], "{path}");
     }
-}
-
-#[test]
-fn the_name_checks_fail_on_what_breaks_them() {
-    // A proxy's source that names another proxy's call or one of no proxy's, a wrapped `use`
-    // too, but not its own, nor a name a comment or a string holds.
-    let [store, platform, _, _, codec, _, _] = &PROXIES;
-    let text = "use std::{\n    fs::File,\n};\nlet map: HashMap<u8, u8>;\nlet n = 1;";
-    assert_eq!(foreign_names(codec, text), ["std::fs", "HashMap"]);
-    let mentioned = "/// As `std::fs` reads.\nfn f() { g(\"HashMap\"); }";
-    assert_eq!(foreign_names(codec, mentioned), Vec::<&str>::new());
-    assert_eq!(
-        foreign_names(store, "use std::fs::File;"),
-        Vec::<&str>::new()
-    );
-    // A name two proxies list is each one's; one only the platform lists is not the store's.
-    let os = "use std::fs::File;\nlibc::close(fd);";
-    assert_eq!(foreign_names(platform, os), Vec::<&str>::new());
-    assert_eq!(foreign_names(store, os), ["libc::"]);
 }

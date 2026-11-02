@@ -44,7 +44,7 @@
 
 ## Levels
 
-- **A level is state; stats follow it at once.** `progression` changes it.
+- **A level is state, and stats follow it at once.** `progression` changes it.
 
 ## State and derived
 

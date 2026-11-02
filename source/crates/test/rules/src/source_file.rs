@@ -314,8 +314,17 @@ impl Analysis {
         let file: syn::File = syn::parse2(tokens).unwrap_or_else(|error| panic!("{path}: {error}"));
         let mut items = GatedItems::default();
         items.visit_file(&file);
+        // A gated field, argument or element takes the comma after it, so the code left parses.
         let gated = (items.found().into_iter())
-            .map(|(gate, span)| (gate, lines.bytes(span)))
+            .map(|(gate, span)| {
+                let mut bytes = lines.bytes(span);
+                let after = &text[bytes.end..];
+                let gap = after.len() - after.trim_start().len();
+                if after[gap..].starts_with(',') {
+                    bytes.end += gap + 1;
+                }
+                (gate, bytes)
+            })
             .collect();
         Self { code, gated }
     }
@@ -499,7 +508,7 @@ fn production_code_blanks_each_gated_item_and_keeps_each_line_at_its_number() {
         "\n\n\n\n\n\n",
         "\n\n\n\n\n\n\nfn v() {}\n",
         "fn n(x: u8) -> u8 {\n    match x {\n\n\n        _ => 2,\n    }\n}\n",
-        "struct S {\n\n         ,\n    z: u8,\n}\n",
+        "struct S {\n\n\n    z: u8,\n}\n",
         "\n\n\n\n\nfn o() {}\n",
     );
     assert_eq!(trimmed(code), trimmed(expected));
@@ -516,7 +525,7 @@ fn production_code_blanks_each_gated_item_and_keeps_each_line_at_its_number() {
         "\n\n\n\n\n\n",
         "\n\n\n\n\n\n\nfn v() {}\n",
         "fn n(x: u8) -> u8 {\n    match x {\n\n\n        _ => 2,\n    }\n}\n",
-        "struct S {\n\n         ,\n    z: u8,\n}\n",
+        "struct S {\n\n\n    z: u8,\n}\n",
         "\n\n\n\n\nfn o() {}\n",
     );
     assert_eq!(trimmed(library), trimmed(expected));

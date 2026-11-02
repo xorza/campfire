@@ -3,7 +3,7 @@ use syn::punctuated::Punctuated;
 use syn::visit::{self, Visit};
 use syn::{Expr, ExprCall, ExprMethodCall, ExprPath, Macro, Token};
 
-use super::{NamedCode, Naming, capability, named_code};
+use crate::capabilities::{NamedCode, Naming, capability, named_code};
 use crate::workspace::Workspace;
 
 /// Every lookup by name that the production code of the capability crates and the bots' crate

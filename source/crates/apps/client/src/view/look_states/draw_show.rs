@@ -428,7 +428,7 @@ impl ShowCx<'_, '_, '_> {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod reach_in {
     use super::*;
 
     impl DrawShow {

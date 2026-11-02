@@ -213,7 +213,7 @@ impl MatchFog {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod reach_in {
     use campfire_client_files::FogFile;
 
     use crate::view::fog::MatchFog;

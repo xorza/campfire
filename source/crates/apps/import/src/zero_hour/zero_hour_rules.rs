@@ -158,7 +158,7 @@ impl ZeroHourRules {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod reach_in {
     use crate::zero_hour::format::ini::object_ini::ObjectIni;
     use crate::zero_hour::variation_import::VariationImport;
     use crate::zero_hour::zero_hour_rules::ZeroHourRules;

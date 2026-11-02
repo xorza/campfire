@@ -1,27 +1,105 @@
-use super::{NamedCode, capability_sources};
+use syn::visit::{self, Visit};
+use syn::{ImplItemFn, ItemImpl, ItemStruct, Type};
+
 use crate::allowlist::Allowlist;
+use crate::capabilities::{NamedCode, capability_sources};
 use crate::workspace::Workspace;
 
-/// Each role a module's type may hold, by the trait it implements or, for a script API, by the
-/// `*Api` type that registers members: the suffix of the type's name, and of its file's.
-const ROLES: [(&str, &str, &str); 4] = [
-    ("impl Effect for ", "Effect", "effect"),
-    ("impl ViewColumn for ", "Column", "column"),
-    ("impl CallExtension for ", "Call", "call"),
-    ("struct ", "Api", "api"),
+/// Each role a module's type may hold, by the trait it implements or, for a script API, by
+/// `API_ROLE`: the trait, the suffix of the type's name, and of its file's.
+const ROLES: [(&str, &str, &str); 3] = [
+    ("Effect", "Effect", "effect"),
+    ("ViewColumn", "Column", "column"),
+    ("CallExtension", "Call", "call"),
 ];
+
+/// The role of a script API: a `*Api` struct of a file whose `register` function takes an
+/// `ApiBuilder`, the suffix of its name, and of its file's.
+const API_ROLE: (&str, &str) = ("Api", "api");
 
 /// The types that hold a role but are named for what they are: the core's script API, which spans
 /// `units`, `scripts` and `players`.
 const ROLE_EXCEPTIONS: [&str; 1] = ["CoreApi"];
 
-/// The types of `code`, the file `file` of the module `module`, that hold a role and are not
-/// named `<Module><Role>` in `<module>_<role>.rs`, as `(file, type)`; a `mod.rs` is named by its
-/// directory, and a crate's `lib.rs` by its module.
+/// The types of one file that hold a role, each with its suffix and its file's: the implementers
+/// of the traits of `ROLES`, and the `*Api` structs of a file that registers members.
+#[derive(Debug, Default)]
+struct RoleHolders {
+    holders: Vec<(String, &'static str, &'static str)>,
+    api_structs: Vec<String>,
+    registers: bool,
+}
+
+impl RoleHolders {
+    /// The role holders of `code`.
+    fn of(code: &str) -> Vec<(String, &'static str, &'static str)> {
+        let file = syn::parse_file(code).expect("a workspace source parses");
+        let mut found = Self::default();
+        found.visit_file(&file);
+        let (suffix, file_suffix) = API_ROLE;
+        if found.registers {
+            found
+                .holders
+                .extend((found.api_structs.into_iter()).map(|name| (name, suffix, file_suffix)));
+        }
+        found.holders
+    }
+}
+
+impl<'ast> Visit<'ast> for RoleHolders {
+    fn visit_item_impl(&mut self, item: &'ast ItemImpl) {
+        let implemented = (item.trait_.as_ref())
+            .and_then(|(path, _)| path.segments.last())
+            .map(|segment| segment.ident.to_string());
+        let role = ROLES
+            .iter()
+            .find(|(role, ..)| implemented.as_deref() == Some(role));
+        if let (Some(&(_, suffix, file_suffix)), Type::Path(path)) = (role, &*item.self_ty)
+            && let Some(segment) = path.path.segments.last()
+        {
+            self.holders
+                .push((segment.ident.to_string(), suffix, file_suffix));
+        }
+        visit::visit_item_impl(self, item);
+    }
+
+    fn visit_item_struct(&mut self, item: &'ast ItemStruct) {
+        let name = item.ident.to_string();
+        if name.ends_with(API_ROLE.0) {
+            self.api_structs.push(name);
+        }
+        visit::visit_item_struct(self, item);
+    }
+
+    fn visit_impl_item_fn(&mut self, item: &'ast ImplItemFn) {
+        let takes_builder = item.sig.inputs.iter().any(|input| {
+            let mut builder = NamesBuilder(false);
+            builder.visit_fn_arg(input);
+            builder.0
+        });
+        self.registers |= item.sig.ident == "register" && takes_builder;
+        visit::visit_impl_item_fn(self, item);
+    }
+}
+
+/// Whether a type names an `ApiBuilder`.
+#[derive(Debug)]
+struct NamesBuilder(bool);
+
+impl<'ast> Visit<'ast> for NamesBuilder {
+    fn visit_path_segment(&mut self, segment: &'ast syn::PathSegment) {
+        self.0 |= segment.ident == "ApiBuilder";
+        visit::visit_path_segment(self, segment);
+    }
+}
+
+/// The types of `holders`, the role holders of the file `file` of the module `module`, that are
+/// not named `<Module><Role>` in `<module>_<role>.rs`, as `(file, type)`; a `mod.rs` is named by
+/// its directory, and a crate's `lib.rs` by its module.
 fn misnamed_roles(
     module: &str,
     file: &str,
-    code: &str,
+    holders: &[(String, &str, &str)],
     exceptions: &Allowlist<&str>,
 ) -> Vec<(String, String)> {
     let pascal: String = module
@@ -29,27 +107,11 @@ fn misnamed_roles(
         .map(|word| word[..1].to_ascii_uppercase() + &word[1..])
         .collect();
     let mut misnamed = Vec::new();
-    for (opening, suffix, file_suffix) in ROLES {
-        if suffix == "Api" && !code.contains("fn register(api: &mut ApiBuilder") {
-            continue;
-        }
-        for (at, _) in code.match_indices(opening) {
-            if at > 0 && !code[..at].ends_with(|c: char| c.is_whitespace() || c == ')') {
-                continue;
-            }
-            let rest = &code[at + opening.len()..];
-            let end = rest
-                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-                .unwrap_or(rest.len());
-            let name = &rest[..end];
-            if suffix == "Api" && !name.ends_with("Api") {
-                continue;
-            }
-            let named =
-                name == format!("{pascal}{suffix}") && file == format!("{module}_{file_suffix}");
-            if !named && !exceptions.allows(|exception| *exception == name) {
-                misnamed.push((file.to_owned(), name.to_owned()));
-            }
+    for (name, suffix, file_suffix) in holders {
+        let named =
+            *name == format!("{pascal}{suffix}") && file == format!("{module}_{file_suffix}");
+        if !named && !exceptions.allows(|exception| exception == name) {
+            misnamed.push((file.to_owned(), name.clone()));
         }
     }
     misnamed
@@ -58,7 +120,7 @@ fn misnamed_roles(
 pub(crate) fn each_role_of_a_module_takes_the_modules_name(workspace: &Workspace) {
     let exceptions = Allowlist::new(&ROLE_EXCEPTIONS);
     let mut misnamed = Vec::new();
-    let mut held = [0; ROLES.len()];
+    let mut held = [0; ROLES.len() + 1];
     for NamedCode { path, code } in capability_sources(workspace) {
         let parts: Vec<&str> = path.split('/').collect();
         let [module, .., last] = parts[..] else {
@@ -69,16 +131,21 @@ pub(crate) fn each_role_of_a_module_takes_the_modules_name(workspace: &Workspace
             "lib" => module,
             stem => stem,
         };
-        misnamed.extend(misnamed_roles(module, file, &code, &exceptions));
-        for (held, (opening, ..)) in held.iter_mut().zip(ROLES) {
-            *held += code.matches(opening).count();
+        let holders = RoleHolders::of(&code);
+        misnamed.extend(misnamed_roles(module, file, &holders, &exceptions));
+        let suffixes = ROLES.iter().map(|&(_, suffix, _)| suffix);
+        for (held, suffix) in held.iter_mut().zip(suffixes.chain([API_ROLE.0])) {
+            *held += holders.iter().filter(|holder| holder.1 == suffix).count();
         }
     }
     assert_eq!(misnamed, Vec::<(String, String)>::new());
     assert_eq!(exceptions.unused(), Vec::<&&str>::new());
     // The walk reads each role, so a role it no longer finds fails here, not silently.
     assert!(held.iter().all(|&count| count > 0), "{held:?}");
+}
 
+#[test]
+fn each_misnamed_role_is_found() {
     // Each role is found where it is misnamed, a script API only where it registers members,
     // and the exceptions pass.
     let api = |name: &str| {
@@ -88,25 +155,25 @@ pub(crate) fn each_role_of_a_module_takes_the_modules_name(workspace: &Workspace
         (
             "vision",
             "vision_effect",
-            "impl Effect for VisionEffect {".to_owned(),
+            "impl Effect for VisionEffect {}".to_owned(),
             vec![],
         ),
         (
             "vision",
             "reveal_effect",
-            "impl Effect for RevealEffect {".to_owned(),
+            "impl Effect for RevealEffect {}".to_owned(),
             vec![("reveal_effect", "RevealEffect")],
         ),
         (
             "vision",
             "vision_column",
-            "impl ViewColumn for SightColumn {".to_owned(),
+            "impl ViewColumn for SightColumn {}".to_owned(),
             vec![("vision_column", "SightColumn")],
         ),
         (
             "units",
             "units_call",
-            "impl CallExtension for UnitsCall {".to_owned(),
+            "impl CallExtension for UnitsCall {}".to_owned(),
             vec![],
         ),
         ("units", "units_api", api("UnitsApi"), vec![]),
@@ -126,25 +193,25 @@ pub(crate) fn each_role_of_a_module_takes_the_modules_name(workspace: &Workspace
         (
             "scripts",
             "script_api",
-            "pub struct ScriptApi {".to_owned(),
+            "pub struct ScriptApi {}".to_owned(),
             vec![],
         ),
         (
             "orders",
             "unit_order",
-            "impl Effect for UnitOrder {".to_owned(),
+            "impl Effect for UnitOrder {}".to_owned(),
             vec![("unit_order", "UnitOrder")],
         ),
         (
             "orders",
             "orders_effect",
-            "impl Effect for OrdersEffect {".to_owned(),
+            "impl Effect for OrdersEffect {}".to_owned(),
             vec![],
         ),
         (
             "capability_set",
             "capability_set",
-            "impl Effect for CapabilitySetEffect {".to_owned(),
+            "impl Effect for CapabilitySetEffect {}".to_owned(),
             vec![("capability_set", "CapabilitySetEffect")],
         ),
     ];
@@ -155,91 +222,9 @@ pub(crate) fn each_role_of_a_module_takes_the_modules_name(workspace: &Workspace
             .collect();
         let exceptions = Allowlist::new(&ROLE_EXCEPTIONS);
         assert_eq!(
-            misnamed_roles(module, file, &code, &exceptions),
+            misnamed_roles(module, file, &RoleHolders::of(&code), &exceptions),
             expected,
             "{code}"
         );
     }
-}
-
-/// Each role whose types take a suffix, wherever they are: the trait a type implements to hold
-/// it, and the suffix of its name. A `*Book` is exactly a book, a `*Data` a table of package data.
-const SUFFIX_ROLES: [(&str, &str); 2] = [("Book", "Book"), ("DataSection", "Data")];
-
-/// The types that hold a suffix role but are named for what they are: the generic book of a value
-/// for each id.
-const SUFFIX_EXCEPTIONS: [&str; 1] = ["ById"];
-
-/// The types `code` implements `role` for, by name: each `impl … <role> for <type>`.
-fn implementers<'c>(code: &'c str, role: &str) -> Vec<&'c str> {
-    let opening = format!(" {role} for ");
-    let mut found = Vec::new();
-    for (at, _) in code.match_indices(&opening) {
-        let line = code[..at].rsplit('\n').next().unwrap_or_default();
-        if !line.trim_start().starts_with("impl") {
-            continue;
-        }
-        let rest = &code[at + opening.len()..];
-        let end = rest
-            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-            .unwrap_or(rest.len());
-        found.push(&rest[..end]);
-    }
-    found
-}
-
-/// The types `code` declares whose name ends in `suffix`.
-fn suffixed<'c>(code: &'c str, suffix: &str) -> Vec<&'c str> {
-    let mut found = Vec::new();
-    for (at, _) in code.match_indices("struct ") {
-        let rest = &code[at + "struct ".len()..];
-        let end = rest
-            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-            .unwrap_or(rest.len());
-        if rest[..end].ends_with(suffix) {
-            found.push(&rest[..end]);
-        }
-    }
-    found
-}
-
-pub(crate) fn a_book_and_a_data_table_take_their_suffix(workspace: &Workspace) {
-    let mut holders: [Vec<String>; SUFFIX_ROLES.len()] = Default::default();
-    let mut books = Vec::new();
-    for NamedCode { code, .. } in capability_sources(workspace) {
-        for (holders, (role, _)) in holders.iter_mut().zip(SUFFIX_ROLES) {
-            holders.extend(implementers(&code, role).into_iter().map(str::to_owned));
-        }
-        books.extend(suffixed(&code, "Book").into_iter().map(str::to_owned));
-    }
-    let suffix_exceptions = Allowlist::new(&SUFFIX_EXCEPTIONS);
-    let mut misnamed = Vec::new();
-    for (holders, (_, suffix)) in holders.iter().zip(SUFFIX_ROLES) {
-        assert!(
-            !holders.is_empty(),
-            "the walk finds the holders of each role"
-        );
-        let wrong = holders.iter().filter(|name| {
-            !name.ends_with(suffix) && !suffix_exceptions.allows(|exception| exception == name)
-        });
-        misnamed.extend(wrong.cloned());
-    }
-    assert_eq!(suffix_exceptions.unused(), Vec::<&&str>::new());
-    assert_eq!(
-        misnamed,
-        Vec::<String>::new(),
-        "a holder of a role misnamed"
-    );
-    // Every `*Book` is a book.
-    let no_books: Vec<_> = books
-        .iter()
-        .filter(|name| !holders[0].contains(name))
-        .collect();
-    assert_eq!(no_books, Vec::<&String>::new(), "a `*Book` that is no book");
-
-    // A generic impl and a plain one are found, and a mention in a comment is not.
-    let code = "impl<T: PerId<UnitType>> Book for ById<UnitType, T> {}\nimpl Book for ActionBook {}\n// a Book for all";
-    assert_eq!(implementers(code, "Book"), ["ById", "ActionBook"]);
-    let code = "pub(crate) struct ModeBooks;\nstruct StatBook(u8);";
-    assert_eq!(suffixed(code, "Book"), ["StatBook"]);
 }

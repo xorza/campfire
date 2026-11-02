@@ -2,7 +2,7 @@
 
 use syn::{ImplItem, Item, Lit};
 
-use super::{Naming, capability};
+use crate::capabilities::{Naming, capability};
 use crate::source_file::Gate;
 use crate::workspace::Workspace;
 

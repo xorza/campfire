@@ -136,22 +136,6 @@ pub(crate) fn a_type_name_keeps_one_meaning(workspace: &Workspace) {
             (holder.name.as_str(), file.text.as_str())
         });
     assert_eq!(broken(&shared(files), &ONE_MEANING), Vec::<String>::new());
-
-    // Samples: a name two crates declare past their modules, one only a module sees, one only a
-    // crate's tests build, and one of a shape the list holds; and a listed shape no two declare.
-    let a = "pub struct Clock;\nstruct Entry;\n#[cfg(test)]\nmod tests { pub struct Probe; }\n\
-             pub(crate) struct Iter;\n";
-    let b = "pub(crate) enum Clock { Tick }\nstruct Entry;\n#[cfg(test)]\nmod tests { pub struct Probe; }\n\
-             pub struct Iter;\n";
-    let found = shared([("a", a), ("b", b)]);
-    assert_eq!(found.keys().collect::<Vec<_>>(), ["Clock", "Iter"]);
-    assert_eq!(
-        broken(&found, &["Iter", "Sealed"]),
-        [
-            "Clock: declared by {\"a\", \"b\"}",
-            "Sealed: listed, and declared by no two crates",
-        ]
-    );
 }
 
 /// Each feature of a network stack crate among `crates`, each a crate's name and its features'
@@ -195,4 +179,23 @@ pub(crate) fn a_stack_feature_names_no_campfire_crate(workspace: &Workspace) {
         ("campfire-net-stack", vec!["sim", "udp"]),
     ];
     assert_eq!(taken_features(&sample), ["campfire-net-stack: sim"]);
+}
+
+#[test]
+fn a_name_two_crates_declare_is_found() {
+    // Samples: a name two crates declare past their modules, one only a module sees, one only a
+    // crate's tests build, and one of a shape the list holds; and a listed shape no two declare.
+    let a = "pub struct Clock;\nstruct Entry;\n#[cfg(test)]\nmod tests { pub struct Probe; }\n\
+             pub(crate) struct Iter;\n";
+    let b = "pub(crate) enum Clock { Tick }\nstruct Entry;\n#[cfg(test)]\nmod tests { pub struct Probe; }\n\
+             pub struct Iter;\n";
+    let found = shared([("a", a), ("b", b)]);
+    assert_eq!(found.keys().collect::<Vec<_>>(), ["Clock", "Iter"]);
+    assert_eq!(
+        broken(&found, &["Iter", "Sealed"]),
+        [
+            "Clock: declared by {\"a\", \"b\"}",
+            "Sealed: listed, and declared by no two crates",
+        ]
+    );
 }

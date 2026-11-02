@@ -1,4 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::str::FromStr;
+
+use proc_macro2::{TokenStream, TokenTree};
 
 use crate::source_file::SourceFile;
 use crate::workspace::Workspace;
@@ -147,6 +150,41 @@ fn sibling_imports(
     parents
 }
 
+/// How many paths of `tokens` start at `super::`, a `pub(super)` visibility none.
+fn super_paths(tokens: TokenStream) -> usize {
+    let tokens: Vec<TokenTree> = tokens.into_iter().collect();
+    let mut found = 0;
+    for (at, token) in tokens.iter().enumerate() {
+        match token {
+            TokenTree::Ident(ident) if ident == "super" => {
+                let colon = |at: usize| matches!(tokens.get(at), Some(TokenTree::Punct(punct)) if punct.as_char() == ':');
+                found += usize::from(colon(at + 1) && colon(at + 2));
+            }
+            TokenTree::Group(group) => found += super_paths(group.stream()),
+            _ => {}
+        }
+    }
+    found
+}
+
+pub(crate) fn no_production_path_starts_at_super(workspace: &Workspace) {
+    // Production code names its crate's modules through `crate::`, which the cycle rule reads; a
+    // gated module's `use super::*;` reaches the module it tests.
+    let mut found = Vec::new();
+    for file in workspace.sources() {
+        let Some(code) = file.production() else {
+            continue;
+        };
+        if code.contains("super") {
+            let tokens = TokenStream::from_str(code).expect("a workspace source lexes");
+            if super_paths(tokens) > 0 {
+                found.push(file.path.clone());
+            }
+        }
+    }
+    assert_eq!(found, Vec::<String>::new());
+}
+
 pub(crate) fn no_crates_modules_import_each_other_in_a_cycle(workspace: &Workspace) {
     let sources = workspace.sources();
     let mut found = Vec::new();
@@ -165,6 +203,10 @@ pub(crate) fn no_crates_modules_import_each_other_in_a_cycle(workspace: &Workspa
         }
     }
     assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn a_ring_of_imports_is_a_cycle_and_a_chain_is_none() {
     // Three modules that import in a ring make one cycle; a module that only imports into it stays
     // out, as does a chain.
     let imports: BTreeMap<String, BTreeSet<String>> = [
@@ -209,4 +251,11 @@ pub(crate) fn no_crates_modules_import_each_other_in_a_cycle(workspace: &Workspa
     let under_p = &imports[&vec!["p".to_owned()]];
     assert_eq!(module_cycles(under_p), [["q", "r"]]);
     assert!(module_cycles(&imports[&Vec::new()]).is_empty());
+}
+
+#[test]
+fn a_path_through_super_is_found_and_a_visibility_is_not() {
+    let count = |code: &str| super_paths(TokenStream::from_str(code).unwrap());
+    assert_eq!(count("use super::a::B;\nfn f() { super::g(); }"), 2);
+    assert_eq!(count("pub(super) fn f() {}\nuse crate::super_a::B;"), 0);
 }

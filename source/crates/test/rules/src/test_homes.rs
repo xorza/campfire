@@ -153,6 +153,17 @@ pub(crate) fn a_test_lives_in_the_lowest_crate_that_can_hold_it(workspace: &Work
     let misplaced = misplaced_tests(workspace.crates(), workspace.sources(), &kept);
     assert_eq!(misplaced, Vec::<String>::new());
     assert_eq!(kept.unused(), Vec::<&&str>::new());
+}
+
+/// The test files a decision keeps above their lowest home, each with its decision.
+const KEPT_BY_DECISION: [&str; 1] = [
+    // The stack's allocations are audited in one binary (11-net-stack/testing.md, One allocation
+    // binary, on the workspace's audit).
+    "crates/network/net-stack/tests/alloc/fixtures/writer.rs",
+];
+
+#[test]
+fn a_test_that_names_a_lower_crate_alone_is_found() {
     // `high` depends on `low`. Of its test files, `a.rs` and `y/tests.rs` name `low` alone, so
     // `low` can hold them; `b.rs` names `high`, `c.rs` reads its helpers from the target's root,
     // which names `high`, `x/tests.rs` reads `super::`, and `e.rs` runs `high`'s binary, so each
@@ -193,10 +204,3 @@ pub(crate) fn a_test_lives_in_the_lowest_crate_that_can_hold_it(workspace: &Work
         ]
     );
 }
-
-/// The test files a decision keeps above their lowest home, each with its decision.
-const KEPT_BY_DECISION: [&str; 1] = [
-    // The stack's allocations are audited in one binary (11-net-stack/testing.md, One allocation
-    // binary, on the workspace's audit).
-    "crates/network/net-stack/tests/alloc/fixtures/writer.rs",
-];

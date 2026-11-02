@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use proc_macro2::Ident;
 use syn::visit::{self, Visit};
 use syn::{
@@ -5,38 +7,72 @@ use syn::{
     Signature, TraitItemFn, Type,
 };
 
+use crate::allowlist::Allowlist;
 use crate::workspace::Workspace;
 
-/// Each name of `text` that breaks its suffix: a system set not named `*Systems`; a plugin not
-/// named `*Plugin` and a plugin group not named `*Plugins`; a `*Manager`; a `*_hook` function whose
-/// signature names no script hook, a `Hook*` type; and a `*Kind` that wraps a `TypeId`, which is a
-/// `*TypeId` (02-engine-core.md, A system set is `*Systems`; 02-engine-core.md, A Bevy plugin is a
-/// `*Plugin`, a group `*Plugins`; 02-engine-core.md, A hook is a script's).
-fn misnamed(text: &str) -> Vec<String> {
+/// Each trait whose implementers take a suffix: the trait, the suffix, and what the rule calls a
+/// holder. A `*Book` is exactly a book, and a `*Data` a table of package data.
+const SUFFIXED_TRAITS: [(&str, &str, &str); 4] = [
+    ("Plugin", "Plugin", "plugin"),
+    ("PluginGroup", "Plugins", "plugin group"),
+    ("Book", "Book", "book"),
+    ("DataSection", "Data", "data section"),
+];
+
+/// The implementers of a suffixed trait that are named for what they are: the generic book of a
+/// value for each id.
+const SUFFIX_EXCEPTIONS: [&str; 1] = ["ById"];
+
+/// The names of `text` that break their suffix, `exceptions` passing: a system set not named
+/// `*Systems`; an implementer of a trait of `SUFFIXED_TRAITS` not named by its suffix; a
+/// `*Manager`; a `*_hook` function whose signature names no script hook, a `Hook*` type; and a
+/// `*Kind` that wraps a `TypeId`, which is a `*TypeId` (02-engine-core.md, A system set is
+/// `*Systems`; 02-engine-core.md, A Bevy plugin is a `*Plugin`, a group `*Plugins`;
+/// 02-engine-core.md, A hook is a script's). With them, the `*Book` types it declares and the
+/// types it implements `Book` for, which the workspace's walk matches.
+fn misnamed<'a>(text: &str, exceptions: &'a Allowlist<&'static str>) -> Names<'a> {
+    let mut names = Names {
+        exceptions,
+        misnamed: Vec::new(),
+        books: Vec::new(),
+        book_impls: Vec::new(),
+    };
     // A file that names none of the words a misnamed declaration holds declares none, and its
     // parse is skipped.
-    let words = ["SystemSet", "Manager", "TypeId", "Plugin", "_hook"];
-    if !words.iter().any(|word| text.contains(word)) {
-        return Vec::new();
+    let words = [
+        "SystemSet",
+        "Manager",
+        "TypeId",
+        "Plugin",
+        "_hook",
+        "Book",
+        "DataSection",
+    ];
+    if words.iter().any(|word| text.contains(word)) {
+        let file = syn::parse_file(text).expect("a workspace source parses");
+        names.visit_file(&file);
     }
-    let file = syn::parse_file(text).expect("a workspace source parses");
-    let mut names = Names::default();
-    names.visit_file(&file);
-    names.0
+    names
 }
 
-/// The names a walk of one file found misnamed.
-#[derive(Debug, Default)]
-struct Names(Vec<String>);
+/// What a walk of one file found: the names misnamed, the `*Book` types declared and the types
+/// `Book` is implemented for.
+#[derive(Debug)]
+struct Names<'a> {
+    exceptions: &'a Allowlist<&'static str>,
+    misnamed: Vec<String>,
+    books: Vec<String>,
+    book_impls: Vec<String>,
+}
 
-impl Names {
+impl Names<'_> {
     /// Takes the type `name`, which `attributes` derive for: a system set's or any type's.
     fn take_type(&mut self, name: &str, attributes: &[Attribute]) {
         if derives(attributes, "SystemSet") && !name.ends_with("Systems") {
-            self.0.push(format!("the system set {name}"));
+            self.misnamed.push(format!("the system set {name}"));
         }
         if name.ends_with("Manager") {
-            self.0.push(format!("the manager {name}"));
+            self.misnamed.push(format!("the manager {name}"));
         }
     }
 
@@ -46,22 +82,25 @@ impl Names {
         let mut hooks = HookTypes(false);
         hooks.visit_signature(signature);
         if name.ends_with("_hook") && !hooks.0 {
-            self.0.push(format!("the function {name}"));
+            self.misnamed.push(format!("the function {name}"));
         }
     }
 }
 
-impl<'ast> Visit<'ast> for Names {
+impl<'ast> Visit<'ast> for Names<'_> {
     fn visit_item_struct(&mut self, item: &'ast ItemStruct) {
         let name = item.ident.to_string();
         self.take_type(&name, &item.attrs);
+        if name.ends_with("Book") {
+            self.books.push(name.clone());
+        }
         if let Fields::Unnamed(fields) = &item.fields
             && name.ends_with("Kind")
             && fields.unnamed.len() == 1
             && let Type::Path(wrapped) = &fields.unnamed[0].ty
             && wrapped.path.is_ident("TypeId")
         {
-            self.0.push(format!("the type id {name}"));
+            self.misnamed.push(format!("the type id {name}"));
         }
         visit::visit_item_struct(self, item);
     }
@@ -87,16 +126,20 @@ impl<'ast> Visit<'ast> for Names {
             .as_ref()
             .and_then(|(path, _)| path.segments.last())
             .map(|segment| segment.ident.to_string());
-        let suffix = match implemented.as_deref() {
-            Some("Plugin") => Some("Plugin"),
-            Some("PluginGroup") => Some("Plugins"),
-            _ => None,
-        };
-        if let (Some(suffix), Type::Path(path)) = (suffix, &*item.self_ty)
+        let held = SUFFIXED_TRAITS
+            .iter()
+            .find(|(implemented_trait, ..)| implemented.as_deref() == Some(implemented_trait));
+        if let (Some(&(implemented_trait, suffix, holder)), Type::Path(path)) =
+            (held, &*item.self_ty)
             && let Some(segment) = path.path.segments.last()
-            && !segment.ident.to_string().ends_with(suffix)
         {
-            self.0.push(format!("the plugin {}", segment.ident));
+            let name = segment.ident.to_string();
+            if implemented_trait == "Book" {
+                self.book_impls.push(name.clone());
+            }
+            if !name.ends_with(suffix) && !self.exceptions.allows(|listed| *listed == name) {
+                self.misnamed.push(format!("the {holder} {name}"));
+            }
         }
         visit::visit_item_impl(self, item);
     }
@@ -148,19 +191,41 @@ fn derives(attributes: &[Attribute], name: &str) -> bool {
 }
 
 pub(crate) fn a_declared_name_keeps_its_suffix(workspace: &Workspace) {
+    let exceptions = Allowlist::new(&SUFFIX_EXCEPTIONS);
     let mut found = Vec::new();
+    let mut books = Vec::new();
+    let mut book_impls = BTreeSet::new();
     let mut files = 0;
     for file in workspace.sources() {
         files += 1;
-        for name in misnamed(&file.text) {
+        let names = misnamed(&file.text, &exceptions);
+        for name in names.misnamed {
             found.push(format!("{}: {name}", file.path));
+        }
+        // A capability's `*Book` is its specs by id, a book; the client's are its own.
+        if file.path.starts_with("crates/capabilities/") {
+            let declared = names.books.into_iter();
+            books.extend(declared.map(|book| (file.path.clone(), book)));
+        }
+        book_impls.extend(names.book_impls);
+    }
+    // Every capability's `*Book` is a book.
+    for (path, book) in books {
+        if !book_impls.contains(&book) {
+            found.push(format!("{path}: the type {book}, no book"));
         }
     }
     assert_eq!(found, Vec::<String>::new());
+    assert_eq!(exceptions.unused(), Vec::<&&str>::new());
     // The walk reads the workspace, so a moved tree fails here, not silently.
     assert!(files > 1000, "{files}");
+    assert!(book_impls.len() > 20, "{book_impls:?}");
+}
 
-    // Each misnamed declaration is found, and its well-named twin passes.
+#[test]
+fn each_misnamed_declaration_is_found() {
+    // Each misnamed declaration is found, and its well-named twin passes; a generic book and the
+    // exception pass, and a mention in a comment is no implementer.
     let samples = [
         ("#[derive(SystemSet, Debug)]\nstruct DrawSet;", 1),
         ("#[derive(Debug, SystemSet)]\nenum DrawSystems { Paint }", 0),
@@ -191,10 +256,25 @@ pub(crate) fn a_declared_name_keeps_its_suffix(workspace: &Workspace) {
         ("struct ChannelKind(TypeId);", 1),
         ("struct ChannelTypeId(TypeId);", 0),
         ("struct SlotKind(u8);", 0),
+        ("impl Book for Stats {}", 1),
+        ("impl Book for StatBook {}\n// a Book for all", 0),
+        ("impl<T: PerId<UnitType>> Book for ById<UnitType, T> {}", 0),
+        ("impl DataSection for Combat {}", 1),
+        ("impl campfire_script::DataSection for CombatData {}", 0),
     ];
     for (code, count) in samples {
-        assert_eq!(misnamed(code).len(), count, "{code}");
+        let exceptions = Allowlist::new(&SUFFIX_EXCEPTIONS);
+        assert_eq!(misnamed(code, &exceptions).misnamed.len(), count, "{code}");
     }
+    // The `*Book` types a file declares and the types it implements `Book` for, a struct of
+    // another suffix not among them.
+    let exceptions = Allowlist::new(&SUFFIX_EXCEPTIONS);
+    let names = misnamed(
+        "pub(crate) struct ModeBooks;\nstruct StatBook(u8);\nimpl Book for TagBook {}",
+        &exceptions,
+    );
+    assert_eq!(names.books, ["StatBook"]);
+    assert_eq!(names.book_impls, ["TagBook"]);
 }
 
 /// The suffixes of a package's data as a package writes it (02-engine-core.md, A `*Spec` is a
@@ -268,6 +348,10 @@ pub(crate) fn a_package_data_struct_refuses_a_field_it_does_not_hold(workspace: 
         })
         .collect();
     assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn an_open_data_struct_is_found() {
     // A data struct that refuses an unknown field passes, and one that wraps its one field; one
     // that takes any field is found, and a struct of no data's name is not.
     let code = concat!(

@@ -61,7 +61,9 @@ The kinds of crate, problem, IO, glue and test support, and their rules are the 
 ## Edges
 
 - **A stack crate depends on Campfire's base crates, never on `sim` or a capability,** so the
-  stack serves any app of the engine and no match's type crosses into it. A stack crate is a
+  stack serves any app of the engine and no match's type crosses into it; of the sim's layer it
+  takes `math` and `schedule` alone, the numbers and the schedule settings, which hold no match's
+  type, so its layer sits between the sim's and the capabilities'. A stack crate is a
   `net-<name>` one; `net`, the session over the stack (02-engine-core.md, The session host is a
   crate apart from its glue to the stack), sits above the session's crates and takes them, which
   the layer rule of `rules` holds.

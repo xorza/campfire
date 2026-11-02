@@ -189,7 +189,7 @@ SessionLog
 
 ## Payment flows
 
-- **The server drives its own wallet over NWC (NIP-47).** Hold invoices use the NWC hold invoice extension, and wager pools turn off when the wallet lacks it. The sim never waits on a payment: it sees only confirmed payment events, recorded as external inputs.
+- **The server drives its own wallet over NWC, NIP-47.** Hold invoices use the NWC hold invoice extension, and wager pools turn off when the wallet lacks it. The sim never waits on a payment: it sees only confirmed payment events, recorded as external inputs.
 - **Wager pools lock stakes in hold invoices.** Each stake is held until the result, settled to the winners, or cancelled on an abort; above a stake the listing names, the result first needs the listed arbiters' signatures, each of whom replays the log.
 - **Budgets for time-based charges.** A player's wallet grants an NWC connection with a budget the player can revoke; no specification defines budgets, so the client shows which wallets it has tested.
 
