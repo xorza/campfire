@@ -224,13 +224,7 @@ impl MatchConsole {
     }
 
     fn status(&self, world: &World) -> SessionStatus {
-        let phase = match ServerPhase::now(world) {
-            ServerPhase::Opening => SessionPhase::Opening,
-            ServerPhase::Lobby => SessionPhase::Lobby,
-            ServerPhase::Restoring => SessionPhase::Restoring,
-            ServerPhase::Running => SessionPhase::Running,
-            ServerPhase::Replaying => SessionPhase::Replaying,
-        };
+        let phase = SessionPhase::from(ServerPhase::now(world));
         let book = world.get_resource::<ResourceBook>();
         let entities = world.get_resource::<EntityIndex>().into_iter();
         let mut players: Vec<PlayerStatus> = entities
@@ -268,12 +262,7 @@ impl MatchConsole {
     fn pace_status(pace: &Pace) -> PaceStatus {
         PaceStatus {
             paused: pace.is_paused(),
-            speed: match pace.speed() {
-                PaceSpeed::Half => GameSpeed::Half,
-                PaceSpeed::Normal => GameSpeed::Normal,
-                PaceSpeed::Double => GameSpeed::Double,
-                PaceSpeed::Quadruple => GameSpeed::Quadruple,
-            },
+            speed: GameSpeed::from(pace.speed()),
         }
     }
 
@@ -292,12 +281,7 @@ impl MatchConsole {
             pace.set_paused(paused);
         }
         if let Some(speed) = ask.speed {
-            pace.set_speed(match speed {
-                GameSpeed::Half => PaceSpeed::Half,
-                GameSpeed::Normal => PaceSpeed::Normal,
-                GameSpeed::Double => PaceSpeed::Double,
-                GameSpeed::Quadruple => PaceSpeed::Quadruple,
-            });
+            pace.set_speed(PaceSpeed::from(speed));
         }
         if ask.paused.is_some() {
             *run = None;

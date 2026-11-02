@@ -231,6 +231,6 @@ impl FixedSession {
             seed_contribution: SeedContribution::new([u8::try_from(player_slot).unwrap(); 32]),
             expiration: TestKey::NOW + LIFETIME,
         };
-        Delegation::sign(&TestKey::signer(keys.main), &delegated, TestKey::NOW)
+        TestKey::delegation(keys.main, &delegated)
     }
 }

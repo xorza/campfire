@@ -73,7 +73,7 @@ fn delegation_with(player_slot: u32, change: impl FnOnce(&mut DelegationTerms)) 
     };
     change(&mut terms);
     let main_key = TestKey::of(u8::try_from(11 + player_slot).unwrap());
-    Delegation::sign(&TestKey::signer(main_key), &terms, TestKey::NOW)
+    TestKey::delegation(main_key, &terms)
 }
 
 fn terms() -> SessionTerms {
@@ -1374,7 +1374,7 @@ fn mixed_delegation(main: u32, key: u32) -> Delegation {
         expiration: TestKey::NOW + 86_400,
     };
     let main_key = TestKey::of(u8::try_from(11 + main).unwrap());
-    Delegation::sign(&TestKey::signer(main_key), &terms, TestKey::NOW)
+    TestKey::delegation(main_key, &terms)
 }
 
 /// A log of `mixed_terms`: player 0 in player slot 0, a bot in player slot 1, player slot 2 open.

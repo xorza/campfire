@@ -16,12 +16,12 @@ fn terms() -> DelegationTerms {
         server_key: XOnlyPublicKey::from_byte_array(&[41; 32]).unwrap(),
         session_id: SessionId::new([31; 32]),
         seed_contribution: SeedContribution::new([51; 32]),
-        expiration: 1_700_086_400,
+        expiration: TestKey::NOW + 86_400,
     }
 }
 
 fn signed() -> Delegation {
-    Delegation::sign(&TestKey::signer(main_key()), &terms(), TestKey::NOW)
+    TestKey::delegation(main_key(), &terms())
 }
 
 /// The JSON of an event of `kind` with `tags`, signed by the main key.

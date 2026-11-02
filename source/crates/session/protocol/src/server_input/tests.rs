@@ -12,9 +12,9 @@ fn delegation(main: u8, byte: u8) -> Delegation {
         server_key: TestKey::of(41).x_only_public_key().0,
         session_id: SessionId::new([8; 32]),
         seed_contribution: SeedContribution::new([6; 32]),
-        expiration: 1_700_086_400,
+        expiration: TestKey::NOW + 86_400,
     };
-    Delegation::sign(&TestKey::signer(TestKey::of(main)), &terms, TestKey::NOW)
+    TestKey::delegation(TestKey::of(main), &terms)
 }
 
 #[test]

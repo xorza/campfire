@@ -49,7 +49,7 @@ fn delegation(change: impl FnOnce(&mut DelegationTerms)) -> Delegation {
         expiration: EXPIRATION,
     };
     change(&mut granted);
-    Delegation::sign(&TestKey::signer(TestKey::of(1)), &granted, TestKey::NOW)
+    TestKey::delegation(TestKey::of(1), &granted)
 }
 
 #[test]

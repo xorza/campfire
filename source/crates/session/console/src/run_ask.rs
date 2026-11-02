@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::units_ask::UnitActivity;
 
 /// A run of a local match, at four times its session's rate, to where `to` says, or until
-/// `wall_seconds` of the caller's time passed, 120 when it names none, then paused
+/// `wall_seconds` of the caller's time passed, `RunAsk::WALL` when it names none, then paused
 /// (08-sessions.md, A console's local match starts paused).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct RunAsk {
