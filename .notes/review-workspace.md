@@ -36,13 +36,6 @@ The coordinator checked these bugs in the code: play-1, play-2, combat-1 (the ra
 
 Batches go most impactful first. A batch that needs another stands after it. Each batch ends with `cargo drive check` and `cargo drive test` passing, as AGENTS.md's workflow says. An item marked **Decide** waits for the owner's choice between the options it names.
 
-### 15. Zero Hour scripts
-
-Files: `source/packages/zero-hour/scripts/{bot,mode}.rhai`, `capabilities/mode/src/game_map.rs`, `capabilities/capabilities/src/bot/bot_api.rs`.
-
-- [ ] **play-8.** `bot.rhai:130`, `bot_api.rs:46`: `ctx.own_units(type)` scans the whole view on each call, and `train` calls it in its producer × army loop. One think makes about 110 scans of 500–2,000 rows. Target: the script reads each type's units once per think, counts the army once, and builds the producers once.
-- [ ] **play-9.** `mode.rhai:72`, `bot.rhai:232`, `game_map.rs:127`: the start-marker lookup is written twice in Rhai, and the bot runs it 1 + P times each think, while `GameMap::point_of` holds it in Rust under a test gate. Target: bind `ctx.map.marker_point(...)` from `point_of`, and both scripts call it.
-
 ### 16. Session cleanup and logging
 
 Files: `session/protocol/src/session_log/{journal_replay,journal_shape}.rs`, `session/protocol/src/{session_log/tests,connect,checkpoint,server_input,delegation}/`, `session/protocol/src/session_log/bench.rs`, `session/protocol/src/internals` (`TestKey`), `session/host/src/server/session_dir/mod.rs`, `apps/verifier/tests/session_logs.rs`, `session/console/src/run_ask.rs`, `session/host/src/console/match_console/mod.rs`, `base/logging/src/logging.rs`, `base/store/src/stream_writer/mod.rs`.
@@ -74,6 +67,7 @@ Files: `session/protocol/src/session_log/{journal_replay,journal_shape}.rs`, `se
 - **nt-5.** The frame steps stay two, as the endpoint's spawn entities and trigger unlinks through commands and the plain host keeps a map; the plain host now honors the reason a carry returns, the path the protocol tests missed.
 - **imp-9.** The losses stay each stage's, appended as its stage ends, as their order is the Zero Hour golden's; the docs now say so, and that the models wait for a look before their write.
 - **apps-3.** Only the fog's and the perk panel's books became `Res`; the systems of modules that join every mode still take four capabilities' books as `Option`, as their split into modules of those needs touches seven views, now in the issue log.
+- **play-8.** `train` counts each army type a producer may train once a think, at its first ask, and builds the producers once as before; `fight` still collects the army for its own pass. The plays' think ops rose 0.7 % for the map, and the scans of the view fell to one per type.
 
 ## Decisions
 
@@ -96,3 +90,4 @@ Files: `session/protocol/src/session_log/{journal_replay,journal_shape}.rs`, `se
 - **imp-6.** A file's meshes serve every look that names one of its render objects, in the looks' order, so the converter knows a file's last use only once every look converted; freeing them sooner needs a count of each file's uses, a pass of its own over the looks, for the peak of an offline run with no bound it breaks.
 - **apps-6.** The redress runs for each shot of a model that shows its rounds, some hundreds of name compares; resolving every hideable node to entities in the dress is a rework of the look's dress for a cost no frame time measured, now in the issue log.
 - **apps-8.** The panel rebuilds into a kept `Local` and swaps only when the layout differs, so its cells change only then; what is left is one small list a frame for a placed look, which a scratch would add as a fifth parameter of `fill`; in the issue log beside the redress.
+- **play-9.** `GameMap::point_of` compares a param as text, and the scripts' `player_slot` is a number, so one binding for both needs a script argument of either kind, which the API lacks; the two Rhai loops stay, each a few lines.
