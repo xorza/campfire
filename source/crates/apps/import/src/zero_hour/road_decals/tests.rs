@@ -41,7 +41,7 @@ fn a_triangle_is_split_where_its_coordinates_cross_a_repeat_each_part_on_the_cop
         size: UVec2::new(64, 32),
     };
     let mut decals = RoadDecals::default();
-    decals.add(&quad, place);
+    decals.add(&quad, place).unwrap();
     let decals = decals.into_decals();
     // Each triangle crosses `u` = 1 halfway along: its part in the first repeat and its part in
     // the second, each corner at its share of its repeat over the copy, `u` 0.5 at 100 + 32 and
@@ -94,7 +94,35 @@ fn a_triangle_is_split_where_its_coordinates_cross_a_repeat_each_part_on_the_cop
         &[[0, 1, 2]],
     );
     let mut decals = RoadDecals::default();
-    decals.add(&inside, place);
+    decals.add(&inside, place).unwrap();
+    // A triangle whose `u` spans 2¹⁶ + 1 repeats, as a road of a tiny width gives, or of a `u`
+    // not finite, is refused before it lays a repeat; one of 2¹⁶ is laid, so the bound is the
+    // most. A mark cuts back what an add laid.
+    let across = |u: f32| {
+        mesh(
+            &[
+                ([0.0, 10.0, 0.0], [0.0, 0.0]),
+                ([0.0, 0.0, 0.0], [0.0, 1.0]),
+                ([10.0, 0.0, 0.0], [u, 1.0]),
+            ],
+            &[[0, 1, 2]],
+        )
+    };
+    let mut refused = RoadDecals::default();
+    let mark = refused.mark();
+    assert_eq!(
+        refused.add(&across(65_538.0), place),
+        Err(RoadDropCause::Repeats)
+    );
+    assert_eq!(
+        refused.add(&across(f32::NAN), place),
+        Err(RoadDropCause::Repeats)
+    );
+    assert_eq!(refused.mark(), mark);
+    assert_eq!(refused.add(&across(65_537.0), place), Ok(()));
+    assert_ne!(refused.mark(), mark);
+    refused.truncate(mark);
+    assert_eq!(refused.mark(), mark);
     let decals = decals.into_decals();
     let uvs: Vec<[f32; 2]> = vertices(&decals).into_iter().map(|(_, uv)| uv).collect();
     assert_eq!(uvs, [[100.0, 200.0], [100.0, 232.0], [132.0, 232.0]]);

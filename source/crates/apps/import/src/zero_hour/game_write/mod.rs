@@ -795,7 +795,7 @@ impl<'r> GameWrite<'r> {
         texts: &BTreeMap<String, String>,
     ) -> Result<(), ZeroHourError> {
         self.writer
-            .write(ModeFile::path(), mode.data().as_bytes())?;
+            .write(ModeFile::path(), mode.data()?.as_bytes())?;
         self.writer
             .write(UnitsFile::path(), units.text.as_bytes())?;
         // A mode whose types drive none caps no speed it moves at; 1 m a second is as good as any.

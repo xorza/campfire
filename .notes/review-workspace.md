@@ -36,14 +36,6 @@ The coordinator checked these bugs in the code: play-1, play-2, combat-1 (the ra
 
 Batches go most impactful first. A batch that needs another stands after it. Each batch ends with `cargo drive check` and `cargo drive test` passing, as AGENTS.md's workflow says. An item marked **Decide** waits for the owner's choice between the options it names.
 
-### 6. The importer's checks
-
-Files: `apps/import/src/zero_hour/rules_package/mod.rs`, `road_decals/mod.rs`, `format/ini/roads_ini.rs`, `format/wav/mod.rs`, `carried_look.rs`.
-
-- [ ] **imp-1.** `rules_package/mod.rs:456-479`: nine stages' modifiers merge into one `BTreeMap`, and only a `debug_assert_eq!` on the counts checks that their names are distinct. An upgrade and a science of one name are legal in the game. In a release import one modifier replaces the other with no message. In a test build the assert panics on data. Target: one checked insert that returns `NameError::Clash` with both sources, as `ImportNames::claim` does, and a test of an upgrade and a science of one name.
-- [ ] **imp-2.** `road_decals/mod.rs:63-72`, `roads_ini.rs:74`: the repeat loop steps with `f32` (`u += 1.0`). `RoadWidth` is read unchecked, so a tiny width puts `u` past 2²⁴, where the step stops moving it and the import hangs. Target: the width is checked positive and finite at the read, and a bad road drops as a `RoadDropCause`. The loop walks an integer range with a bound.
-- [ ] **imp-3.** `wav/mod.rs:201-205`: `pcm_file` `expect`s the decoded size to fit `u32`, and an ADPCM chunk past about 1 GiB breaks it. `carried_look.rs:57,91,99`: `CarriedLook::arm` `expect`s the first slot to fit `u8`, which panics past 85 portable-structure upgrades and overflows at 85. Target: the WAV read refuses that size as `SoundDropCause::Encoding`. A carrier whose slots pass `u8` drops the structure's weapons as a counted loss.
-
 ### 7. Session, console and store boundaries
 
 Files: `session/host/src/console/match_console/mod.rs`, `session/host/src/console/console_stdio.rs`, `session/host/src/client/{sent_inputs,known_commanded,report_dir}/mod.rs`, `apps/verifier/src/report_replay/mod.rs`, `apps/client/src/connection.rs`, `base/store/src/input_file/mod.rs`, `session/package-disk/src/package_dir/mod.rs`, `session/host/src/server/session_dir/mod.rs`, `source/checks/lan-check/src/log_tail/mod.rs`, `base/codec/src/png.rs`, `apps/client/src/{window_frame/mod.rs,view/shot_frame/mod.rs}`, `base/threads/src/worker/mod.rs`, `base/store/src/{append_writer,stream_writer}/mod.rs`.
@@ -173,6 +165,7 @@ Files: `session/protocol/src/session_log/{journal_replay,journal_shape}.rs`, `se
 - **combat-5.** The hold set widened to a `u16` with a decode that refuses a bit past the holds, and `Hold` stays stats' enum: a hold each module declares needs a new kind in every declaration visitor and leaves a snapshot's bits meaning what the installed modules make them, for a list of nine that changes as a capability does; the closed enum keeps each bit's meaning fixed for the release.
 - **spatial-3.** `GridSearch` keeps a public position beside a checked `GridReach`, whose `new` refuses a gap not above 0 or steps past the most as `GridReachError`, rather than a `GridSearch::new` that would take the position too: a bot's place holds its reach from the load and gains its position only as its order goes out.
 - **spatial-4.** Navigation's `AsideDepth`, `BodyIndex`, `BrakedStep`, `Collider`, `CrowdBook`, `ForcedMoves`, `NavigationApi`, `PathFollowing`, `RoomMaking`, `Segment` and `StaticTracking` and `internals::scene` are the crate's own; `PartyOrder` stays public, as `Party`'s API returns it, and vision's `Fog` too, which `unnameable_types` finds reachable through a public API as `pub(crate)`.
+- **imp-2.** `RoadIni::lays` tests both widths positive and finite and a road of no such width drops as `RoadDropCause::Width` at its draw, not at the read, which keeps every type of the file; the loop walks whole repeats as integers, and a triangle past `RoadDecals::MOST_REPEATS` or `FARTHEST`, or of a coordinate not finite, drops its type as `RoadDropCause::Repeats`, its decals cut back to the type's start.
 
 ## Decisions
 

@@ -1,9 +1,12 @@
+use std::collections::BTreeSet;
+
 use fluent_syntax::ast::{Entry, Expression, InlineExpression, PatternElement};
 use fluent_syntax::parser;
 
 use campfire_actions::SlotKindData;
 use campfire_math::Num;
 use campfire_navigation::ModeNavigationData;
+use campfire_progression::PerkData;
 use campfire_stats::StatOp;
 use campfire_values::{Number, Stat};
 
@@ -44,6 +47,7 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
             propaganda: &PropagandaImport::default(),
         }
         .data()
+        .unwrap()
     };
     // An empty table would write `actions = {}` into `[params]`, and `armors = {}` under a
     // second `[combat]`.
@@ -91,12 +95,53 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
         second_lives: &SecondLifeImport::default(),
         propaganda: &PropagandaImport::default(),
     }
-    .data();
+    .data()
+    .unwrap();
     assert!(
         written.contains("[retaliation]\naggressors = \"enemies:!air_target\"\nchase_ms = 10000\ndistance = \"200\"\nradius = \"120\""),
         "{written}"
     );
     assert!(!none.contains("retaliation"), "{none}");
+
+    // An upgrade and a science of one name, legal in the game, would give two modifiers of one
+    // name: the mode's data refuses them, naming both.
+    let shared = name("upgrade_shared");
+    let upgrades = UpgradeImport {
+        upgrades: BTreeSet::from([shared.clone()]),
+        ..UpgradeImport::default()
+    };
+    let perk = PerkData {
+        cost: None,
+        requires: Vec::new(),
+        track: None,
+        level: None,
+        modifier: shared,
+    };
+    let sciences = ScienceImport {
+        perks: BTreeMap::from([(name("science"), perk)]),
+        ..ScienceImport::default()
+    };
+    let clash = ModeImport {
+        start: &start,
+        additions: &Additions::default(),
+        production: &ProductionImport::default(),
+        combat: &CombatImport::default(),
+        upgrades: &upgrades,
+        veterancy: &VeterancyImport::default(),
+        sciences: &sciences,
+        contains: &ContainImport::default(),
+        start_money: &money,
+        retaliation: None,
+        movers: &MoverImport::default(),
+        second_lives: &SecondLifeImport::default(),
+        propaganda: &PropagandaImport::default(),
+    }
+    .data();
+    let clashed = NameClash {
+        first: "an upgrade upgrade_shared".to_owned(),
+        second: "a science upgrade_shared".to_owned(),
+    };
+    assert_eq!(clash, Err(NameError::Clash(clashed)));
     let rate = names.rate_of_fire.clone();
     let one = Number::Value(Scalar::Decimal(Num::ONE));
     let stage = StageModifier {

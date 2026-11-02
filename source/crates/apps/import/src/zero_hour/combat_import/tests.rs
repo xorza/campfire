@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use campfire_actions::ActionKeys;
 use campfire_actions::ActionRange;
 use campfire_actions::RangeField;
@@ -1159,4 +1161,61 @@ fn the_exhausts_are_of_every_action_a_weapon_converts_to_that_fires_a_projectile
         ..CombatImport::default()
     };
     assert_eq!(combat.exhausts(&ini), ["HunterTrail"]);
+}
+
+#[test]
+fn a_portable_structure_whose_slots_pass_its_carriers_drops_its_weapons() {
+    // A carrier of a cannon whose 85 upgrades each make a turret of flak inside it: its own set
+    // takes slots 0 to 2, and the turrets' the sets after, 3 × 84 = 252 to 254 for the 84th; the
+    // 85th's would start at 255 and pass the 256 slots a `u8` numbers, so its flak drops.
+    let mut objects =
+        "Object Carrier\n  WeaponSet\n    Conditions = None\n    Weapon = PRIMARY Cannon\n  End\n"
+            .to_owned();
+    let mut turrets = String::new();
+    let mut lists = String::new();
+    for at in 0..85 {
+        write!(
+            objects,
+            "  Behavior = ObjectCreationUpgrade ModuleTag_{at:02}\n    UpgradeObject = \
+             OCL_Turret{at}\n    TriggeredBy = Upgrade_Turret{at}\n  End\n"
+        )
+        .unwrap();
+        write!(
+            turrets,
+            "Object Turret{at}\n  KindOf = PORTABLE_STRUCTURE\n  WeaponSet\n    Conditions = \
+             None\n    Weapon = PRIMARY Flak\n  End\nEnd\n"
+        )
+        .unwrap();
+        write!(
+            lists,
+            "ObjectCreationList OCL_Turret{at}\n  CreateObject\n    ObjectNames = \
+             Turret{at}\n    ContainInsideSourceObject = Yes\n  End\nEnd\n"
+        )
+        .unwrap();
+    }
+    objects.push_str("End\n");
+    objects.push_str(&turrets);
+    let mut rules = ZeroHourRules::of_objects(ObjectIni::of(&[&objects]));
+    rules.creation_lists.read(lists.as_bytes()).unwrap();
+    let gun = |name: &str| {
+        format!("Weapon {name}\n  PrimaryDamage = 5\n  DelayBetweenShots = 100\nEnd\n")
+    };
+    let guns: String = ["Cannon", "Flak"].map(gun).concat();
+    rules.weapons.read(guns.as_bytes()).unwrap();
+    let mut names = ImportNames::default();
+    let carrier = rules.objects.object(b"Carrier").unwrap();
+    names.unit_type(carrier, &rules).unwrap();
+    let mut additions = Additions::default();
+    let mut names = names.into_production().into_projectiles();
+    let import = CombatImport::of(&rules, &mut names, &mut additions).unwrap();
+    let slots = &additions
+        .get(&TypeName::named("carrier"))
+        .unwrap()
+        .weapon_slots;
+    assert_eq!(slots.len(), 3 * 84 + 1);
+    let dropped: Vec<_> = (&import.dropped)
+        .into_iter()
+        .map(|dropped| (dropped.name.as_str(), dropped.cause))
+        .collect();
+    assert_eq!(dropped, [("Flak", WeaponDropCause::Slots)]);
 }

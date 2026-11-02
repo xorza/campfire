@@ -52,9 +52,8 @@ impl CarriedLook {
 
     /// Takes `first_slot`, the first of its carrier's weapon slots that the weapons of the
     /// structure `structure` take, when it is that structure's.
-    pub(crate) fn arm(&mut self, structure: &DeclaredName, first_slot: usize) {
+    pub(crate) fn arm(&mut self, structure: &DeclaredName, first_slot: u8) {
         if self.structure == *structure {
-            let first_slot = u8::try_from(first_slot).expect("a look's weapon slots fit a u8");
             self.first_slot = Some(first_slot);
         }
     }

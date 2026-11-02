@@ -73,6 +73,9 @@ pub enum WeaponDropCause {
     /// target a lock gives it, as the Patriot battery's assist weapon at one another battery
     /// designates.
     Locked,
+    /// It is a portable structure's, whose slots would pass the 256 a carrier's weapon slots
+    /// number, as a carrier of 85 such upgrades or more gives.
+    Slots,
 }
 
 /// A time the import writes none of is a number of no worth to the engine.

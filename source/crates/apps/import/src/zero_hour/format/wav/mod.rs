@@ -189,9 +189,18 @@ impl<'a> WavFile<'a> {
         samples
     }
 
-    /// The WAV file of 16-bit PCM of `samples`, of its channels and its rate.
-    pub(crate) fn pcm_file(&self, samples: &[i16]) -> Vec<u8> {
-        let data = u32::try_from(samples.len() * 2).expect("a WAV's data fits u32");
+    /// The size of the data chunk of `samples` 16-bit samples, when the file's sizes, each a
+    /// `u32`, hold it with the 36 bytes before it; none past them, as an ADPCM chunk past about
+    /// 1 GiB decodes to.
+    fn data_size(samples: usize) -> Option<u32> {
+        let data = u32::try_from(samples.checked_mul(2)?).ok()?;
+        data.checked_add(36).map(|_| data)
+    }
+
+    /// The WAV file of 16-bit PCM of `samples`, of its channels and its rate; none of more
+    /// samples than its sizes hold.
+    pub(crate) fn pcm_file(&self, samples: &[i16]) -> Option<Vec<u8>> {
+        let data = Self::data_size(samples.len())?;
         let channels = self.channels;
         let block = channels * 2;
         let mut file = Vec::with_capacity(44 + samples.len() * 2);
@@ -210,7 +219,7 @@ impl<'a> WavFile<'a> {
         for sample in samples {
             file.extend_from_slice(&sample.to_le_bytes());
         }
-        file
+        Some(file)
     }
 }
 

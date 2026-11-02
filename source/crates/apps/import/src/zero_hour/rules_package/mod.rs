@@ -25,7 +25,7 @@ use campfire_values::{PackageName, PackagePath, Relation, Scalar, ScriptSource, 
 use crate::zero_hour::additions::Additions;
 use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::contain_import::ContainImport;
-use crate::zero_hour::error::ZeroHourError;
+use crate::zero_hour::error::{NameClash, NameError, ZeroHourError};
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::ai_data_ini::AiRetaliation;
 use crate::zero_hour::format::ini::multiplayer_ini::MoneyChoices;
@@ -210,7 +210,7 @@ impl ModeImport<'_> {
     /// (04-capabilities/production.md), the modifiers of `upgrades`, each upgrade's and each
     /// effect's (09-zero-hour.md, Zero Hour's upgrade flags are tags and stats), and those of the
     /// hurts of `movers` (04-capabilities/stats.md, A hurt type may hold a modifier).
-    pub(crate) fn data(self) -> String {
+    pub(crate) fn data(self) -> Result<String, NameError> {
         let Self {
             start,
             additions,
@@ -419,41 +419,42 @@ impl ModeImport<'_> {
         let stages = combat
             .modifiers
             .iter()
-            .map(|(id, stage)| (id, stage.table()));
+            .map(|(id, stage)| ("a weapon's stage", id, stage.table()));
         let nothing = TomlValue::from(TomlTable::default());
-        let researched = upgrades.upgrades.iter().map(|id| (id, nothing.clone()));
+        let researched = (upgrades.upgrades.iter()).map(|id| ("an upgrade", id, nothing.clone()));
         let effects = upgrades
             .effects
             .iter()
-            .map(|(id, effect)| (id, effect.table()));
+            .map(|(id, effect)| ("an upgrade's effect", id, effect.table()));
         let levels = veterancy
             .modifiers
             .iter()
-            .map(|(id, modifier)| (id, TomlValue::of(modifier)));
+            .map(|(id, modifier)| ("a level", id, TomlValue::of(modifier)));
         let perks = sciences.perks.values().map(|perk| {
             let given = production.power_modifiers.get(&perk.modifier);
-            (
-                &perk.modifier,
-                given.map_or_else(|| nothing.clone(), TomlValue::of),
-            )
+            let value = given.map_or_else(|| nothing.clone(), TomlValue::of);
+            ("a science", &perk.modifier, value)
         });
         let garrisons = contains
             .modifiers
             .iter()
-            .map(|(id, modifier)| (id, TomlValue::of(modifier)));
+            .map(|(id, modifier)| ("a garrison", id, TomlValue::of(modifier)));
         let hurts = movers
             .modifiers
             .iter()
-            .map(|(id, modifier)| (id, TomlValue::of(modifier)));
+            .map(|(id, modifier)| ("a hurt", id, TomlValue::of(modifier)));
         let lives = second_lives
             .modifiers
             .iter()
-            .map(|(id, modifier)| (id, TomlValue::of(modifier)));
+            .map(|(id, modifier)| ("a second life", id, TomlValue::of(modifier)));
         let towers = propaganda
             .modifiers
             .iter()
-            .map(|(id, modifier)| (id, TomlValue::of(modifier)));
-        let modifiers: BTreeMap<&DeclaredName, TomlValue> = stages
+            .map(|(id, modifier)| ("a propaganda tower", id, TomlValue::of(modifier)));
+        // An upgrade and a science of one name are legal in the game; one modifier of the
+        // package each, they would replace one another, so the import refuses them.
+        let mut modifiers: BTreeMap<&DeclaredName, (&str, TomlValue)> = BTreeMap::new();
+        let every = stages
             .chain(researched)
             .chain(effects)
             .chain(levels)
@@ -461,26 +462,24 @@ impl ModeImport<'_> {
             .chain(garrisons)
             .chain(hurts)
             .chain(lives)
-            .chain(towers)
-            .collect();
-        debug_assert_eq!(
-            modifiers.len(),
-            combat.modifiers.len()
-                + upgrades.upgrades.len()
-                + upgrades.effects.len()
-                + veterancy.modifiers.len()
-                + sciences.perks.len()
-                + contains.modifiers.len()
-                + movers.modifiers.len()
-                + second_lives.modifiers.len()
-                + propaganda.modifiers.len(),
-            "a stage's, an upgrade's, an effect's, a level's, a perk's, a garrison's, a hurt's, a \
-             second life's and a tower's modifiers share no name"
-        );
-        if !modifiers.is_empty() {
-            writer.value::<ModifiersData>(TomlValue::of(&modifiers));
+            .chain(towers);
+        for (from, id, value) in every {
+            if let Some(&(taken, _)) = modifiers.get(id) {
+                return Err(NameError::Clash(NameClash {
+                    first: format!("{taken} {id}"),
+                    second: format!("{from} {id}"),
+                }));
+            }
+            modifiers.insert(id, (from, value));
         }
-        Toml::write(&writer.into_table())
+        if !modifiers.is_empty() {
+            let values: BTreeMap<_, _> = modifiers
+                .into_iter()
+                .map(|(id, (_, value))| (id, value))
+                .collect();
+            writer.value::<ModifiersData>(TomlValue::of(&values));
+        }
+        Ok(Toml::write(&writer.into_table()))
     }
 }
 

@@ -255,11 +255,21 @@ impl CombatImport {
                     by: ImportName::latin(&structure.name).declared()?,
                     tag,
                 };
+                // A carrier's weapon slots are numbered by a `u8`, so a structure whose slots would
+                // pass them arms none of its weapons.
                 let first_slot = WeaponSet::SLOTS * sources.len();
+                let gated = WeaponGate::of(set, None);
+                let fits = u8::try_from(first_slot + WeaponSet::SLOTS - 1).is_ok();
+                let Some(first_slot) = u8::try_from(first_slot).ok().filter(|_| fits) else {
+                    for weapon in &gated {
+                        import.dropped.drop(weapon.weapon, WeaponDropCause::Slots);
+                    }
+                    continue;
+                };
                 for look in &mut additions.type_mut(type_name).carried {
                     look.arm(&carried.by, first_slot);
                 }
-                sources.push((WeaponGate::of(set, None), Some(carried)));
+                sources.push((gated, Some(carried)));
             }
             let gated = sources
                 .iter()

@@ -2,6 +2,7 @@ use bevy_math::{Vec2, Vec3};
 use campfire_client_files::{DecalVertex, TerrainDecals};
 
 use crate::zero_hour::convex_clip::ConvexClip;
+use crate::zero_hour::road_drop_cause::RoadDropCause;
 use crate::zero_hour::road_mesh::RoadMesh;
 use crate::zero_hour::terrain_atlas::TexturePlace;
 
@@ -18,6 +19,13 @@ pub(crate) struct RoadDecals {
 
 /// A corner of a polygon being clipped: its point on the game's axes and its coordinates in
 /// repeats of its texture.
+/// Where a run of decals ends: how many vertices and triangles they held.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DecalsMark {
+    vertices: usize,
+    triangles: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Corner {
     point: Vec3,
@@ -34,11 +42,37 @@ struct Bound {
 }
 
 impl RoadDecals {
+    /// The most repeats of its texture a piece's triangle spans along either axis, and the
+    /// farthest from 0 its coordinates lie, in repeats: the game's roads, 8 to 35 wide on maps of
+    /// a few thousand units, span a few hundred, and a coordinate past 2²⁰ steps by whole repeats
+    /// no more exactly in an `f32`.
+    const MOST_REPEATS: f32 = 65_536.0;
+    const FARTHEST: f32 = 1_048_576.0;
+
+    /// Where the decals end, which `truncate` cuts back to.
+    pub(crate) const fn mark(&self) -> DecalsMark {
+        DecalsMark {
+            vertices: self.decals.vertices.len(),
+            triangles: self.decals.triangles.len(),
+        }
+    }
+
+    /// Drops every decal added after `mark`.
+    pub(crate) fn truncate(&mut self, mark: DecalsMark) {
+        self.decals.vertices.truncate(mark.vertices);
+        self.decals.triangles.truncate(mark.triangles);
+    }
+
     /// Adds each triangle of `mesh`, a piece of a road whose texture is at `place`, turned
     /// counter-clockwise seen from above: for each repeat of the texture its coordinates cross, the
     /// triangle clipped to that repeat, a part of no area dropped, as a fan of its corners, each
-    /// corner's coordinates its share of the repeat over the copy.
-    pub(crate) fn add(&mut self, mesh: &RoadMesh, place: TexturePlace) {
+    /// corner's coordinates its share of the repeat over the copy. An error, with what it added
+    /// kept, for a triangle past `MOST_REPEATS` or `FARTHEST`.
+    pub(crate) fn add(
+        &mut self,
+        mesh: &RoadMesh,
+        place: TexturePlace,
+    ) -> Result<(), RoadDropCause> {
         let corner = place.corner.as_vec2();
         let size = place.size.as_vec2();
         for triangle in &mesh.triangles {
@@ -60,18 +94,22 @@ impl RoadDecals {
                 .fold(Vec2::NEG_INFINITY, |high, at| high.max(at.uv));
             let first = low.floor();
             let last = (high.ceil() - 1.0).max(first);
-            let mut v = first.y;
-            while v <= last.y {
-                let mut u = first.x;
-                while u <= last.x {
-                    let repeat = Vec2::new(u, v);
+            let near = |at: Vec2| at.abs().max_element() <= Self::FARTHEST;
+            let finite = corners.iter().all(|corner| corner.uv.is_finite());
+            let span = last - first;
+            if !(finite && near(first) && near(last) && span.max_element() <= Self::MOST_REPEATS) {
+                return Err(RoadDropCause::Repeats);
+            }
+            let whole = |at: f32| at as i32;
+            for v in whole(first.y)..=whole(last.y) {
+                for u in whole(first.x)..=whole(last.x) {
+                    let repeat = Vec2::new(u as f32, v as f32);
                     self.clip(&corners, repeat);
                     self.fan(repeat, corner, size);
-                    u += 1.0;
                 }
-                v += 1.0;
             }
         }
+        Ok(())
     }
 
     /// The decals, as a terrain file holds them.

@@ -12,4 +12,10 @@ pub enum RoadDropCause {
     /// Segments of a type whose texture finds no room in the terrain's texture, or whose sides
     /// its levels do not halve to whole texels, which draw nothing.
     NoPlace,
+    /// Segments of a type whose `RoadWidth` or `RoadWidthInTexture` is no positive, finite
+    /// number, which lay no texture, and draw nothing.
+    Width,
+    /// Segments of a type whose texture repeats across a piece past `RoadDecals::MOST_REPEATS`,
+    /// which draw nothing.
+    Repeats,
 }
