@@ -235,7 +235,6 @@ impl<C> ConfirmedHistory<C> {
     }
 }
 
-/// The iterator contains the present values from oldest to most recent.
 /// One value a confirmed history takes from a replicated message.
 #[derive(Debug)]
 pub struct ReceivedValue<'a, C> {

@@ -53,6 +53,7 @@ mod tick_period_history;
 mod timeline_switch;
 mod timeline_switch_plugin;
 mod timeline_switch_setup;
+mod unseeded_histories;
 mod visual_correction;
 mod visual_diff;
 

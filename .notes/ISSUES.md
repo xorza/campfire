@@ -7,6 +7,7 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Research
 
+- **Net.** A replicated value or diff whose tick the confirmed tick map no longer holds is dropped with `Ok` while Replicon counts it toward its tick's completion: with whole replication a client that predicted the dropped change rolls back to the stale value at each completed tick, and with diffs the entity's diff chain breaks for good, interpolation's `pending` growing without bound. Which ticks a buffered mutation can still name is in Replicon's private `BufferedMutations`.
 - **Rules.** `every_rule::the_workspace_keeps_every_rule` takes 1.35 s alone, `--test-threads 1`, past the bound of 1 s; of the other 2,772 tests, only the 3v3's scripted match, which is exempt, passes it (measured 2 November 2026).
 
 ## Ready

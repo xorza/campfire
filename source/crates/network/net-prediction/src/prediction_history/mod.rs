@@ -27,6 +27,7 @@ use campfire_net_replication::HistoryDiffReceiver;
 use campfire_net_replication::HistoryState;
 use campfire_net_replication::PreSpawned;
 use campfire_net_replication::Predicted;
+use campfire_net_replication::{LiveValue, Seed};
 use campfire_net_sync::{InputTimelineSetup, SyncedLocalTimeline};
 use campfire_net_timeline::LocalTimeline;
 use campfire_net_timeline::LocalTimelineShift;
@@ -34,6 +35,7 @@ use tracing::trace;
 
 use crate::locally_predicted::LocallyPredicted;
 use crate::prediction_setup::PredictionSetup;
+use crate::unseeded_histories::UnseededHistories;
 
 /// Holds the history of locally predicted component states, to allow for rollback.
 ///
@@ -345,31 +347,51 @@ impl<C: HistoryComponent> PredictionHistory<C> {
             return;
         }
         let entity = trigger.entity;
-        let Ok(found) = world.get_entity(entity) else {
-            return;
-        };
-        if found.contains::<ConfirmedHistory<C>>() {
+        let replicated = world
+            .get_entity(entity)
+            .is_ok_and(|found| found.contains::<ConfirmHistory>());
+        if replicated {
+            world.commands().queue(move |world: &mut World| {
+                Self::seed_or_wait(world, entity);
+            });
+        }
+    }
+
+    /// Seeds `entity`'s confirmed history of `C` from its live value, which stays predicted, or
+    /// lists it to seed again while no confirmation of it resolves to a tick.
+    fn seed_or_wait(world: &mut World, entity: Entity) {
+        match ConfirmedHistory::<C>::seed_from_live(world, entity, LiveValue::Stays) {
+            Seed::Seeded(tick) => trace!(
+                ?entity,
+                ?tick,
+                component = ?DebugName::type_name::<C>(),
+                "backfilled confirmed history for late prediction opt-in"
+            ),
+            Seed::Unresolved => {
+                let mut unseeded = world.resource_mut::<UnseededHistories<C>>();
+                if !unseeded.entities.contains(&entity) {
+                    unseeded.entities.push(entity);
+                }
+            }
+            Seed::Skipped => {}
+        }
+    }
+
+    /// Seeds again each entity whose confirmed history of `C` waited for its confirmation's tick,
+    /// before the rollback check surveys `C`.
+    pub(crate) fn seed_unseeded(
+        mut unseeded: ResMut<'_, UnseededHistories<C>>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        if unseeded.entities.is_empty() {
             return;
         }
-        let (Some(component), Some(confirm_history)) =
-            (found.get::<C>(), found.get::<ConfirmHistory>())
-        else {
-            return;
-        };
-        let Some(tick) = world
-            .get_resource::<ConfirmedTickMap>()
-            .and_then(|confirmed_ticks| confirmed_ticks.confirmed_state_tick(confirm_history))
-        else {
-            return;
-        };
-        let history = ConfirmedHistory::seed(tick, component.clone());
-        trace!(
-            ?entity,
-            ?tick,
-            component = ?DebugName::type_name::<C>(),
-            "backfilled confirmed history for late prediction opt-in"
-        );
-        world.commands().entity(entity).insert(history);
+        let entities = core::mem::take(&mut unseeded.entities);
+        commands.queue(move |world: &mut World| {
+            for entity in entities {
+                Self::seed_or_wait(world, entity);
+            }
+        });
     }
 
     /// During a replay, sets the component to its confirmed state at the end of the previous

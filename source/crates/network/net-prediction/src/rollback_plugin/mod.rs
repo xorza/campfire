@@ -16,12 +16,13 @@ use bevy_app::prelude::*;
 use bevy_ecs::component::Mutable;
 use bevy_ecs::entity::EntityHashSet;
 use bevy_ecs::prelude::*;
+use bevy_replicon::client::confirm_history::ConfirmHistory;
 use bevy_replicon::client::server_mutate_ticks::ServerMutateTicks;
 use bevy_replicon::prelude::{ClientMessages, ClientSystems, Remote};
 use bevy_replicon::shared::backend::channels::ServerChannel;
 use bevy_time::{Fixed, Time};
 use bevy_utils::prelude::DebugName;
-use campfire_net_connection::NetworkingState;
+use campfire_net_connection::{Client, Connected, NetworkingState};
 use campfire_net_core::NetTick;
 use campfire_net_despawns::DespawnReplicated;
 use campfire_net_frame_interpolation::FrameInterpolationSystems;
@@ -31,8 +32,8 @@ use campfire_net_replication::DeferredEntityCommands;
 use campfire_net_replication::HistoryState;
 use campfire_net_replication::Interpolated;
 use campfire_net_replication::PreSpawned;
-use campfire_net_replication::PreSpawnedReceiver;
 use campfire_net_replication::Predicted;
+use campfire_net_replication::ReplicationReceiver;
 use campfire_net_replication::ReplicationSystems;
 use campfire_net_sync::{InputTimelineSetup, SyncedLocalTimeline};
 use campfire_net_timeline::LocalTimeline;
@@ -71,6 +72,8 @@ impl Plugin for RollbackPlugin {
         app.init_resource::<TickPeriodHistory>();
         app.add_observer(TickPeriodHistory::shift_with_local_timeline);
         app.add_observer(RollbackCheckState::shift_with_local_timeline);
+        app.add_observer(Self::list_pre_spawn);
+        app.add_observer(Self::forget_despawned);
         app.add_systems(FixedPostUpdate, TickPeriodHistory::record_tick);
 
         app.configure_sets(
@@ -103,8 +106,7 @@ impl Plugin for RollbackPlugin {
         );
         app.configure_sets(
             PostUpdate,
-            // we add the correction error AFTER the interpolation was done
-            // (which means it's also after we buffer the component for replication)
+            // The correction offsets the visual the frame interpolation wrote.
             RollbackSystems::VisualCorrection
                 .after(FrameInterpolationSystems::Interpolate)
                 .in_set(PredictionSystems::All),
@@ -223,20 +225,10 @@ impl RollbackPlugin {
                     .get_state_at_or_before(rollback_tick)
                     .cloned()
             };
-            // Keep the prediction history anchored at the actual rollback target.
-            // For completed state rollbacks this is the completed mutate tick; for
-            // forced rollbacks it may be older than the latest completed mutate tick.
-            //
-            // Discard only the entries the rollback invalidates (strictly newer
-            // than the target): the replay rewrites those from the restored state.
-            // Entries at-or-before the target are still the client's canonical
-            // past — the replay never touches them — and they are exactly what a
-            // later, DEEPER rollback in the same frame window needs as its floor
-            // sample. Clearing the whole buffer here would throw them away, so a
-            // second rollback to an older tick would find no sample at-or-before
-            // its target and fall through to seeding the history with the
-            // current-tick live value — injecting a future value into the past, a
-            // divergence that no later update mends.
+            // Only the entries past the target go, as the replay writes them again: those at or
+            // before it are the floor a deeper rollback in the same frame needs, which would
+            // otherwise seed the history with the current tick's live value, a future value in
+            // the past that no later update mends.
             predicted_history.clear_after_tick(rollback_tick);
             if let Some(state) = restore_state.clone() {
                 predicted_history.add_state(rollback_tick, state);
@@ -364,11 +356,10 @@ impl RollbackPlugin {
             world.entity_mut(entity).insert(DisabledDuringRollback);
         }
 
-        // Run the fixed update schedule (which should contain ALL
-        // predicted/rollback components and resources). This is similar to what
-        // `bevy_time::fixed::run_fixed_main_schedule()` does
+        // The replay runs the fixed schedule, which holds every predicted component and
+        // resource, as `bevy_time::fixed::run_fixed_main_schedule()` runs it.
         for i in 0..rollback_ticks {
-            // we add 1 here because running FixedUpdate will start by incrementing the tick
+            // A run of the fixed schedule starts by incrementing the tick.
             let rollback_tick = rollback_start_tick + i + 1;
             let _span = debug_span!("rollback", tick = ?rollback_tick).entered();
             debug!(?rollback_tick, "rollback");
@@ -723,13 +714,37 @@ impl RollbackPlugin {
         }
     }
 
+    /// Lists a receiver's new pre-spawned entity, one no server entity matched yet, for the
+    /// rollbacks that despawn it: a pre-spawn is made in `FixedMain`, as its replay makes it again.
+    fn list_pre_spawn(
+        trigger: On<'_, '_, Add<PreSpawned>>,
+        timeline: Res<'_, LocalTimeline>,
+        unmatched: Query<'_, '_, (), (With<PreSpawned>, Without<ConfirmHistory>)>,
+        receivers: Query<'_, '_, (), (With<Client>, With<Connected>, With<ReplicationReceiver>)>,
+        mut state: ResMut<'_, RollbackCheckState>,
+    ) {
+        if receivers.is_empty() || !unmatched.contains(trigger.entity) {
+            return;
+        }
+        if let Some(tick) = timeline.simulated_tick() {
+            state.list_replayed(tick, trigger.entity);
+        }
+    }
+
+    /// Takes a despawned entity off the rollbacks' list.
+    fn forget_despawned(
+        trigger: On<'_, '_, Despawn<(PreSpawned, LocallyPredicted)>>,
+        mut state: ResMut<'_, RollbackCheckState>,
+    ) {
+        state.forget_replayed(trigger.entity);
+    }
+
     /// At the start of a rollback, despawns the pre-spawned and locally predicted entities that
     /// spawned after its tick, which the replay spawns again, and sets which locally predicted
     /// entities the rollback leaves alone.
     fn begin_rollback(
         rollback: Res<'_, Rollback>,
         mut check_state: ResMut<'_, RollbackCheckState>,
-        mut pre_spawned_receiver: ResMut<'_, PreSpawnedReceiver>,
         locally_predicted: Query<'_, '_, &LocallyPredicted>,
         mut protected: Local<'_, EntityHashSet>,
         mut commands: Commands<'_, '_>,
@@ -744,26 +759,33 @@ impl RollbackPlugin {
         protected.extend(check_state.local_skip_despawn.iter().filter_map(
             |(protection_tick, entity)| (*protection_tick > rollback_tick).then_some(*entity),
         ));
-        pre_spawned_receiver.despawn_pre_spawned_after_with(
-            rollback_tick + 1,
-            |entity| {
-                protected.contains(&entity)
-                    || (ends_protection
-                        && locally_predicted
-                            .get(entity)
-                            .is_ok_and(|predicted| predicted.skip_despawn))
-            },
-            &mut commands,
-        );
-
-        // A locally predicted entity that spawned after the rollback tick is despawned: the replay
-        // spawns it again. The older ones stay listed until they leave the rollback window.
-        let first_after = check_state
-            .local_despawn
-            .partition_point(|(spawn_tick, _)| *spawn_tick <= rollback_tick);
-        for (_, entity) in check_state.local_despawn.drain(first_after..) {
-            commands.entity(entity).queue_silenced(DespawnReplicated);
+        // An entity that spawned after the rollback tick is despawned, as the replay spawns it
+        // again, but a protected one; the older ones stay listed until they leave the rollback
+        // window. A pre-spawn that is locally predicted too, and protected, is kept.
+        let kept = |entity| {
+            protected.contains(&entity)
+                || (ends_protection
+                    && locally_predicted
+                        .get(entity)
+                        .is_ok_and(|predicted| predicted.skip_despawn))
+        };
+        let list = &mut check_state.replay_despawn;
+        let first_after = list.partition_point(|(spawn_tick, _)| *spawn_tick <= rollback_tick);
+        let mut stays = first_after;
+        for at in first_after..list.len() {
+            let (spawn_tick, entity) = list[at];
+            if kept(entity) {
+                list[stays] = (spawn_tick, entity);
+                stays += 1;
+            } else if let Ok(mut despawned) = commands.get_entity(entity) {
+                debug!(
+                    ?entity,
+                    "despawning an entity the rollback's replay spawns again"
+                );
+                despawned.queue_silenced(DespawnReplicated);
+            }
         }
+        list.truncate(stays);
 
         // For skip_despawn, the tick is the first tick after which we should start enabling
         // rollbacks on the entity: an entity whose tick the rollback is past is enabled again and
@@ -805,10 +827,10 @@ impl RollbackPlugin {
     ) {
         let oldest = setup.oldest_rollback_tick(timeline.tick(), &input_setup);
         let stale = check_state
-            .local_despawn
+            .replay_despawn
             .partition_point(|(spawn_tick, _)| *spawn_tick < oldest);
         if stale > 0 {
-            check_state.local_despawn.drain(..stale);
+            check_state.replay_despawn.drain(..stale);
         }
         let ended = check_state
             .local_skip_despawn

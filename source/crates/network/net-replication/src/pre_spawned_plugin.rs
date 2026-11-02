@@ -26,7 +26,6 @@ impl Plugin for PreSpawnedPlugin {
         app.add_observer(Self::cleanup_matched_pre_spawn);
         app.add_observer(PreSpawnedReceiver::cleanup_removed_pre_spawn);
         app.add_observer(PreSpawnedReceiver::cleanup_despawned_pre_spawn);
-        app.add_observer(PreSpawnedReceiver::handle_local_timeline_shift);
     }
 }
 

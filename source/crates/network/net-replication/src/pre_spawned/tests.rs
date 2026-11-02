@@ -57,8 +57,7 @@ fn pre_spawn_at(app: &mut App, ticks: u32, bundle: impl Bundle + Clone) -> Entit
     spawned[0]
 }
 
-/// A receiver's pre-spawn made in `FixedMain` at tick 3 is listed at 3 for the rollback and for
-/// its expiry.
+/// A receiver's pre-spawn made in `FixedMain` at tick 3 is listed at 3 for its expiry.
 #[test]
 fn a_client_pre_spawn_is_listed_for_its_life() {
     let mut app = app();
@@ -67,7 +66,6 @@ fn a_client_pre_spawn_is_listed_for_its_life() {
 
     let receiver = app.world().resource::<PreSpawnedReceiver>();
     assert_eq!(receiver.unmatched, [(NetTick(3), pre_spawned)]);
-    assert_eq!(receiver.rollback, [(NetTick(3), pre_spawned)]);
 }
 
 /// A receiver's pre-spawn outside `FixedMain` has no simulated tick, so a rollback could despawn
@@ -141,5 +139,5 @@ fn pre_spawns_without_a_client_receiver_are_not_lifecycle_tracked() {
 
     assert!(app.world().get::<Signature>(pre_spawned).is_some());
     let receiver = app.world().resource::<PreSpawnedReceiver>();
-    assert!(receiver.unmatched.is_empty() && receiver.rollback.is_empty());
+    assert!(receiver.unmatched.is_empty());
 }

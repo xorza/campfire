@@ -68,20 +68,16 @@ impl LocallyPredicted {
         let Some(mut check_state) = world.get_resource_mut::<RollbackCheckState>() else {
             return;
         };
-        let (entries, tick) = if locally_predicted.skip_despawn {
-            (
-                &mut check_state.local_skip_despawn,
-                tick + i32::from(locally_predicted.enable_rollback_after),
-            )
+        if locally_predicted.skip_despawn {
+            let tick = tick + i32::from(locally_predicted.enable_rollback_after);
+            // The list stays in tick order, which a rollback splits by tick.
+            let entries = &mut check_state.local_skip_despawn;
+            let at = entries.partition_point(|(entry_tick, _)| *entry_tick <= tick);
+            entries.insert(at, (tick, context.entity));
         } else if let Some(simulated) = simulated {
-            (&mut check_state.local_despawn, simulated)
-        } else {
-            // Only an entity spawned in `FixedMain` is spawned again by a rollback's replay, so
-            // no rollback despawns one spawned outside it.
-            return;
-        };
-        // Each list stays in tick order, which a rollback splits by tick.
-        let at = entries.partition_point(|(entry_tick, _)| *entry_tick <= tick);
-        entries.insert(at, (tick, context.entity));
+            check_state.list_replayed(simulated, context.entity);
+        }
+        // Only an entity spawned in `FixedMain` is spawned again by a rollback's replay, so no
+        // rollback despawns one spawned outside it.
     }
 }

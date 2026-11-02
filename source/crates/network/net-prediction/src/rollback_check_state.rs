@@ -52,9 +52,10 @@ pub struct RollbackCheckState {
     /// What the current rollback is for.
     pub(crate) rollback_kind: RollbackKind,
 
-    /// Locally predicted entities a rollback despawns when they spawned after its tick, with
-    /// their spawn tick, in tick order.
-    pub(crate) local_despawn: Vec<(NetTick, Entity)>,
+    /// The entities a rollback despawns when they spawned after its tick, as its replay spawns
+    /// them again: the locally predicted ones and the pre-spawned ones, matched or not, each once at
+    /// its spawn tick on the local timeline, in tick order.
+    pub(crate) replay_despawn: Vec<(NetTick, Entity)>,
 
     /// Locally predicted entities protected from rollbacks until their tick, in tick order.
     pub(crate) local_skip_despawn: Vec<(NetTick, Entity)>,
@@ -111,12 +112,34 @@ impl RollbackCheckState {
         mut despawned: Query<'_, '_, &mut PredictionDespawned>,
     ) {
         let state = &mut *state;
-        let listed = state.local_despawn.iter_mut();
+        let listed = state.replay_despawn.iter_mut();
         for (tick, _) in listed.chain(state.local_skip_despawn.iter_mut()) {
             *tick = *tick + trigger.delta;
         }
         for mut despawned in &mut despawned {
             despawned.tick = despawned.tick + trigger.delta;
+        }
+    }
+
+    /// Lists `entity`, which spawned at the simulated `tick`, for the rollbacks that despawn it,
+    /// once, in tick order.
+    pub(crate) fn list_replayed(&mut self, tick: NetTick, entity: Entity) {
+        if self
+            .replay_despawn
+            .iter()
+            .any(|&(_, listed)| listed == entity)
+        {
+            return;
+        }
+        let at = (self.replay_despawn).partition_point(|(listed, _)| *listed <= tick);
+        self.replay_despawn.insert(at, (tick, entity));
+    }
+
+    /// Takes `entity`, despawned, off the rollbacks' list.
+    pub(crate) fn forget_replayed(&mut self, entity: Entity) {
+        let list = &mut self.replay_despawn;
+        if let Some(at) = list.iter().position(|&(_, listed)| listed == entity) {
+            list.remove(at);
         }
     }
 
@@ -186,5 +209,20 @@ mod tests {
         let mut state = RollbackCheckState::default();
         state.request_switch_rollback(NetTick(10));
         assert_eq!(state.forced_rollback_kind, RollbackKind::Switch);
+    }
+
+    /// An entity both pre-spawned and locally predicted is listed once, in tick order, and its
+    /// despawn takes it off the list.
+    #[test]
+    fn an_entity_is_listed_once_for_the_replay_and_leaves_as_it_despawns() {
+        let mut world = World::new();
+        let [a, b] = core::array::from_fn(|_| world.spawn_empty().id());
+        let mut state = RollbackCheckState::default();
+        state.list_replayed(NetTick(7), a);
+        state.list_replayed(NetTick(5), b);
+        state.list_replayed(NetTick(7), a);
+        assert_eq!(state.replay_despawn, [(NetTick(5), b), (NetTick(7), a)]);
+        state.forget_replayed(b);
+        assert_eq!(state.replay_despawn, [(NetTick(7), a)]);
     }
 }
