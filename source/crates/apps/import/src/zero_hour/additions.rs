@@ -10,6 +10,7 @@ use campfire_production::{DropOffData, NodeData, ProductionData, SellData, Spawn
 use campfire_progression::{ExperienceData, TypeTracksData};
 use campfire_stats::UpgradesData;
 
+use crate::zero_hour::airfield_bones::AirfieldBones;
 use crate::zero_hour::area_write::AreaWrite;
 use crate::zero_hour::carried_look::CarriedLook;
 use crate::zero_hour::model_bones::ModelBones;
@@ -48,6 +49,12 @@ pub(crate) struct TypeAdditions {
     pub(crate) barrels: Option<BarrelsData>,
     /// The bones its turret reads of its model.
     pub(crate) bones: Option<ModelBones>,
+    /// What production reads of its model, on the ground in its object's frame, the game's axes:
+    /// its helipad, its airfield's places and runways, and the point where a gatherer docks at it
+    /// (04-capabilities/production.md, A dock has its point).
+    pub(crate) helipad: Option<[f32; 2]>,
+    pub(crate) airfield_bones: Option<AirfieldBones>,
+    pub(crate) dock: Option<[f32; 2]>,
     /// The fire points of a garrison whose model names one, on the ground in its object's frame,
     /// the game's axes.
     pub(crate) fire_points: Vec<[f32; 2]>,

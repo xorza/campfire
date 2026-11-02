@@ -27,9 +27,8 @@ struct Produced {
 }
 
 impl Produced {
-    /// The production of `rules` from the types of `names`, of the points `bones` gives.
-    fn of<'r>(rules: &'r ZeroHourRules, names: ImportNames<'r>, bones: ProductionBones) -> Self {
-        let mut additions = Additions::default();
+    /// The production of `rules` from the types of `names`, of the points `additions` gives.
+    fn of<'r>(rules: &'r ZeroHourRules, names: ImportNames<'r>, mut additions: Additions) -> Self {
         let mut names = names.into_production();
         let cx = ProductionCx {
             rules,
@@ -37,7 +36,7 @@ impl Produced {
             additions: &mut additions,
         };
         Self {
-            import: ProductionImport::of(cx, bones),
+            import: ProductionImport::of(cx),
             additions,
         }
     }
@@ -376,13 +375,11 @@ fn docks_centers_gatherers_and_free_units_take_the_originals_numbers_in_boxes_of
     }
     let declared = |name: &str| DeclaredName::new(name).unwrap();
     // The dock's model docks at (10, 20) and the center's at (−5, 0), on the game's axes.
-    let bones = ProductionBones {
-        docks: BTreeMap::from([
-            (declared("dock"), [10.0, 20.0]),
-            (declared("center"), [-5.0, 0.0]),
-        ]),
-        ..ProductionBones::default()
-    };
+    let mut bones = Additions::default();
+    for (name, dock) in [("dock", [10.0, 20.0]), ("center", [-5.0, 0.0])] {
+        let name = TypeName::new(&ImportName::of(name.as_bytes())).unwrap();
+        bones.type_mut(&name).dock = Some(dock);
+    }
     let produced = Produced::of(&rules, names, bones);
     let (import, additions) = (&produced.import, &produced.additions);
     let supply = &import.supply;
@@ -610,7 +607,7 @@ fn a_variation_and_a_prerequisite_convert_their_own_command_sets_and_a_sale_its_
     let mut names = ImportNames::default();
     let center = rules.objects.object(b"Center").unwrap();
     names.unit_type(center, &rules).unwrap();
-    let produced = Produced::of(&rules, names, ProductionBones::default());
+    let produced = Produced::of(&rules, names, Additions::default());
     let import = &produced.import;
     let declared = |name: &str| DeclaredName::new(name).unwrap();
     for train in ["train_jeep", "train_rover", "train_wisp", "train_ghost"] {
@@ -701,11 +698,8 @@ fn an_airfield_of_no_exit_module_makes_its_trains_at_its_helipad_and_its_jets_at
     };
     let mut additions = Additions::default();
     additions.type_mut(&name).production = Some(section);
+    additions.type_mut(&name).airfield_bones = Some(bones);
     let import = ProductionImport {
-        bones: ProductionBones {
-            airfields: BTreeMap::from([(name.declared().clone(), bones)]),
-            ..ProductionBones::default()
-        },
         parkings: BTreeMap::from([(name.clone(), parking)]),
         ..ProductionImport::default()
     };
@@ -787,7 +781,7 @@ fn a_power_of_a_marker_s_burst_is_a_cast_of_its_building_and_its_sciences_raise_
     let mut names = ImportNames::default();
     let center = rules.objects.object(b"Center").unwrap();
     names.unit_type(center, &rules).unwrap();
-    let produced = Produced::of(&rules, names, ProductionBones::default());
+    let produced = Produced::of(&rules, names, Additions::default());
     let import = &produced.import;
     let declared = |name: &str| DeclaredName::new(name).unwrap();
     let id = declared("power_repair");

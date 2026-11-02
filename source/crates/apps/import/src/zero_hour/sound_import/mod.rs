@@ -21,30 +21,30 @@ use crate::zero_hour::sound_drop_cause::SoundDropCause;
 /// The install's audio events as the effects file's sounds, each converted once as a weapon, an
 /// effect or a look first names it (02-engine-core.md, An event is the game's, as data;
 /// 09-zero-hour.md, A sound is PCM, the music the game's MP3): each file it names, its language's
-/// first, read once and held, an IMA ADPCM WAV decoded to 16-bit PCM, a PCM WAV and a track's MP3
-/// kept as they are; and what it drops of each, counted.
+/// first, read once and written as it converts, an IMA ADPCM WAV decoded to 16-bit PCM, a PCM WAV
+/// and a track's MP3 kept as they are, so no file waits for the others; and what it drops of
+/// each, counted.
 #[derive(Debug)]
-pub(crate) struct SoundImport<'a, R> {
+pub(crate) struct SoundImport<'a, R, W> {
     audio: &'a AudioIni,
     language: Option<&'a str>,
     read: R,
+    write: W,
     events: BTreeMap<DeclaredName, SoundEvent>,
     /// Each event the import converted or dropped, by the game's name: its package's name, none
     /// for one dropped.
     named: BTreeMap<String, Option<DeclaredName>>,
     /// The game's name of each package's name, which two of one name would share.
     taken: BTreeMap<DeclaredName, String>,
-    /// Each file a sound plays, by where the package holds it, none for one that did not read.
-    files: BTreeMap<PackagePath, Option<Vec<u8>>>,
+    /// Each file a sound plays, by where the package holds it: whether it read, and so was written.
+    files: BTreeMap<PackagePath, bool>,
     losses: Losses<SoundDropCause>,
 }
 
-/// What the import made of the sounds: each event by its package's name, each file's bytes by
-/// its path, and what it dropped.
+/// What the import made of the sounds: each event by its package's name, and what it dropped.
 #[derive(Debug)]
 pub(crate) struct ImportedSounds {
     pub(crate) events: BTreeMap<DeclaredName, SoundEvent>,
-    pub(crate) files: BTreeMap<PackagePath, Vec<u8>>,
     pub(crate) dropped: Vec<Dropped<SoundDropCause>>,
 }
 
@@ -55,14 +55,20 @@ const SIDE_TRACKS: [(&str, &str); 3] = [("USA", "USA"), ("China", "CHI"), ("GLA"
 /// The track the skirmish scripts play between two of a side's.
 const SILENCE: &str = "Game_Silent";
 
-impl<'a, R: FnMut(&ArchivePath) -> Result<Option<Vec<u8>>, ZeroHourError>> SoundImport<'a, R> {
+impl<'a, R, W> SoundImport<'a, R, W>
+where
+    R: FnMut(&ArchivePath) -> Result<Option<Vec<u8>>, ZeroHourError>,
+    W: FnMut(&PackagePath, &[u8]) -> Result<(), ZeroHourError>,
+{
     /// An import of the events of `audio`, its files of the language `language` first, each
-    /// file's bytes as `read` gives them, none for a file no archive holds.
-    pub(crate) fn new(audio: &'a AudioIni, language: Option<&'a str>, read: R) -> Self {
+    /// file's bytes as `read` gives them, none for a file no archive holds, each converted file
+    /// given to `write` once.
+    pub(crate) fn new(audio: &'a AudioIni, language: Option<&'a str>, read: R, write: W) -> Self {
         Self {
             audio,
             language,
             read,
+            write,
             events: BTreeMap::new(),
             named: BTreeMap::new(),
             taken: BTreeMap::new(),
@@ -139,14 +145,10 @@ impl<'a, R: FnMut(&ArchivePath) -> Result<Option<Vec<u8>>, ZeroHourError>> Sound
         self.losses.drop(name, cause);
     }
 
-    /// What the import made, every file of a sound read.
+    /// What the import made, every file of a sound written.
     pub(crate) fn finish(self) -> ImportedSounds {
-        let files = self.files.into_iter();
         ImportedSounds {
             events: self.events,
-            files: files
-                .filter_map(|(path, bytes)| Some((path, bytes?)))
-                .collect(),
             dropped: self.losses.into_iter().collect(),
         }
     }
@@ -299,11 +301,11 @@ impl<'a, R: FnMut(&ArchivePath) -> Result<Option<Vec<u8>>, ZeroHourError>> Sound
     fn sound(&mut self, event: &str, stem: &str) -> Result<Option<PackagePath>, ZeroHourError> {
         let stem = stem.to_ascii_lowercase();
         let path = game_path::package_path(format!("client/sounds/{stem}.wav"))?;
-        if let Some(read) = self.files.get(&path) {
-            if read.is_none() {
+        if let Some(&read) = self.files.get(&path) {
+            if !read {
                 self.losses.drop(event, SoundDropCause::Encoding);
             }
-            return Ok(read.as_ref().map(|_| path));
+            return Ok(read.then_some(path));
         }
         let localized = self.language.map(|language| {
             ArchivePath::of(&format!("data\\audio\\sounds\\{language}\\{stem}.wav"))
@@ -328,7 +330,10 @@ impl<'a, R: FnMut(&ArchivePath) -> Result<Option<Vec<u8>>, ZeroHourError>> Sound
             Err(_) => None,
         };
         let read = pcm.is_some();
-        self.files.insert(path.clone(), pcm);
+        if let Some(pcm) = pcm {
+            (self.write)(&path, &pcm)?;
+        }
+        self.files.insert(path.clone(), read);
         if !read {
             self.losses.drop(event, SoundDropCause::Encoding);
         }
@@ -350,7 +355,8 @@ impl<'a, R: FnMut(&ArchivePath) -> Result<Option<Vec<u8>>, ZeroHourError>> Sound
         else {
             return Ok(None);
         };
-        self.files.insert(path.clone(), Some(bytes));
+        (self.write)(&path, &bytes)?;
+        self.files.insert(path.clone(), true);
         Ok(Some(path))
     }
 }

@@ -45,8 +45,8 @@ pub(crate) enum WrittenModel {
     Skipped,
 }
 
-/// What converts a model or an animation and writes its file: the assets it reads, the writer,
-/// and what the models and the animations lacked so far.
+/// What converts a model or an animation and holds its file for the write: the assets it reads,
+/// the files converted, and what the models and the animations lacked so far.
 #[derive(Debug)]
 pub(super) struct Converter<'i> {
     pub(super) assets: ModelAssets<'i>,

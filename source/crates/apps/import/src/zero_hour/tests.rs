@@ -90,7 +90,6 @@ use crate::zero_hour::model_import::{Converted, ModelImport};
 use crate::zero_hour::model_writer::DroppedStates;
 use crate::zero_hour::model_writer::ModelWriter;
 use crate::zero_hour::object_flight::samples::shell_projectile;
-use crate::zero_hour::production_bones::ProductionBones;
 use crate::zero_hour::production_cx::ProductionCx;
 use crate::zero_hour::production_import::ProductionImport;
 use crate::zero_hour::rules_names::RulesNames;
@@ -1121,7 +1120,7 @@ fn an_imported_map_and_units_file_are_their_stages_own() {
         names: &mut names,
         additions: &mut additions,
     };
-    let production = ProductionImport::of(cx, ProductionBones::default());
+    let production = ProductionImport::of(cx);
     let mut names = names.into_projectiles();
     let combat = CombatImport::of(&rules, &mut names, &mut additions).unwrap();
     let sources = UpgradeSources {

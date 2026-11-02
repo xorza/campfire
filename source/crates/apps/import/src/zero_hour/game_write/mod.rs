@@ -19,9 +19,9 @@ use campfire_package_format::PackageFiles;
 use campfire_units::HeightGrid;
 use campfire_values::{PackagePath, Speed};
 
-use crate::texture::dds_file::DdsFile;
+use crate::texture::texture_file::TextureFile;
 use crate::texture::texture_kind::TextureKind;
-use crate::texture::tga_file::{TgaAlpha, TgaFile, TgaHeader};
+use crate::texture::tga_file::TgaAlpha;
 use crate::zero_hour::additions::Additions;
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::art_paths::ArtPaths;
@@ -75,7 +75,7 @@ const CIVILIAN: &str = "FactionCivilian";
 
 /// One write of an install's package, stage by stage, each stage's data dropped as it ends: the
 /// install and its rules, where its art lies, the package's writer, and what the import does not
-/// hold of the install, in the order the import meets it.
+/// hold of the install, each stage's as its stage ends, in the stages' order.
 #[derive(Debug)]
 pub(crate) struct GameWrite<'r> {
     install: &'r Install,
@@ -114,13 +114,13 @@ struct ConvertedFiles {
     animations: BTreeMap<PackagePath, Vec<u8>>,
 }
 
-/// The maps the import wrote, by name, the road pieces each draws, and the terrain textures they
-/// read, each once, for their conversion.
+/// The maps the import wrote, by name, the road pieces each draws, and the size of each terrain
+/// texture they draw, which the map's write wrote as it read it.
 #[derive(Debug)]
 struct WrittenMaps {
     maps: Vec<MapName>,
     roads: BTreeMap<MapName, RoadPieces>,
-    textures: BTreeMap<ArchivePath, TerrainTexture>,
+    textures: BTreeMap<ArchivePath, UVec2>,
 }
 
 /// The panel's import, and the buttons of the perks and the icons it dropped.
@@ -146,14 +146,6 @@ struct WrittenEffects {
     file: EffectsFile,
     textures: BTreeSet<ArchivePath>,
     actions: BTreeMap<DeclaredName, ActionLook>,
-}
-
-/// A terrain's texture as the import read it for its size: the size, and the file's bytes, which
-/// its conversion takes.
-#[derive(Debug)]
-struct TerrainTexture {
-    size: UVec2,
-    bytes: Vec<u8>,
 }
 
 impl<'r> GameWrite<'r> {
@@ -195,7 +187,7 @@ impl<'r> GameWrite<'r> {
             names: &mut names,
             additions: &mut additions,
         };
-        let production = ProductionImport::of(cx, looks.points.clone());
+        let production = ProductionImport::of(cx);
         let panel = self.write_panels(&production, &mut looks.units)?;
         let mut names = names.into_projectiles();
         let combat = CombatImport::of(game, &mut names, &mut additions)?;
@@ -241,7 +233,7 @@ impl<'r> GameWrite<'r> {
             .chain(effects.textures)
             .chain(panel.import.textures);
         let files = Self::texture_files(drawn)?;
-        self.write_textures(files, maps.textures)?;
+        self.write_textures(files, &maps.textures)?;
         let retaliation = rules_package::retaliation(game.ai.retaliation, &game.names)?;
         let movers = types.movers();
         let second_lives = types.second_lives(&game.names);
@@ -589,16 +581,19 @@ impl<'r> GameWrite<'r> {
         // (02-engine-core.md, A tread throws dust while it drives).
         let treads = game.objects.objects().flat_map(IniObject::draws);
         trails.extend(treads.flat_map(|draw| draw.tread_dust.iter().flatten().map(String::as_str)));
-        // Each sound a weapon, an effect or a look names, its files read once and held until the
-        // package is written (09-zero-hour.md, A sound is PCM, the music the game's MP3).
+        // Each sound a weapon, an effect or a look names, its files read once and written as each
+        // converts (09-zero-hour.md, A sound is PCM, the music the game's MP3).
         let install = self.install;
-        let mut sounds = SoundImport::new(&game.audio, install.language(), |path| {
+        let writer = &mut self.writer;
+        let read = |path: &ArchivePath| {
             if install.contains(path) {
                 install.read(path).map(Some)
             } else {
                 Ok(None)
             }
-        });
+        };
+        let write = |path: &PackagePath, bytes: &[u8]| Ok(writer.write(path.clone(), bytes)?);
+        let mut sounds = SoundImport::new(&game.audio, install.language(), read, write);
         let effect_sources = EffectSources {
             systems: &game.particles,
             lists: &game.effects,
@@ -656,9 +651,6 @@ impl<'r> GameWrite<'r> {
         self.writer
             .write(EffectsFile::path(), &effects.file.encode())?;
         self.writer.write(SoundFile::path(), &sound_file.encode())?;
-        for (to, bytes) in sounded.files {
-            self.writer.write(to, &bytes)?;
-        }
         self.losses
             .extend(sounded.dropped.into_iter().map(ImportLoss::Sound));
         Ok(WrittenEffects {
@@ -755,35 +747,52 @@ impl<'r> GameWrite<'r> {
 
     /// Writes each texture of `files` at its path, converted to KTX2: the textures the models,
     /// the terrain and the effects draw with, no other file of the install. A terrain's texture,
-    /// read for its size into `read`, is not read again.
+    /// which `written` holds, the map's write wrote already.
     fn write_textures(
         &mut self,
         files: BTreeMap<PackagePath, ArchivePath>,
-        mut read: BTreeMap<ArchivePath, TerrainTexture>,
+        written: &BTreeMap<ArchivePath, UVec2>,
     ) -> Result<(), ZeroHourError> {
         for (to, path) in files {
-            let kind = path
-                .extension()
-                .and_then(TextureKind::of)
-                .expect("a drawn texture is DDS or TGA");
-            let bytes = match read.remove(&path) {
-                Some(read) => read.bytes,
-                None => self.install.read(&path)?,
-            };
-            let texture = |error| ZeroHourError::Texture {
-                path: path.clone(),
-                error,
-            };
-            let ktx2 = match kind {
-                TextureKind::Dds => DdsFile::read(&bytes).map_err(texture)?.ktx2(),
-                // Zero Hour's loader keeps a texel's alpha whatever the header counts.
-                TextureKind::Tga => TgaFile::read(&bytes, TgaAlpha::Always)
-                    .map_err(texture)?
-                    .ktx2(),
-            };
-            self.writer.write(to, &ktx2)?;
+            if !written.contains_key(&path) {
+                let bytes = self.install.read(&path)?;
+                let texture = Self::texture(&path, &bytes)?;
+                self.writer.write(to, &texture.ktx2())?;
+            }
         }
         Ok(())
+    }
+
+    /// The texture `bytes` hold, of the kind of `path`, which a model, the terrain or an effect
+    /// draws; Zero Hour's loader keeps a texel's alpha whatever the header counts.
+    fn texture<'b>(path: &ArchivePath, bytes: &'b [u8]) -> Result<TextureFile<'b>, ZeroHourError> {
+        let kind = path
+            .extension()
+            .and_then(TextureKind::of)
+            .expect("a drawn texture is DDS or TGA");
+        TextureFile::read(kind, bytes, TgaAlpha::Always).map_err(|error| ZeroHourError::Texture {
+            path: path.clone(),
+            error,
+        })
+    }
+
+    /// The size of the terrain's texture at `path`, read, converted and written once, as `written`
+    /// holds each it wrote, so no texture waits in memory for the rest.
+    fn terrain_texture(
+        &mut self,
+        path: &ArchivePath,
+        written: &mut BTreeMap<ArchivePath, UVec2>,
+    ) -> Result<UVec2, ZeroHourError> {
+        if let Some(&size) = written.get(path) {
+            return Ok(size);
+        }
+        let bytes = self.install.read(path)?;
+        let texture = Self::texture(path, &bytes)?;
+        let size = texture.size();
+        self.writer
+            .write(game_path::texture(path)?, &texture.ktx2())?;
+        written.insert(path.clone(), size);
+        Ok(size)
     }
 
     /// Writes the mode's data of `mode`, the units' file `units`, the mode's text of `texts`, and
@@ -814,13 +823,13 @@ impl<'r> GameWrite<'r> {
     }
 
     /// The texture of `class`: the TGA `Art\Terrain\` holds by the name its terrain type gives,
-    /// as `readTexClass` opens it, read once into `read` with its size, for its conversion; none
-    /// for a class no type names, or a TGA the install lacks.
+    /// as `readTexClass` opens it, written once with its size; none for a class no type names, or
+    /// a TGA the install lacks.
     fn class_texture(
-        &self,
+        &mut self,
         class: &TextureClass,
         types: &TerrainIni,
-        read: &mut BTreeMap<ArchivePath, TerrainTexture>,
+        written: &mut BTreeMap<ArchivePath, UVec2>,
     ) -> Result<Option<PackageTexture>, ZeroHourError> {
         let Some(file) = types.texture(&class.name) else {
             return Ok(None);
@@ -829,18 +838,7 @@ impl<'r> GameWrite<'r> {
         if path.extension() != Some("tga") || !self.install.contains(&path) {
             return Ok(None);
         }
-        let size = if let Some(texture) = read.get(&path) {
-            texture.size
-        } else {
-            let bytes = self.install.read(&path)?;
-            let header = TgaHeader::read(&bytes).map_err(|error| ZeroHourError::Texture {
-                path: path.clone(),
-                error,
-            })?;
-            let size = header.size();
-            read.insert(path.clone(), TerrainTexture { size, bytes });
-            size
-        };
+        let size = self.terrain_texture(&path, written)?;
         Ok(Some(PackageTexture {
             path: game_path::texture(&path)?,
             size,
@@ -849,31 +847,17 @@ impl<'r> GameWrite<'r> {
 
     /// The texture of a road type, of the file `name` its `Texture` gives, as the game's asset
     /// manager finds it: its DDS, else its TGA, in `Art\Textures\` of the language's directory,
-    /// then of the archives' (09-zero-hour.md, A road's type is `Roads.ini`'s), read once into
-    /// `read` with its size, for its conversion; none for one no archive holds.
+    /// then of the archives' (09-zero-hour.md, A road's type is `Roads.ini`'s), written once with
+    /// its size; none for one no archive holds.
     fn road_texture(
-        &self,
+        &mut self,
         name: &str,
-        read: &mut BTreeMap<ArchivePath, TerrainTexture>,
+        written: &mut BTreeMap<ArchivePath, UVec2>,
     ) -> Result<Option<PackageTexture>, ZeroHourError> {
         let Some(path) = self.art.texture(name) else {
             return Ok(None);
         };
-        let size = if let Some(texture) = read.get(&path) {
-            texture.size
-        } else {
-            let bytes = self.install.read(&path)?;
-            let texture = |error| ZeroHourError::Texture {
-                path: path.clone(),
-                error,
-            };
-            let size = match path.extension().and_then(TextureKind::of) {
-                Some(TextureKind::Dds) => DdsFile::read(&bytes).map_err(texture)?.size(),
-                _ => TgaHeader::read(&bytes).map_err(texture)?.size(),
-            };
-            read.insert(path.clone(), TerrainTexture { size, bytes });
-            size
-        };
+        let size = self.terrain_texture(&path, written)?;
         Ok(Some(PackageTexture {
             path: game_path::texture(&path)?,
             size,

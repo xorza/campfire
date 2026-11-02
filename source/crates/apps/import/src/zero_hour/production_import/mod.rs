@@ -33,7 +33,6 @@ use crate::zero_hour::import_names::NamedObject;
 use crate::zero_hour::imported_type::ImportedType;
 use crate::zero_hour::panel_import::PanelButtons;
 use crate::zero_hour::power_drop_cause::PowerDropCause;
-use crate::zero_hour::production_bones::ProductionBones;
 use crate::zero_hour::production_cx::ProductionCx;
 use crate::zero_hour::production_import::power_cast::{PowerCast, PowerModifier, PowerNames};
 use crate::zero_hour::supply_import::{DOCK_RANGE, Spawning, SupplyImport};
@@ -59,7 +58,6 @@ pub(crate) struct ProductionImport {
     pub(crate) panel: PanelButtons,
     /// What it reads of the models: the helipad an airfield's trains leave from, each airfield's
     /// places and runways, which its jets take, and each dock's point.
-    bones: ProductionBones,
     /// The `ParkingPlaceBehavior` of each producer of one it visits.
     parkings: BTreeMap<TypeName, IniParking>,
     /// The sciences its trains, builds and researches need, by their names in the game, whose perks
@@ -152,13 +150,10 @@ impl ProductionImport {
     /// The trains, builds and supply of `cx`'s rules, from the unit types its names hold, each type
     /// a converted button makes or its variations hold, a building frees, or its object's
     /// prerequisites name, named there, and its own command set's buttons and supply converted in
-    /// turn, of the points `bones` gives.
-    pub(crate) fn of<'r>(mut cx: ProductionCx<'r, '_>, bones: ProductionBones) -> Self {
+    /// turn, of the points its additions give.
+    pub(crate) fn of<'r>(mut cx: ProductionCx<'r, '_>) -> Self {
         let rules = cx.rules;
-        let mut import = Self {
-            bones,
-            ..Self::default()
-        };
+        let mut import = Self::default();
         let mut queued: VecDeque<NamedObject<'r>> = cx.names.typed_objects().into();
         // A type is visited once, by its name, as several parents may field one variation.
         let mut seen: BTreeSet<TypeName> = queued.iter().map(|named| named.name.clone()).collect();
@@ -237,7 +232,7 @@ impl ProductionImport {
         named: &NamedObject<'r>,
     ) -> Vec<NamedObject<'r>> {
         let rules = cx.rules;
-        let dock = self.bones.docks.get(named.name.declared()).copied();
+        let dock = (cx.additions.get(&named.name)).and_then(|added| added.dock);
         self.supply.dock(cx, named, dock.and_then(Self::frame));
         let NamedObject {
             name,
@@ -263,7 +258,7 @@ impl ProductionImport {
         };
         if (kept || supply.one_shots().next().is_some())
             && !produces(cx.additions)
-            && let Some(section) = Self::section(producer.build(), self.points(name))
+            && let Some(section) = Self::section(producer.build(), Self::points(cx.additions, name))
         {
             cx.additions.type_mut(name).production = Some(section);
         }
@@ -297,7 +292,7 @@ impl ProductionImport {
     ) -> Option<NamedObject<'r>> {
         let rules = cx.rules;
         // A button in several sets is reported once for each cause it drops by.
-        let points = self.points(&producer.name);
+        let points = Self::points(cx.additions, &producer.name);
         let mut drop = |cause| {
             self.dropped.drop(button_name, cause);
             None
@@ -590,7 +585,7 @@ impl ProductionImport {
         let Ok(modifiers) = Self::science_modifiers(&mut self.sciences, sciences) else {
             return self.dropped.drop(button_name, ButtonDropCause::LongName);
         };
-        let points = self.points(&producer.name);
+        let points = Self::points(cx.additions, &producer.name);
         let Some(section) = Self::section(producer.object.build(), points) else {
             return self.dropped.drop(button_name, ButtonDropCause::NoQueue);
         };
@@ -736,11 +731,12 @@ impl ProductionImport {
         })
     }
 
-    /// The helipad and the places of the airfield `name`, none for another.
-    fn points(&self, name: &TypeName) -> ExitPoints {
+    /// The helipad and the places of the airfield `name`, of its `additions`, none for another.
+    fn points(additions: &Additions, name: &TypeName) -> ExitPoints {
+        let added = additions.get(name);
         ExitPoints {
-            helipad: self.bones.helipads.get(name.declared()).copied(),
-            airfield: self.bones.airfields.get(name.declared()).cloned(),
+            helipad: added.and_then(|added| added.helipad),
+            airfield: added.and_then(|added| added.airfield_bones.clone()),
         }
     }
 
@@ -792,7 +788,7 @@ impl ProductionImport {
             if parks.is_none_or(|data| data.places.is_empty()) {
                 continue;
             }
-            let Some(bones) = self.bones.airfields.get(name.declared()) else {
+            let Some(bones) = &added.airfield_bones else {
                 continue;
             };
             let parking = self.parkings.get(name).copied().unwrap_or_default();

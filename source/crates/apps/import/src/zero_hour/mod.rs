@@ -70,7 +70,6 @@ pub(crate) mod pivot_nodes;
 mod portable_structure;
 pub(crate) mod power_drop_cause;
 mod press_import;
-mod production_bones;
 pub(crate) mod production_cx;
 pub(crate) mod production_import;
 mod propaganda_import;
@@ -103,8 +102,8 @@ pub(crate) mod wreck_import;
 pub(crate) mod zero_hour_rules;
 
 /// What an import wrote: the packages' fingerprints, each map, by name, which loads, the road
-/// pieces each map draws, and what it does not hold of the install, in the order the import met
-/// it.
+/// pieces each map draws, and what it does not hold of the install, by the stage that dropped it,
+/// in the stages' order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Imported {
     /// The imported package's.

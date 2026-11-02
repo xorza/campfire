@@ -11,7 +11,6 @@ use crate::zero_hour::format::ini::object_ini::ObjectFiles;
 use crate::zero_hour::format::ini::particle_system_ini::samples::PARTICLE_SYSTEMS;
 use crate::zero_hour::format::ini::weapon_ini::samples::WEAPONS;
 use crate::zero_hour::format::wav::samples::wav;
-use crate::zero_hour::production_bones::ProductionBones;
 
 /// The audio of the sounds the samples name: the quiet list's hush and the cannon's fire, each a
 /// file of its own.
@@ -32,18 +31,27 @@ fn sound_file(path: &ArchivePath) -> Option<Vec<u8>> {
 /// texture in `Art\Textures\` but those of names starting `Lost`, of no sound.
 fn effects(systems: &str, lists: &str) -> EffectsImport {
     let audio = AudioIni::default();
-    let mut sounds = SoundImport::new(&audio, None, |path: &ArchivePath| Ok(sound_file(path)));
+    let mut sounds = SoundImport::new(
+        &audio,
+        None,
+        |path: &ArchivePath| Ok(sound_file(path)),
+        |_: &PackagePath, _: &[u8]| Ok(()),
+    );
     carried(systems, lists, &[], &mut sounds)
 }
 
 /// The effects of `effects`', the systems of `trails` carried by projectiles, the lists' sounds
 /// of `sounds`.
-fn carried<R: FnMut(&ArchivePath) -> Result<Option<Vec<u8>>, ZeroHourError>>(
+fn carried<R, W>(
     systems: &str,
     lists: &str,
     trails: &[&str],
-    sounds: &mut SoundImport<'_, R>,
-) -> EffectsImport {
+    sounds: &mut SoundImport<'_, R, W>,
+) -> EffectsImport
+where
+    R: FnMut(&ArchivePath) -> Result<Option<Vec<u8>>, ZeroHourError>,
+    W: FnMut(&PackagePath, &[u8]) -> Result<(), ZeroHourError>,
+{
     let mut particles = ParticleSystemIni::default();
     particles.read(systems.as_bytes()).unwrap();
     let mut effects = FxListIni::default();
@@ -88,7 +96,12 @@ fn a_list_s_systems_convert_on_the_engine_s_axes_and_what_the_slice_leaves_is_co
     // Of its event, the quiet list plays its sound alone, which the file holds.
     let mut audio = AudioIni::default();
     audio.read(AUDIO.as_bytes()).unwrap();
-    let mut sounds = SoundImport::new(&audio, None, |path: &ArchivePath| Ok(sound_file(path)));
+    let mut sounds = SoundImport::new(
+        &audio,
+        None,
+        |path: &ArchivePath| Ok(sound_file(path)),
+        |_: &PackagePath, _: &[u8]| Ok(()),
+    );
     let heard = carried(PARTICLE_SYSTEMS, FX_LISTS, &[], &mut sounds);
     let quiet = &heard.file.lists()[&name("fx_quiet")];
     assert_eq!(
@@ -326,7 +339,12 @@ fn a_projectile_s_trail_plays_and_each_weapon_and_death_names_the_effects_the_fi
     assert!(!trimmed.file.systems().contains_key(&name("exhaust")));
     let mut audio = AudioIni::default();
     audio.read(AUDIO.as_bytes()).unwrap();
-    let mut sounds = SoundImport::new(&audio, None, |path: &ArchivePath| Ok(sound_file(path)));
+    let mut sounds = SoundImport::new(
+        &audio,
+        None,
+        |path: &ArchivePath| Ok(sound_file(path)),
+        |_: &PackagePath, _: &[u8]| Ok(()),
+    );
     let mut effects = carried(&exhaust, FX_LISTS, &["Exhaust"], &mut sounds);
     assert!(effects.file.systems().contains_key(&name("exhaust")));
 
@@ -441,7 +459,6 @@ fn a_projectile_s_trail_plays_and_each_weapon_and_death_names_the_effects_the_fi
         conditions: BTreeMap::new(),
         objects: BTreeMap::new(),
         track_widths: BTreeMap::from([(name("tank"), 17.5)]),
-        points: ProductionBones::default(),
         additions: Additions::default(),
     };
     let units = &mut looks.units;

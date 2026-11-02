@@ -48,7 +48,6 @@ use crate::zero_hour::model_converter::SkippedModel;
 use crate::zero_hour::model_converter::WrittenModel;
 use crate::zero_hour::model_nodes::{HostNode, ModelBarrel, NodeChanges};
 use crate::zero_hour::portable_structure;
-use crate::zero_hour::production_bones::ProductionBones;
 use crate::zero_hour::state_drop_cause::StateDropCause;
 use crate::zero_hour::upgrade_import;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
@@ -64,8 +63,8 @@ pub struct DroppedStates {
 
 /// The models and the animations of an import and the client's looks of the objects, of
 /// `client/units.toml`: each model converted once, at `client/models/<name>.glb`, and each
-/// animation a unit's look names once, at `client/animations/<name>.glb`, into the package's
-/// writer; the nodes each model's looks read; the animations converted or dropped; the models the
+/// animation a unit's look names once, at `client/animations/<name>.glb`, held for the write once
+/// a look or an effect names it; the nodes each model's looks read; the animations converted or dropped; the models the
 /// objects name that the package lacks; and the textures the models name that no archive holds.
 #[derive(Debug)]
 pub(crate) struct ModelWriter<'i> {
@@ -79,15 +78,14 @@ pub(crate) struct ModelWriter<'i> {
 
 /// The looks of an import's `client/units.toml`, which later stages complete before the import
 /// writes them, the width of the track each look's treads lay, of the looks whose model names its
-/// treads' bones, the points production reads of each model, and what each type reads of its
-/// model, as its first additions.
+/// treads' bones, and what each type reads of its model, production's points among them, as its
+/// first additions.
 #[derive(Debug)]
 pub(crate) struct ImportedLooks {
     pub(crate) units: BTreeMap<DeclaredName, ClientUnit>,
     pub(crate) conditions: BTreeMap<DeclaredName, ConditionTest>,
     pub(crate) objects: BTreeMap<DeclaredName, ObjectLook>,
     pub(crate) track_widths: BTreeMap<DeclaredName, f32>,
-    pub(crate) points: ProductionBones,
     /// The first additions of the types: each one's bones, and a garrison's fire points.
     pub(crate) additions: Additions,
 }
@@ -227,7 +225,6 @@ impl ModelWriter<'_> {
         let mut objects = BTreeMap::new();
         let mut additions = Additions::default();
         let mut track_widths = BTreeMap::new();
-        let mut points = ProductionBones::default();
         let shown = StateLook::default();
         for object in ini.objects() {
             let scale = object.scale();
@@ -316,14 +313,11 @@ impl ModelWriter<'_> {
             if let Some(width) = track_width {
                 track_widths.insert(declared.clone(), width);
             }
-            if let Some(helipad) = helipad {
-                points.helipads.insert(declared.clone(), helipad);
-            }
-            if let Some(airfield) = airfield {
-                points.airfields.insert(declared.clone(), airfield);
-            }
-            if let Some(dock) = dock {
-                points.docks.insert(declared.clone(), dock);
+            if helipad.is_some() || airfield.is_some() || dock.is_some() {
+                let added = additions.type_mut(&type_name);
+                added.helipad = helipad;
+                added.airfield_bones = airfield;
+                added.dock = dock;
             }
             if let Some(points) = garrisoned {
                 additions.type_mut(&type_name).fire_points = points;
@@ -339,7 +333,6 @@ impl ModelWriter<'_> {
             conditions: std::mem::take(&mut self.conditions),
             objects,
             track_widths,
-            points,
             additions,
         })
     }
