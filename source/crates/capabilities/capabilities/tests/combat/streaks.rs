@@ -112,6 +112,24 @@ fn a_streak_speeds_its_weapon_a_stage_at_a_time_and_its_coast_ends_it() {
     // dummy gone, `fast` holds through tick 96 and goes in tick 97.
     let entity = game.unit_entity(dummy);
     game.despawn(entity);
+    // Its stage's modifier removed, the next grant pass gives it back; so does a revival, of a
+    // gunner that died while its streak held the stage, which held it no more while it lay dead
+    // (04-capabilities/stats.md, Passives by one pass).
+    let gun = game.unit_entity(gunner);
+    let mut unit = game.entity_mut(gun);
+    let (mut modifiers, mut clocks) = unit
+        .get_components_mut::<(&mut Modifiers, &mut ModifierClocks)>()
+        .unwrap();
+    modifiers.remove(&mut clocks, fast, Some(gunner));
+    assert_eq!(held(&game, gunner), []);
+    game.step();
+    assert_eq!(held(&game, gunner), [fast]);
+    game.insert_parts(gunner, Dead);
+    game.step();
+    assert_eq!(held(&game, gunner), []);
+    game.entity_mut(gun).remove::<Dead>();
+    game.step();
+    assert_eq!(held(&game, gunner), [fast]);
     game.run_until(97);
     assert_eq!(held(&game, gunner), [fast]);
     game.run_until(98);

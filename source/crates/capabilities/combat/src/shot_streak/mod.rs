@@ -1,18 +1,20 @@
+use bevy_ecs::change_detection::{DetectChanges, Ref};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Changed, Has};
+use bevy_ecs::query::Has;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::ActionsData;
 use campfire_common::{Tick, Ticks};
 use campfire_declarations::{BookCx, BookError, ById};
 use campfire_sim::{
-    DueIndex, DueUnit, SimComponent, SimTick, StableId, TimedKept, TimedProcess, TimedRuns,
+    DueIndex, DueUnit, Removals, SimComponent, SimTick, StableId, TimedKept, TimedProcess,
+    TimedRuns,
 };
 use campfire_states::{NotSent, Replication};
-use campfire_stats::{Grant, GrantFrom, Grants, Hold, ModifierAppliers, Modifiers, Way};
+use campfire_stats::{GrantFrom, Grants, Hold, ModifierAppliers, Modifiers, Way};
 use campfire_units::{Dead, UnitEntity};
-use campfire_values::{ActionId, ModifierId, Rank};
+use campfire_values::{ActionId, ModifierId};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
@@ -234,49 +236,44 @@ impl ShotStreak {
         }
     }
 
-    /// Pushes the grants of each unit whose streak changed that differ from what it holds under
-    /// the streak's hold: its stage's or its fall's modifier from itself at rank 1 while it lives
-    /// and holds one, and a release of each other streak modifier it holds. A shot that keeps the
-    /// stage pushes none.
+    /// Pushes the grants that make each unit hold exactly its streak's modifier under the streak's
+    /// hold, from itself at rank 1: its stage's or its fall's while it lives and holds one, and
+    /// none else (04-capabilities/stats.md, Passives by one pass). What a unit wants follows from
+    /// its streak, its death and its modifiers, so a run visits only the units whose streak or
+    /// modifiers changed or that lived again, as a removed modifier or a revival comes back to
+    /// its stage's at once.
     pub(crate) fn want(
         weapons: Res<'_, ById<ActionId, Weapon>>,
         mut grants: ResMut<'_, Grants>,
         units: Query<
             '_,
             '_,
-            (Entity, &StableId, &Self, Has<Dead>, Option<&Modifiers>),
-            Changed<Self>,
+            (
+                Entity,
+                &StableId,
+                Ref<'_, Self>,
+                Has<Dead>,
+                Ref<'_, Modifiers>,
+            ),
         >,
+        mut revived: Removals<'_, '_, Dead>,
+        mut lived: Local<'_, Vec<Entity>>,
     ) {
-        for (entity, &id, &streak, dead, modifiers) in &units {
+        lived.clear();
+        lived.extend(revived.read());
+        lived.sort_unstable();
+        for (entity, &id, streak, dead, modifiers) in &units {
+            let changed = streak.is_changed() || modifiers.is_changed();
+            if !(changed || lived.binary_search(&entity).is_ok()) {
+                continue;
+            }
             let wanted = streak.modifier(&weapons).filter(|_| !dead);
-            let streaks = modifiers
-                .into_iter()
-                .flat_map(Modifiers::iter)
-                .filter(|carried| {
-                    let instance = carried.instance;
-                    instance.source == Some(id) && instance.lifetime.held_by(Hold::Streak)
-                });
-            let grant = |modifier, rank| Grant {
-                modifier,
-                from: GrantFrom::Itself,
-                hold: Hold::Streak,
-                action: None,
-                rank,
-            };
-            let mut run = grants.of(entity, id);
-            let mut holds_wanted = false;
-            for carried in streaks {
-                let modifier = carried.instance.id;
-                if Some(modifier) == wanted {
-                    holds_wanted = true;
-                } else {
-                    run.push(grant(modifier, None));
-                }
-            }
-            if let Some(modifier) = wanted.filter(|_| !holds_wanted) {
-                run.push(grant(modifier, Some(Rank::FIRST)));
-            }
+            grants.of(entity, id).hold_exactly(
+                Hold::Streak,
+                GrantFrom::Itself,
+                wanted.as_slice(),
+                Some(&modifiers),
+            );
         }
     }
 }

@@ -583,6 +583,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             type_name::<Modifiers>(),
             type_name::<Owner>(),
             type_name::<Dead>(),
+            type_name::<Dead>(),
             type_name::<Gatherer>(),
         ]
     );

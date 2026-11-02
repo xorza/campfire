@@ -372,12 +372,16 @@ impl Module for Stats {
             StatsSystems::GrantAtStrike,
             StatsSystems::GrantAtEnd,
         ] {
-            cx.add(set, (ActionPassives::want, GrantPass::run).chain());
+            cx.add(
+                set,
+                (ActionPassives::want, TypePassive::want, GrantPass::run).chain(),
+            );
         }
         cx.add(
             StatsSystems::GrantAtResolve,
             (
                 ActionPassives::want,
+                TypePassive::want,
                 PlayerGrants::want,
                 UpgradeGrants::want,
                 GrantPass::run,

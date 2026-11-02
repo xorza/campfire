@@ -1,4 +1,6 @@
+use bevy_ecs::change_detection::{DetectChanges, Ref};
 use bevy_ecs::entity::Entity;
+use bevy_ecs::system::{Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_declarations::{BookCx, BookError, BookPlace, ById, ByIdBuilder, PerId};
 use campfire_names::UnknownName;
@@ -7,13 +9,15 @@ use campfire_values::{ModifierId, Named, Rank, UnitType};
 
 use crate::Stats;
 use crate::applier::Applier;
+use crate::grants::{GrantFrom, Grants};
 use crate::lifetime::Hold;
 use crate::modifier_adds::ModifierAdd;
 use crate::modifier_book::ModifierBook;
 use crate::modifiers::Modifiers;
 use crate::passive_data::PassiveData;
 
-/// The modifier a unit type's units hold from their spawn on, from themselves: its passive.
+/// The modifier a unit type's units hold from their spawn on, from themselves, under the type's own
+/// hold: its passive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TypePassive(pub ModifierId);
 
@@ -43,8 +47,9 @@ impl PerId<UnitType> for TypePassive {
 
 impl TypePassive {
     /// Grants the unit of `entity`, which the mode's spawner spawned, its type's passive, held
-    /// from itself at the first rank, as `GrantPass` grants in its passes: the spawn callback of
-    /// stats. A unit that spawns holds nothing from itself yet.
+    /// from itself at the first rank under the type's hold, as `GrantPass` grants in its passes:
+    /// the spawn callback of stats, so it holds it from its first tick. A unit that spawns holds
+    /// nothing from itself yet.
     pub(crate) fn grant(world: &mut World, entity: Entity) {
         let unit = world.entity(entity);
         let unit_type = *unit.get::<UnitType>().expect("a unit has a type");
@@ -62,7 +67,7 @@ impl TypePassive {
             source: Some(id),
             action: None,
             rank: Rank::FIRST,
-            hold: Some(Hold::Passive),
+            hold: Some(Hold::Type),
         };
         let add = ModifierAdd {
             target: id,
@@ -71,5 +76,34 @@ impl TypePassive {
             duration: None,
         };
         Stats::add_modifier(world, add);
+    }
+
+    /// Pushes the grants of each unit's type's passive, under the type's hold from the unit itself
+    /// at rank 1, as `want` of every grant source does, so a passive a script removed comes back
+    /// at the next pass, and no action's passive of the same modifier releases it
+    /// (04-capabilities/stats.md, Passives by one pass). What a unit wants follows from its type
+    /// and its modifiers, so a run visits only the units whose modifiers changed, unless a book
+    /// changed.
+    pub(crate) fn want(
+        (passives, book): (Res<'_, ById<UnitType, Self>>, Res<'_, ModifierBook>),
+        mut grants: ResMut<'_, Grants>,
+        units: Query<'_, '_, (Entity, &StableId, &UnitType, Ref<'_, Modifiers>)>,
+    ) {
+        if passives.is_empty() {
+            return;
+        }
+        let every = passives.is_changed() || book.is_changed();
+        for (entity, &id, &unit_type, modifiers) in &units {
+            if !(every || modifiers.is_changed()) {
+                continue;
+            }
+            let wanted = passives.get(unit_type).map(|passive| passive.0);
+            grants.of(entity, id).hold_exactly(
+                Hold::Type,
+                GrantFrom::Itself,
+                wanted.as_slice(),
+                Some(&modifiers),
+            );
+        }
     }
 }

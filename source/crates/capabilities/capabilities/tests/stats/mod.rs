@@ -916,6 +916,11 @@ fn a_grant_holds_its_modifier_at_its_rank_until_granted_no_more() {
         &Stats::modifier_data(None),
         None,
     );
+    let data = ModifierData {
+        reapply: Reapply::Stack,
+        ..Stats::modifier_data(None)
+    };
+    Stats::load_modifier(&mut game, PackageIndex::MODE, "stacking", &data, None);
     let plain = Units::load_next_type(&mut game, &UnitTypeCore::default());
     let id = Spawn::of(plain, Vec3::ZERO).place(&mut game);
     let gone = Spawn::of(plain, Vec3::ZERO).place(&mut game);
@@ -933,18 +938,25 @@ fn a_grant_holds_its_modifier_at_its_rank_until_granted_no_more() {
         action: None,
         rank,
     };
-    let push = |game: &mut Match, id: StableId, rank| {
+    let item = |rank| Grant {
+        hold: Hold::Item,
+        ..grant(rank)
+    };
+    let push_grant = |game: &mut Match, id: StableId, grant| {
         let entity = game.unit_entity(id);
         let mut grants = game.resource_mut::<Grants>();
-        grants.of(entity, id).push(grant(rank));
+        grants.of(entity, id).push(grant);
     };
+    let push = |game: &mut Match, id: StableId, rank| push_grant(game, id, grant(rank));
     let held = |game: &Match| {
         let modifiers = game.get::<Modifiers>(unit).unwrap();
         modifiers
             .get(inspired, Some(id))
             .map(|instance| instance.rank)
     };
-    let change = |game: &Match, rank| grant(rank).change(game.get::<Modifiers>(unit).unwrap(), id);
+    let change_of =
+        |game: &Match, grant: Grant| grant.change(game.get::<Modifiers>(unit).unwrap(), id);
+    let change = |game: &Match, rank| change_of(game, grant(rank));
     // Held at no rank: a rank applies, and none changes nothing.
     assert_eq!(
         change(&game, Some(Rank::FIRST)),
@@ -960,19 +972,61 @@ fn a_grant_holds_its_modifier_at_its_rank_until_granted_no_more() {
     game.step();
     assert_eq!(held(&game), Some(Rank::FIRST));
     assert_eq!(game.resource::<Grants>().iter().len(), 0);
-    // Held at rank 1: the same rank changes nothing, another applies, and none releases.
+    // Held at rank 1: the same rank changes nothing, another takes its rank, and none releases.
     assert_eq!(change(&game, Some(Rank::FIRST)), None);
-    assert_eq!(
-        change(&game, Some(second)),
-        Some(GrantChange::Apply(second))
-    );
+    assert_eq!(change(&game, Some(second)), Some(GrantChange::Rank(second)));
     assert_eq!(change(&game, None), Some(GrantChange::Release));
     push(&mut game, id, Some(second));
     game.step();
     assert_eq!(held(&game), Some(second));
+    // An item holds it too, asking the first rank: it joins at the passive's 2, the highest any
+    // hold asks, and its grant then changes nothing, so no stage renews it at another rank. The
+    // passive gone, the item's hold keeps it, at the first rank, the one its holds now ask; the
+    // item gone too, it ends (04-capabilities/stats.md, The holds of an instance agree on its
+    // rank).
+    assert_eq!(
+        change_of(&game, item(Some(Rank::FIRST))),
+        Some(GrantChange::Join)
+    );
+    push_grant(&mut game, id, item(Some(Rank::FIRST)));
+    game.step();
+    assert_eq!(held(&game), Some(second));
+    assert_eq!(change_of(&game, item(Some(Rank::FIRST))), None);
+    assert_eq!(change(&game, Some(second)), None);
     push(&mut game, id, None);
     game.step();
+    assert_eq!(held(&game), Some(Rank::FIRST));
+    push_grant(&mut game, id, item(None));
+    game.step();
     assert_eq!(held(&game), None);
+
+    // A modifier that stacks as it applies again takes no stack from a hold: a passive's rank-up
+    // renews it at rank 2 with its one stack, and an item that joins and goes leaves it so.
+    let stacking = game
+        .resource::<ModifierBook>()
+        .names()
+        .named((PackageIndex::MODE, "stacking"))
+        .unwrap();
+    let stacked = |game: &Match| {
+        let modifiers = game.get::<Modifiers>(unit).unwrap();
+        modifiers
+            .get(stacking, Some(id))
+            .map(|held| (held.instance.rank, held.instance.stacks))
+    };
+    let on = |grant: Grant| Grant {
+        modifier: stacking,
+        ..grant
+    };
+    for (pushed, after) in [
+        (on(grant(Some(Rank::FIRST))), (Rank::FIRST, 1)),
+        (on(grant(Some(second))), (second, 1)),
+        (on(item(Some(Rank::FIRST))), (second, 1)),
+        (on(item(None)), (second, 1)),
+    ] {
+        push_grant(&mut game, id, pushed);
+        game.step();
+        assert_eq!(stacked(&game), Some(after), "{pushed:?}");
+    }
 }
 
 #[test]
