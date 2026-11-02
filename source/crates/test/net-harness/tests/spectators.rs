@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 
 use bevy_app::{App, AppExit};
-use bevy_ecs::query::{Allow, With};
+use bevy_ecs::query::With;
 use campfire_bots::OrderScript;
 use campfire_host::{JoinError, JoinRefused, JoinState, Loss, MatchClock, SessionEnd};
 use campfire_net::{CloseCode, LinkLossCause, LinkLost, LobbyStart, SimServerWorld, StopRequest};
@@ -18,11 +18,12 @@ use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_net_prediction::RollbackMode;
 use campfire_net_replication::Replicate;
 use campfire_progression::Experience;
-use campfire_sim::{SimWorld, StableId, Unpredicted};
+use campfire_sim::{SimWorld, StableId};
 use campfire_store::internals::TestDir;
 use campfire_units::{Life, SpawnPoint, UnitsWorld};
 use campfire_values::{Relations, Team, TeamSet};
 
+use crate::held;
 use crate::short_3v3::{PICKS, short_3v3};
 
 /// Steps a spectator may take to link, answer the offer and watch.
@@ -39,13 +40,6 @@ fn duo(visibility: &'static [&'static str], spectators: u32) -> InProcessSetup {
 
 fn state(local: &InProcessMatch, client: usize) -> &JoinState {
     local.client(client).world().resource::<JoinState>()
-}
-
-/// The stable ids of the entities `app` holds, predicted or not.
-fn held(app: &mut App) -> BTreeSet<StableId> {
-    let world = app.world_mut();
-    let mut ids = world.query_filtered::<&StableId, Allow<Unpredicted>>();
-    ids.iter(world).copied().collect()
 }
 
 /// The stable ids of the entities the server replicates.
@@ -97,14 +91,14 @@ fn a_spectator_watches_every_unit_holds_what_spectators_may_and_only_one_finds_a
     local.step_until(JOIN_STEPS, |local| state(local, second).loss().is_some());
     assert_eq!(state(&local, second).loss(), Some(Loss::JoinRefused));
     let refused: Vec<JoinError> = local
-        .log()
+        .log_check()
         .take::<JoinRefused>()
         .iter()
         .map(|refused| refused.error)
         .collect();
     assert_eq!(refused, [JoinError::NoSpectatorPlace]);
     assert_eq!(
-        local.log().take::<LinkLost>(),
+        local.log_check().take::<LinkLost>(),
         [LinkLost {
             cause: LinkLossCause::ClientClosed(CloseCode::JoinRefused)
         }]

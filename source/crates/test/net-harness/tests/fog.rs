@@ -2,7 +2,6 @@
 
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::Allow;
 use bevy_ecs::world::EntityRef;
 use bevy_replicon::client::confirm_history::ConfirmHistory;
 use campfire_common::Tick;
@@ -19,6 +18,8 @@ use campfire_orders::OrdersDirective;
 use campfire_sim::{Position, SimTick, SimWorld, StableId, Unpredicted};
 use campfire_units::{GroundPoint, Owner, SeenBy, SpawnPoint, Units, UnitsWorld};
 use campfire_values::{Relation, Relations, Team};
+
+use crate::held;
 
 /// Frames of match: one tick each.
 const MATCH_FRAMES: usize = 90;
@@ -140,15 +141,6 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
     assert!(!creep_on_client.contains::<Route>() && !creep_on_client.contains::<Progress>());
 }
 
-/// The stable ids of the units `client`'s world holds, predicted or not, in order.
-fn held(local: &mut InProcessMatch, client: usize) -> Vec<StableId> {
-    let world = local.client_mut(client).world_mut();
-    let mut units = world.query_filtered::<&StableId, Allow<Unpredicted>>();
-    let mut ids: Vec<StableId> = units.iter(world).copied().collect();
-    ids.sort_unstable();
-    ids
-}
-
 #[test]
 fn a_link_holds_only_what_its_held_team_sees_and_learns_the_relations_as_it_sits() {
     // A solo match: the west hero at (0, −2) sees 6 m, so the east tower at (8, −3) is hidden.
@@ -171,8 +163,8 @@ fn a_link_holds_only_what_its_held_team_sees_and_learns_the_relations_as_it_sits
     }
     let seen = local.server().world().get::<SeenBy>(tower_entity).unwrap();
     assert!(!seen.get().unwrap().contains(west));
-    assert!(held(&mut local, 0).contains(&hero));
-    assert!(!held(&mut local, 0).contains(&tower));
+    assert!(held(local.client_mut(0)).contains(&hero));
+    assert!(!held(local.client_mut(0)).contains(&tower));
 
     // A second login of the player takes the player slot in a new app: it holds the hero and not
     // the hidden tower, and the relations a script set before it sat.
@@ -191,7 +183,7 @@ fn a_link_holds_only_what_its_held_team_sees_and_learns_the_relations_as_it_sits
     for _ in 0..5 {
         local.step();
     }
-    let units = held(&mut local, second);
+    let units = held(local.client_mut(second));
     assert!(units.contains(&hero), "{units:?}");
     assert!(!units.contains(&tower), "{units:?}");
     let relations = |app: &App| {
@@ -201,7 +193,7 @@ fn a_link_holds_only_what_its_held_team_sees_and_learns_the_relations_as_it_sits
     };
     assert_ne!(relations(local.server()), Some(Relations::default()));
     assert_eq!(relations(local.client(second)), relations(local.server()));
-    assert_eq!(local.log().take::<LinkLost>().len(), 1);
+    assert_eq!(local.log_check().take::<LinkLost>().len(), 1);
 
     // A client whose player has no slot is refused, and told so, and its link held no unit.
     let stranger = local.add_client(1);
@@ -216,16 +208,16 @@ fn a_link_holds_only_what_its_held_team_sees_and_learns_the_relations_as_it_sits
             .playing_clock()
             .is_none()
     );
-    assert_eq!(held(&mut local, stranger), []);
+    assert!(held(local.client_mut(stranger)).is_empty());
     let refused: Vec<JoinError> = local
-        .log()
+        .log_check()
         .take::<JoinRefused>()
         .iter()
         .map(|refused| refused.error)
         .collect();
     assert_eq!(refused, [JoinError::NoPlayerSlot]);
     assert_eq!(
-        local.log().take::<LinkLost>(),
+        local.log_check().take::<LinkLost>(),
         [LinkLost {
             cause: LinkLossCause::ClientClosed(CloseCode::JoinRefused)
         }]

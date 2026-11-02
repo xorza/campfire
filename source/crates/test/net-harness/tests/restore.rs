@@ -19,7 +19,7 @@ use campfire_runner::{Replay, Session};
 use campfire_store::DurableDir;
 use campfire_store::internals::TestDir;
 
-use crate::PlayedMatch;
+use crate::{PlayedMatch, session_log};
 
 /// The scenario's match, its server's data in `scratch`, after 90 steps; with the state hash after
 /// each tick the server ran.
@@ -78,12 +78,7 @@ fn a_session_past_its_window_ends_aborted_its_journal_cut_at_a_tear() {
         hashes: before,
     } = played(&test_dir);
     let cut = local.next_tick(End::Server);
-    let id = local
-        .server()
-        .world()
-        .resource::<Session>()
-        .log()
-        .session_id();
+    let id = session_log(&local).session_id();
     local.stop_server();
 
     // Under the name of another session, the directory's journal is refused, naming its own.

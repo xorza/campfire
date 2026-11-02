@@ -332,7 +332,7 @@ fn a_failed_script_call_logs_its_tick_unit_hook_and_why() {
         error: "script call raised \"no think\"".to_owned(),
     };
     assert_eq!(
-        fixed.log().take::<ScriptCallFailed>(),
+        fixed.log_check().take::<ScriptCallFailed>(),
         [
             failed(0, west),
             failed(1, east),

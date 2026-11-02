@@ -647,7 +647,7 @@ impl<S> Stepper<S> {
 
     /// The check of what its apps log at Warn and Error, from which a test takes the events it
     /// causes.
-    pub const fn log(&self) -> &LogCheck {
+    pub const fn log_check(&self) -> &LogCheck {
         &self.log
     }
 

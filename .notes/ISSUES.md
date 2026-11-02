@@ -7,6 +7,7 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Research
 
+- **Rules.** `every_rule::the_workspace_keeps_every_rule` takes 1.35 s alone, `--test-threads 1`, past the bound of 1 s; of the other 2,772 tests, only the 3v3's scripted match, which is exempt, passes it (measured 2 November 2026).
 
 ## Ready
 

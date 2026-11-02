@@ -216,7 +216,7 @@ impl FixedMatch {
     }
 
     /// The events at Warn and Error that the match logged and no test took yet.
-    pub const fn log(&self) -> &LogCheck {
+    pub const fn log_check(&self) -> &LogCheck {
         &self.log
     }
 }

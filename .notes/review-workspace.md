@@ -36,15 +36,6 @@ The coordinator checked these bugs in the code: play-1, play-2, combat-1 (the ra
 
 Batches go most impactful first. A batch that needs another stands after it. Each batch ends with `cargo drive check` and `cargo drive test` passing, as AGENTS.md's workflow says. An item marked **Decide** waits for the owner's choice between the options it names.
 
-### 1. Test time
-
-The test run fails now on a test that passes alone, so every later batch needs this one first. Files: `source/.config/nextest.toml`, `test/harness/src/replay_record.rs`, `test/harness/tests/runner/match_3v3/`, `source/checks/lan-check/src/lan_match.rs`, `test/net-harness/tests/`, `.notes/ISSUES.md`.
-
-- [ ] **testing-4.** `nextest.toml:20-23`: the 3v3 scripted match takes `threads-required = "num-cpus"` but plays its 15,200 ticks on one thread. Only `ReplayRecord::assert_segments_replay` runs in parallel. It took 27.9 s, and the tests that reserve every core took 34.2 s together, which is past the suite's 30 s before any other test runs. Full runs on 2026-10-28 took 38.9–40.6 s. **Decide:** (a) the play is a normal test, and the replay reads its recorded log and snapshots; or (b) the scripted match keeps one thread, and its replay draws from `threads::Parallel` at the cores that are free. Measure it alone with `--test-threads 1` before and after.
-- [ ] **testing-5.** `nextest.toml:5`: `terminate-after = 5` is set for a test alone, but a full run shares the cores, so it killed `a_1v1_through_delayed_links` at 5.02 s, and the test passes alone. **Decide:** (a) the default profile kills at the `ci` profile's 30 s, and SLOW still flags 1 s; or (b) a drive step measures the slow tests alone. Commit `bd8b17ca6` deleted the issue item for the three tests over 1 s alone (the server stall at 1.06 s, the verifier's 3v3 log at 1.05 s, the local server's play at 1.02 s), but no test changed. Put it back with this run's list of 31 slow tests. The proving mode's golden is in an ordinary test (`harness/tests/runner/proving_match/mod.rs:245`), and the proving match plays whole in three tests.
-- [ ] **testing-11 (part).** `lan_match.rs:24-26`: `CI_SCALE = 6` copies the ratio of the two profiles' `terminate-after`. Derive it from the profile that testing-5 chooses.
-- [ ] **testing-12.** `net-harness/tests/bots.rs:27` and `rejoin.rs:78` (`destination`), `saves.rs:67` and `checkpoints.rs:68` (`log`), `spectators.rs:45` and `fog.rs:144` (`held`), and `test-packages/tests/uses.rs:61`, `items.rs:33` and `mode_package/mod.rs:121` (`name`, `fountain`) are copies inside one test binary. Keep one copy of each in the binary's root. `InProcessMatch::log()` returns a `LogCheck` beside the tests' `log() -> &SessionLog`. Rename them `log_check` and `session_log`. `destination` takes the hero through `MatchUnits::hero`.
-
 ### 2. Riders in every unit count
 
 Files: `capabilities/production/src/holdings.rs`, `capabilities/production/src/production_column.rs`, `capabilities/mode/src/victory.rs`, `apps/client/src/view/minimap/mod.rs`, `capabilities/capabilities/tests/interaction/riding.rs`, `capabilities/capabilities/tests/mode/`.
@@ -219,3 +210,12 @@ Files: `session/protocol/src/session_log/{journal_replay,journal_shape}.rs`, `se
 - [ ] **ses-7.** `run_ask.rs:10-12`: the doc says the default wall time is 120 s, but `RunAsk::WALL` is 110. The MCP tool shows this doc, and the console's fingerprint hashes it. Target: the doc points to `RunAsk::WALL` and states no number.
 - [ ] **ses-8.** `match_console/mod.rs:225-231,268-275,295-302,437-446`: the console's speed, phase and activity enums map to the host's by inline matches, the speed in both directions. Target: `From` impls in `host`.
 - [ ] **fnd-6.** `logging.rs:68-71`: the terminal layer writes to the unbuffered stderr on the thread that logs, which can be the server's tick. The file layer goes through a worker so that this thread never waits. Target: the terminal layer writes through a `StreamWriter` worker over stderr.
+
+## Changed
+
+- **testing-11 (part).** `CI_SCALE` cites the runners' measured speed, 3.5 to 6 times an M5's, which the `ci` profile records: with testing-5's choice both profiles end a test at 30 s, so their ratio, 1, no longer says how much slower CI is.
+
+## Decisions
+
+- **The 3v3 plays on one thread and replays on the cores left (testing-4).** Its override drops `threads-required`, and every test that takes cores runs first at priority 100, the 3v3 next at 90, as nextest starts no test past one that waits for cores ([nextest test priorities](https://nexte.st/docs/configuration/test-priorities/)): a full run took 23.5 s, now 21.9 s. Refused: a test of the play and another of its replay, which would share a log through the disk in an order nextest does not keep.
+- **A test ends at 30 s in every profile (testing-5).** The default profile ends a test at 30 s, as `ci` did, and SLOW still names a test past 1 s; a run of every test alone, `--test-threads 1`, found one past 1 s, the rules' test at 1.35 s, now in the issue log. Refused: a driver step that times the slow tests alone, a change to `cargo-drive`, which the workspace does not hold.

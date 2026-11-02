@@ -3,7 +3,6 @@
 
 use std::time::Duration;
 
-use bevy_ecs::query::With;
 use campfire_common::{AfterLeave, PlayerSlot, StateHash};
 use campfire_host::SessionTimes;
 use campfire_host::internals::TickHashes;
@@ -14,25 +13,16 @@ use campfire_net::internals::SimServerWorldInternals;
 use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_players::PlayersWorld;
-use campfire_progression::{Experience, PerkBook, PlayerPerks, PlayerPoints};
+use campfire_progression::{PerkBook, PlayerPerks, PlayerPoints};
 use campfire_protocol::{Controller, ServerInput};
 use campfire_runner::Session;
 use campfire_script::StateValue;
 use campfire_stats::PlayerModifiers;
 use campfire_store::internals::TestDir;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
-use campfire_units::{Destination, Owner};
+use campfire_units::Destination;
 
-/// Where the server's hero of `player_slot` walks to.
-fn destination(local: &mut InProcessMatch, player_slot: PlayerSlot) -> Destination {
-    let world = local.server_mut().world_mut();
-    let mut heroes = world.query_filtered::<(&Owner, &Destination), With<Experience>>();
-    let (_, destination) = heroes
-        .iter(world)
-        .find(|(owner, _)| owner.player_slot() == player_slot)
-        .unwrap();
-    *destination
-}
+use crate::destination;
 
 /// The lane mode's one state field, the word picked.
 fn picked(local: &InProcessMatch) -> StateValue {
@@ -60,7 +50,7 @@ fn a_server_bot_plays_its_orders_and_its_pick_in_their_ticks_and_its_log_verifie
         let tick = local.next_tick(End::Server);
         local.step();
         if local.next_tick(End::Server) > tick {
-            let walking = destination(&mut local, bot) != Destination::default();
+            let walking = destination(&local, bot) != Destination::default();
             seen.push((tick, picked(&local), walking));
         }
     }
@@ -135,11 +125,11 @@ fn a_leavers_slot_under_bot_plays_the_takeover_bots_orders() {
         local.step();
     }
     assert!(left(&local));
-    assert_eq!(destination(&mut local, player_slot), Destination::default());
+    assert_eq!(destination(&local, player_slot), Destination::default());
     for _ in 0..5 {
         local.step();
     }
-    assert_ne!(destination(&mut local, player_slot), Destination::default());
+    assert_ne!(destination(&local, player_slot), Destination::default());
     assert!(
         local
             .server_inputs()
@@ -177,7 +167,7 @@ fn played(setup: InProcessSetup, stop: bool, end: u64) -> Played {
         let tick = local.next_tick(End::Server);
         local.step();
         if local.next_tick(End::Server) > tick && (tick == 10 || tick == 11) {
-            walks.push(destination(&mut local, bot));
+            walks.push(destination(&local, bot));
         }
         if stop && tick == 10 && local.next_tick(End::Server) == 11 {
             local.restart_server();
@@ -253,7 +243,7 @@ fn a_mode_bot_thinks_at_its_period_and_the_log_holds_its_orders_as_its_inputs() 
     );
     let to = |value| Num::from_int(value).unwrap();
     let walk = Destination::to(Some(Vec3::new(to(3), Num::ZERO, to(2))));
-    assert_eq!(destination(&mut local, bot), walk);
+    assert_eq!(destination(&local, bot), walk);
     local.assert_log_replays();
 }
 

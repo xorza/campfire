@@ -96,7 +96,7 @@ fn a_rider_leaves_its_enemies_clients_and_stays_hidden_on_its_allies() {
     }
     holds(&local, second);
     assert_eq!(
-        local.log().take::<LinkLost>(),
+        local.log_check().take::<LinkLost>(),
         [LinkLost {
             cause: LinkLossCause::ClientClosed(CloseCode::Superseded)
         }]

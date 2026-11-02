@@ -342,7 +342,7 @@ fn play<S: Stack>(stack: S, kind: ClientKind) -> Played {
         .unlinked
         .clone();
     unlinked.extend(&stepper.client_world(0).resource::<Outcomes>().unlinked);
-    let logged = stepper.log().take::<ProtocolDiffers>();
+    let logged = stepper.log_check().take::<ProtocolDiffers>();
     Played {
         gate,
         received,

@@ -192,7 +192,7 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
     local.step();
     assert_eq!(refused(&local), (None, false));
     assert_eq!(
-        local.log().take::<InputMessageRefused>(),
+        local.log_check().take::<InputMessageRefused>(),
         [InputMessageRefused {
             player_slot: PlayerSlot::new(0),
             next_tick,
@@ -402,7 +402,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
     for _ in 0..5 {
         local.step();
     }
-    assert_eq!(local.log().take::<LinkLost>().len(), 1);
+    assert_eq!(local.log_check().take::<LinkLost>().len(), 1);
     // The session runs on while its players hold their links, and a stop ends it, as its match
     // ended.
     let world = local.server_mut().world_mut();

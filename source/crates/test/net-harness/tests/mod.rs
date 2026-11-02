@@ -16,17 +16,22 @@ mod scenario;
 mod short_3v3;
 mod spectators;
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use campfire_common::StateHash;
+use bevy_app::App;
+use bevy_ecs::query::Allow;
+use campfire_common::{PlayerSlot, StateHash};
+use campfire_harness::MatchUnits;
 use campfire_host::{ServerDir, SessionDir};
 use campfire_net::SimServerWorld;
 use campfire_net_harness::InProcessMatch;
 use campfire_protocol::SessionLog;
 use campfire_runner::{Replay, Session, SessionWorld};
-use campfire_sim::StateRegistry;
+use campfire_sim::{StableId, StateRegistry, Unpredicted};
 use campfire_store::InputFile;
 use campfire_store::internals::TestDir;
+use campfire_units::Destination;
 
 /// A match a test played, and the state hash after each tick its server ran.
 #[derive(Debug)]
@@ -38,12 +43,7 @@ struct PlayedMatch {
 /// The directory the snapshots of `local`'s session go to, its server's data in `test_dir`'s
 /// `data`.
 fn snapshots(test_dir: &TestDir, local: &InProcessMatch) -> PathBuf {
-    let id = local
-        .server()
-        .world()
-        .resource::<Session>()
-        .log()
-        .session_id();
+    let id = session_log(local).session_id();
     test_dir
         .path("data/sessions")
         .join(id.to_string())
@@ -79,4 +79,23 @@ fn published_replay<'p>(local: &'p mut InProcessMatch, snapshots: &Path) -> Repl
         assert_eq!(replay.check_snapshot(record, &snapshot), Ok(()));
     }
     replay
+}
+
+/// The server's session log of `local`.
+fn session_log(local: &InProcessMatch) -> &SessionLog {
+    local.server().world().resource::<Session>().log()
+}
+
+/// Where the server's hero of `player_slot` walks to.
+fn destination(local: &InProcessMatch, player_slot: PlayerSlot) -> Destination {
+    let units = MatchUnits::of(local.server().world());
+    let hero = units.hero(player_slot.get());
+    *units.unit(hero).get::<Destination>().unwrap()
+}
+
+/// The stable ids of the entities `app` holds, predicted or not.
+fn held(app: &mut App) -> BTreeSet<StableId> {
+    let world = app.world_mut();
+    let mut ids = world.query_filtered::<&StableId, Allow<Unpredicted>>();
+    ids.iter(world).copied().collect()
 }

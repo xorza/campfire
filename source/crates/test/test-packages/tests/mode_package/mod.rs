@@ -32,6 +32,7 @@ use campfire_values::{Number, PackageName, Scalar, Stat};
 
 use crate::moba::{edited, load, moba, two_lanes};
 use crate::module_rules::{entry, rule, rule_at, unit_type};
+use crate::name;
 
 /// A flaw, the package it is in, and the problem it fails the load with.
 const MANIFEST: &str = "moba/modes/3v3/manifest.toml";
@@ -116,10 +117,6 @@ fn stat_loop<const N: usize>(problem: &LoadProblem, stats: [&str; N]) -> bool {
         &Place::Section("stats"),
         &StatGraphError::Loop(looped),
     )
-}
-
-fn name(name: &str) -> DeclaredName {
-    DeclaredName::new(name).unwrap()
 }
 
 /// Whether `problem` is a script that does not compile, as it reads the variable `name`, which
