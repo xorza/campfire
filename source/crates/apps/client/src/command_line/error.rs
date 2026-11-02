@@ -2,7 +2,7 @@ use std::io;
 use std::net::AddrParseError;
 
 use campfire_common::DeclaredName;
-use campfire_host::ReportReadError;
+use campfire_host::ReportError;
 use thiserror::Error;
 
 /// Why a command line clap took names no run of the client.
@@ -17,8 +17,8 @@ pub(crate) enum ArgsError {
     /// No data directory holds the report, two folders up, and the line names none.
     #[error("no data directory holds the report, and the line names none")]
     ReportData,
-    #[error("the report's facts")]
-    Report(#[source] ReportReadError),
+    #[error("the report")]
+    Report(#[source] ReportError),
 }
 
 /// A `--watch` that names no team, as a team's name is a declared name.

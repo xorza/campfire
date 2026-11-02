@@ -3,10 +3,11 @@ use std::num::NonZeroU32;
 use std::path::{self, Path, PathBuf};
 
 use campfire_common::{DeclaredName, MapName, PlayerSlot, Tick};
-use campfire_host::{JoinRole, OrderFile, PlayerSlotBotArg, ReportCamera, ReportDir};
+use campfire_host::{JoinRole, OrderFile, PlayerSlotBotArg, ReadReport, ReportCamera, ReportDir};
 use campfire_mode::{OptionValue, PlayerSlotPick};
 use campfire_net_core::TlsKey;
 use campfire_package::ModePackages;
+use campfire_protocol::SessionLog;
 use campfire_values::TeamSet;
 use clap::{Parser, ValueEnum};
 use secp256k1::XOnlyPublicKey;
@@ -70,7 +71,7 @@ pub(crate) enum PlayedServer {
     /// directory `data`, whose server's key signed the report's log (08-sessions.md, The client
     /// opens a report).
     Replay {
-        report: ReportDir,
+        log: Box<SessionLog>,
         through: Tick,
         camera: ReportCamera,
         data: PathBuf,
@@ -256,8 +257,7 @@ impl Args {
         let report = path::absolute(report).map_err(ArgsError::ReportPath)?;
         let held = report.parent().and_then(Path::parent).map(Path::to_owned);
         let data = data.or(held).ok_or(ArgsError::ReportData)?;
-        let report = ReportDir::at(report);
-        let facts = report.read_facts().map_err(ArgsError::Report)?;
+        let ReadReport { facts, log } = ReportDir::at(report).read().map_err(ArgsError::Report)?;
         Ok(Self {
             bot: None,
             role: RoleArg::Watch { teams: Vec::new() },
@@ -265,7 +265,7 @@ impl Args {
             mode: facts.mode_dir,
             map: Some(facts.map),
             server: PlayedServer::Replay {
-                report,
+                log: Box::new(log),
                 through: facts.tick,
                 camera: facts.camera,
                 data,

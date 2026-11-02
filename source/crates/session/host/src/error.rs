@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use campfire_bots::OrderScriptError;
 use campfire_codec::TomlError;
 use campfire_common::Version;
-use campfire_protocol::{ConnectError, DelegationError, LogError};
+use campfire_protocol::{ConnectError, DelegationError, LogError, SessionId};
 use campfire_runner::ServerInputRefusal;
 use campfire_store::{DurableDirCreateError, DurableDirError, DurableError, PathError, ReadError};
 use serde::{Deserialize, Serialize};
@@ -99,6 +99,18 @@ pub enum ReportReadError {
     /// The report is of another release, whose packages and log this one need not read.
     #[error("the report is of release {0}")]
     OtherRelease(Version),
+}
+
+/// Why a report does not read whole: its facts, its log, or a log of another session than its
+/// facts name, as a folder whose log was copied from another report holds.
+#[derive(Debug, Error)]
+pub enum ReportError {
+    #[error("the report's facts do not read")]
+    Facts(#[source] ReportReadError),
+    #[error("the report's log does not read")]
+    Log(#[source] ReportLogError),
+    #[error("the report's facts name session {facts}, and its log is of session {log}")]
+    OtherSession { facts: SessionId, log: SessionId },
 }
 
 /// Why a report's log does not read: a remote match's report holds none.

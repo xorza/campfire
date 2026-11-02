@@ -39,3 +39,17 @@ pub enum ReadError {
     #[error("it did not read")]
     Read(#[source] io::Error),
 }
+
+impl ReadError {
+    /// The error of a read of an `InputStream`: `TooLarge` of one past its bound, else `Read`.
+    pub fn of_stream(error: io::Error) -> Self {
+        if error.kind() == io::ErrorKind::FileTooLarge
+            && let Some(Self::TooLarge { max }) = error
+                .get_ref()
+                .and_then(|inner| inner.downcast_ref::<Self>())
+        {
+            return Self::TooLarge { max: *max };
+        }
+        Self::Read(error)
+    }
+}

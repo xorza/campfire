@@ -81,7 +81,7 @@ impl PackageDir {
                         let hashed = walk.hash(file).map_err(|error| {
                             IndexError::Read(PathError {
                                 path: path.clone(),
-                                error: ReadError::Read(error),
+                                error: ReadError::of_stream(error),
                             })
                         })?;
                         walk.insert(package_path, hashed)

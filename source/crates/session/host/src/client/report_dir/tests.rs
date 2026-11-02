@@ -69,11 +69,7 @@ fn a_report_s_facts_and_screenshot_read_back_from_its_folder() {
     );
     dir.write_facts(&watched).unwrap();
     // One red pixel over one white one seen half through.
-    let screenshot = RgbaImage {
-        width: 1,
-        height: 2,
-        pixels: vec![255, 0, 0, 255, 255, 255, 255, 128],
-    };
+    let screenshot = RgbaImage::new(1, 2, vec![255, 0, 0, 255, 255, 255, 255, 128]).unwrap();
     dir.write_screenshot(&screenshot).unwrap();
     let file = InputFile::read(&dir.screenshot(), 1 << 10).unwrap();
     assert_eq!(Png::decode(&file).unwrap(), screenshot);

@@ -3,6 +3,8 @@ use std::ops::Range;
 use bevy_ecs::resource::Resource;
 use campfire_common::Tick;
 
+use crate::events::input_ack_refused::InputAckRefused;
+
 /// The inputs the player sent, to predict with again after a rollback, each in the tick it takes
 /// effect in: from the oldest a rollback can reach on. Inputs are kept in the order of their seq,
 /// and their ticks never decrease, so a tick's inputs are one run, and their payloads sit end to
@@ -121,13 +123,22 @@ impl SentInputs {
 
     /// Takes the server's word on where the inputs from seq `first` on take effect, each in the
     /// tick `applied` gives, or never; and expects each input it has not acknowledged yet behind
-    /// them. An input the client no longer keeps, or never sent, is passed over.
-    pub fn acknowledge(&mut self, first: u64, applied: &[Option<Tick>]) {
+    /// them. An input the client no longer keeps, or never sent, is passed over. An ack that
+    /// places an input before one ahead of it, the ticks of the kept inputs then out of order, is
+    /// refused, the inputs as they were; `InputAck` decodes only seqs a `u64` holds.
+    pub fn acknowledge(
+        &mut self,
+        first: u64,
+        applied: &[Option<Tick>],
+    ) -> Result<(), InputAckRefused> {
+        if !self.keeps_order(first, applied) {
+            return Err(InputAckRefused { first });
+        }
         let acknowledged = first + u64::try_from(applied.len()).expect("a count fits u64");
         self.unacknowledged.start =
             acknowledged.clamp(self.unacknowledged.start, self.unacknowledged.end);
         let Some(oldest) = self.inputs.first().map(|input| input.seq) else {
-            return;
+            return Ok(());
         };
         let mut changed = self.inputs.len();
         for (seq, &tick) in (first..).zip(applied) {
@@ -153,15 +164,37 @@ impl SentInputs {
         for input in &mut self.inputs[changed..] {
             let behind = previous.map_or(input.stamp, |previous| previous.max(input.stamp));
             input.tick = match input.landing {
-                Landing::Applied => {
-                    debug_assert!(previous.is_none_or(|previous| previous <= input.tick));
-                    input.tick
-                }
+                Landing::Applied => input.tick,
                 Landing::Expected => behind,
                 Landing::Never => previous.unwrap_or(input.stamp),
             };
             previous = Some(input.tick);
         }
+        Ok(())
+    }
+
+    /// Whether the kept inputs' applied ticks stay in order once the ack from seq `first` of
+    /// `applied` places its own.
+    fn keeps_order(&self, first: u64, applied: &[Option<Tick>]) -> bool {
+        let mut previous = None;
+        for input in &self.inputs {
+            let acked = input
+                .seq
+                .checked_sub(first)
+                .and_then(|at| usize::try_from(at).ok())
+                .and_then(|at| applied.get(at));
+            let tick = match acked {
+                Some(&tick) => tick,
+                None => (input.landing == Landing::Applied).then_some(input.tick),
+            };
+            if let Some(tick) = tick {
+                if previous.is_some_and(|previous| previous > tick) {
+                    return false;
+                }
+                previous = Some(tick);
+            }
+        }
+        true
     }
 
     /// Drops every input, as a client whose link failed does.

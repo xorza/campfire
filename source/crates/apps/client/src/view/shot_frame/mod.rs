@@ -109,10 +109,10 @@ impl ShotFrame {
                 let mut sum = [0_u64; 4];
                 for row in rows.clone() {
                     for column in columns.clone() {
-                        let at = ((self.region.min.y + row) as usize * frame.width as usize
+                        let at = ((self.region.min.y + row) as usize * frame.width() as usize
                             + (self.region.min.x + column) as usize)
                             * 4;
-                        for (sum, &byte) in sum.iter_mut().zip(&frame.pixels[at..at + 4]) {
+                        for (sum, &byte) in sum.iter_mut().zip(&frame.pixels()[at..at + 4]) {
                             *sum += u64::from(byte);
                         }
                     }
@@ -125,11 +125,8 @@ impl ShotFrame {
                 );
             }
         }
-        RgbaImage {
-            width: self.image.x,
-            height: self.image.y,
-            pixels,
-        }
+        RgbaImage::new(self.image.x, self.image.y, pixels)
+            .expect("a cut of a frame holds a pixel, four bytes each")
     }
 
     /// The box round `points`, the frame's pixels a unit's bounds show at, with a margin, within

@@ -349,8 +349,10 @@ impl MatchConsole {
         let ended = Self::has_ended(world);
         let until = match to {
             &RunTo::Tick(tick) => RunUntil::Tick(tick),
+            // A count past the last tick a `u64` numbers runs to that tick, as no match plays
+            // past it.
             &RunTo::Ticks(ticks) => match ticks.checked_sub(1) {
-                Some(more) => RunUntil::Tick(next + more),
+                Some(more) => RunUntil::Tick(next.saturating_add(more)),
                 None => return RunStart::Answered(ConsoleAnswer::Ran(RunStop::Reached)),
             },
             &RunTo::Until(RunCondition::Unit { id, state }) => {

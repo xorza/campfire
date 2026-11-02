@@ -2,8 +2,10 @@ use std::error::Error;
 use std::ffi::OsString;
 
 use campfire_common::{NotHex, Version};
+use campfire_harness::FixedSession;
 use campfire_host::{BotArg, ClientLayout, PlayerSlotBotArgError, ReportFile};
-use campfire_protocol::SessionId;
+use campfire_runner::SessionWorld;
+use campfire_store::DurableFile;
 use campfire_store::internals::TestDir;
 use campfire_test_packages::TestMode;
 use campfire_values::Team;
@@ -157,13 +159,21 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
 #[test]
 fn a_report_names_its_mode_its_map_and_its_data_directory() {
     // A report the client wrote into its data directory's `reports`, of a player of the lane.
+    // A lane match of 40 ticks, whose log the report holds, as a local match's report does.
+    let mut fixed = FixedSession::new(TestMode::Lane.packages(), 1).start();
+    for _ in 0..40 {
+        fixed.step();
+    }
+    let mut log = Vec::new();
+    fixed.game().session().log().encode(&mut log);
+    let session = fixed.game().session().log().session_id();
     let test_dir = TestDir::new();
     let layout = ClientLayout::at(test_dir.path("client"));
-    let session = SessionId::new([5; 32]);
     let dir = layout
         .create_report_dir(session, Tick::new(39))
         .unwrap()
         .dir;
+    DurableFile::write(&dir.log(), &log).unwrap();
     let camera = ReportCamera {
         pivot: [3.5, -2.0],
         yaw: 0.25,

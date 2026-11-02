@@ -2289,6 +2289,7 @@ dependencies = [
  "campfire-console",
  "campfire-declarations",
  "campfire-geometry",
+ "campfire-harness",
  "campfire-host",
  "campfire-interaction",
  "campfire-items",

@@ -146,6 +146,7 @@ unic-langid.workspace = true
 
 [dev-dependencies]
 campfire-client = { workspace = true, features = ["internals"] }
+campfire-harness.workspace = true
 campfire-test-packages.workspace = true
 fluent-syntax.workspace = true
 naga = { workspace = true, features = ["wgsl-in"] }

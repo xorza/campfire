@@ -1,6 +1,6 @@
 use campfire_bots::BotScriptError;
 use campfire_common::ExitStatus;
-use campfire_host::{KeyFileError, OrderFileError, ReportLogError};
+use campfire_host::{KeyFileError, OrderFileError};
 use campfire_net::LocalServerError;
 use campfire_net_socket::BindError;
 use campfire_package::LoadError;
@@ -31,8 +31,6 @@ pub(crate) enum ClientLaunchError {
     Team(#[from] UnknownTeam),
     #[error("the data directory does not open")]
     DataDir(#[from] DataDirError),
-    #[error("the report's log does not read")]
-    ReportLog(#[from] ReportLogError),
     #[error("the local server does not start")]
     LocalServer(#[from] LocalServerError),
     #[error("the mode does not run at the listing's rate")]
@@ -52,7 +50,6 @@ impl ClientLaunchError {
             | Self::BotOrders(_)
             | Self::Key(_)
             | Self::DataDir(_)
-            | Self::ReportLog(_)
             | Self::LocalServer(_)
             | Self::Socket(_) => ExitStatus::Failure,
         }

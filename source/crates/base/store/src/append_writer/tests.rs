@@ -71,9 +71,18 @@ fn a_writer_whose_file_fails_reports_the_failure_once_and_keeps_nothing_after() 
         while !watch.is_settled() {
             thread::yield_now();
         }
-        // Stopped, it takes no record more. The failure is taken once, through the watch after
-        // a drop, or from the close.
+        // Stopped, it takes no record more, and its worker runs on until the close, as a worker
+        // ends only so. The failure is taken once, through the watch after a drop, or from the
+        // close.
         writer.append(1, |_| unreachable!("a stopped writer takes no record"));
+        let mut writer = writer;
+        #[expect(
+            clippy::used_underscore_binding,
+            reason = "the writer holds its worker to join, which no other code reads"
+        )]
+        {
+            writer._worker.check();
+        }
         let failure = if append {
             drop(writer);
             watch.take_failure()
