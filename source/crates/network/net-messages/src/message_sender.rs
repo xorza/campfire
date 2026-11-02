@@ -55,6 +55,19 @@ impl<M: Message> ListedEndpoint for MessageSender<M> {
     }
 }
 
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::message::Message;
+    use crate::message_sender::MessageSender;
+
+    impl<M: Message> MessageSender<M> {
+        /// How many messages it holds until the flush, for another crate's test of what sends.
+        pub const fn bridge_queued(&self) -> usize {
+            self.queue.len()
+        }
+    }
+}
+
 #[cfg(test)]
 impl<M: Message> MessageSender<M> {
     pub(crate) const fn len(&self) -> usize {

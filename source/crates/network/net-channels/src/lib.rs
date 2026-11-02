@@ -23,6 +23,7 @@ mod fragment_receiver;
 mod fragmented_message;
 mod gap_store;
 mod message_id;
+mod message_id_tag;
 mod message_ref;
 mod packet;
 mod packet_buffer_pool;

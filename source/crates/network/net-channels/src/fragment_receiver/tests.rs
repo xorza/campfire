@@ -280,3 +280,29 @@ fn malformed_fragments_are_refused_with_their_error() {
         }
     }
 }
+
+/// A discard keeps the half of the id space from the newest on and drops the half before it, on
+/// either side of the wrap: of 5, 10, 20, 32777 and 32778 before 10, it keeps 10, 20 and 32777, the
+/// last 32767 past 10; of 5, 40000, 65530, 65534 and 65535 before 65534, it keeps 65534, 65535
+/// and 5, which wrapped past it, and the charges of the dropped leave what is held.
+#[test]
+fn a_discard_drops_the_half_before_the_newest_across_the_wrap() {
+    let kept = |ids: &[u16], newest: u16| {
+        let mut receiver = FragmentReceiver::new();
+        for &id in ids {
+            let mut constructor = FragmentConstructor::new(NetTick(0), 2);
+            constructor.charged = 3;
+            receiver.fragment_messages.insert(id, constructor);
+            receiver.held += 3;
+        }
+        receiver.discard_older_than(MessageId(newest));
+        let kept: Vec<u16> = receiver.fragment_messages.keys().copied().collect();
+        assert_eq!(receiver.held, 3 * kept.len());
+        kept
+    };
+    assert_eq!(kept(&[5, 10, 20, 32777, 32778], 10), [10, 20, 32777]);
+    assert_eq!(
+        kept(&[5, 40000, 65530, 65534, 65535], 65534),
+        [5, 65534, 65535]
+    );
+}

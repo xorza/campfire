@@ -2882,7 +2882,6 @@ dependencies = [
 name = "campfire-net-channels"
 version = "0.1.0"
 dependencies = [
- "bevy_platform",
  "bytes",
  "campfire-measure",
  "campfire-net-bytes",

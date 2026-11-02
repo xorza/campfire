@@ -81,7 +81,7 @@ Each integer is big-endian. A datagram's first bit is 1 on a handshake packet an
 | 2 | `Ping` | None: the keep-alive and the probe of a timeout |
 | 3 | `PathChallenge` | 8 random bytes, which a new path echoes |
 | 4 | `PathResponse` | The 8 bytes of the challenge |
-| 5 | `Close` | The `u64` code of the close: 0 ended with no reason, 1 dropped, as the app exited; Campfire's from 16: `Left`, `Superseded`, `InputRefused`, `ChainRewritten`, `SessionRefused`, `Unanswered`, `JoinRefused` |
+| 5 | `Close` | The `u64` code of the close: 0 ended with no reason, 1 dropped, as the app exited, 2 a protocol mismatch, as the peer's protocol check gave other hashes; Campfire's from 16: `Left`, `Superseded`, `InputRefused`, `ChainRewritten`, `SessionRefused`, `Unanswered`, `JoinRefused` |
 
 - **The seal.** Each packet session packet is sealed with ChaCha20-Poly1305 under the TLS handshake's 1-RTT keys, each direction its own: the nonce from the whole packet number, which a reader expands from its low 16 bits as RFC 9000's appendix A does; the header, not the connection ID, as the associated data; the 16-byte tag after the body.
 - **A stateless reset.** A server that holds no packet session of a datagram's connection ID answers with at most 64 bytes, shorter than that datagram and none to one of 21 bytes or less: a first bit of 0, random bytes, and the reset token of the ID last. A client that receives a datagram of at least 21 bytes whose last 16 are its packet session's reset token ends that packet session.

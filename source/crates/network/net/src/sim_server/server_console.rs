@@ -1,5 +1,5 @@
 use bevy_ecs::system::{Local, Query, Res};
-use campfire_console::{Reply, Request};
+use campfire_console::{ConsoleAnswer, ConsoleRefusal, Reply, Request};
 use campfire_host::{ConsoleStdio, Hosting, MatchConsole};
 use campfire_net_messages::{MessageReceiver, MessageSender};
 
@@ -56,8 +56,60 @@ impl ServerConsole {
         }
     }
 
+    /// Refuses each request a link brought to a server that is no client's local one, as it
+    /// refuses a journal's command, so a remote peer's requests reach no console and no log.
+    pub(crate) fn refuse_links(
+        mut links: Query<'_, '_, (&mut MessageReceiver<Request>, &mut MessageSender<Reply>)>,
+    ) {
+        for (mut receiver, mut sender) in &mut links {
+            for request in receiver.receive() {
+                sender.send::<MatchChannel>(Reply {
+                    id: request.id,
+                    tick: None,
+                    answer: ConsoleAnswer::Refused(ConsoleRefusal::NotLocal),
+                });
+            }
+        }
+    }
+
     /// Whether the server is a client's local one, which takes its client's console.
     pub(crate) fn is_local(hosting: Res<'_, Hosting>) -> bool {
         *hosting == Hosting::Local
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy_app::App;
+    use bevy_ecs::system::RunSystemOnce;
+    use campfire_console::{ConsoleAsk, RequestId};
+    use campfire_net_messages::AppMessageExt;
+
+    use super::*;
+
+    #[test]
+    fn a_server_no_client_hosts_refuses_each_linked_request() {
+        // Two requests on one link take two refusals to that link, and leave none unread.
+        let mut app = App::new();
+        app.register_message::<Request>();
+        app.register_message::<Reply>();
+        let world = app.world_mut();
+        let mut receiver = MessageReceiver::<Request>::default();
+        for id in [1, 2] {
+            receiver.bridge_push::<MatchChannel>(Request {
+                id: RequestId(id),
+                ask: ConsoleAsk::Status,
+            });
+        }
+        let link = world
+            .spawn((receiver, MessageSender::<Reply>::default()))
+            .id();
+        world.run_system_once(ServerConsole::refuse_links).unwrap();
+        let link = world.entity(link);
+        assert!(link.get::<MessageReceiver<Request>>().unwrap().is_empty());
+        assert_eq!(
+            link.get::<MessageSender<Reply>>().unwrap().bridge_queued(),
+            2
+        );
     }
 }

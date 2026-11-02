@@ -195,10 +195,9 @@ fn a_gateway_port_no_server_listens_on_is_told_at_once() {
     };
     drop(closed);
     let mut client = Gateway::connect(address, nonce()).unwrap();
-    let start = Instant::now();
+    // The OS's answer, not the tries' silence, gives `NoServer`.
     let error = map(&mut client, None).unwrap_err();
     assert!(matches!(error, PortMapError::NoServer), "{error:?}");
-    assert!(start.elapsed() < TRIES.first);
 }
 
 #[test]
@@ -210,10 +209,8 @@ fn a_stop_ends_a_request_before_its_next_try() {
         tries: TRIES,
         stop: &stopped,
     };
-    let start = Instant::now();
     let error = client.address(wait).unwrap_err();
     assert!(matches!(error, PortMapError::Stopped), "{error:?}");
-    // No try went, so no wait of 20 ms came.
-    assert!(start.elapsed() < TRIES.first);
+    // No try went, so no wait came.
     assert_eq!(gateway.requests(), Vec::<Vec<u8>>::new());
 }

@@ -617,6 +617,35 @@ fn datagrams_of_each_type(protection: impl Fn() -> Protection) -> Vec<BytesMut> 
     out.into_iter().map(|transmit| transmit.datagram).collect()
 }
 
+/// A ping, a path challenge or a close of a body one byte longer, or one shorter, than its type's
+/// is dropped before it is acknowledged, and each as sent is read.
+#[test]
+fn a_control_packet_of_another_body_length_is_dropped() {
+    let datagrams = datagrams_of_each_type(|| Protection::Plain);
+    let fresh = || {
+        PacketSession::new(
+            Protection::Plain,
+            None,
+            PacketSessionSetup::default(),
+            at(0),
+        )
+    };
+    for original in &datagrams[1..] {
+        let longer = [&**original, &[0]].concat();
+        let shorter = &original[..original.len() - 1];
+        for changed in [&*longer, shorter] {
+            let mut receiver = fresh();
+            let mut answers = Vec::new();
+            let received =
+                receiver.receive(at(30), BytesMut::from(changed), Path::Peer, &mut answers);
+            assert_eq!(received, Received::Dropped, "{changed:?}");
+            assert!(answers.is_empty());
+        }
+        let received = fresh().receive(at(30), original.clone(), Path::Peer, &mut Vec::new());
+        assert!(matches!(received, Received::Read { .. }), "{original:?}");
+    }
+}
+
 /// A seeded mutation test of the packet session's parsers: 2,048 mutations of each datagram type
 /// reach a fresh packet session of each protection, and none panics; a packet session reads a
 /// mutation only when its header parses. The test seal's tag is a byte sum, which a mutation can

@@ -1,4 +1,5 @@
-use bevy_platform::collections::HashMap;
+use std::collections::BTreeMap;
+
 use bytes::Bytes;
 use campfire_net_bytes::ToBytes;
 use campfire_net_core::NetId;
@@ -6,20 +7,21 @@ use campfire_net_core::NetId;
 use super::*;
 use crate::error::ReceiveError;
 use crate::fragment_body::FragmentBody;
+use crate::message_id_tag::MessageIdTag;
 use crate::single_body::SingleBody;
 use crate::tick_decoder::TickDecoder;
 
 impl Packet {
-    /// The messages of a packet by channel, each of a channel whose messages
-    /// carry an id when `has_id` says so.
+    /// The messages of a packet by channel, each of a channel whose messages carry their id as
+    /// `tag` says.
     pub(crate) fn parse_packet_payload(
         self,
-        has_id: impl Fn(NetId) -> bool,
-    ) -> Result<HashMap<NetId, Vec<Bytes>>, ReceiveError> {
+        tag: impl Fn(NetId) -> MessageIdTag,
+    ) -> Result<BTreeMap<NetId, Vec<Bytes>>, ReceiveError> {
         let mut payload = self.payload.freeze();
         let _ = payload.split_to(OutgoingPayload::HEADROOM);
         let mut cursor = payload.into();
-        let mut res: HashMap<NetId, Vec<Bytes>> = HashMap::default();
+        let mut res: BTreeMap<NetId, Vec<Bytes>> = BTreeMap::new();
         TickDecoder::default().read(&mut cursor)?;
 
         if self.kind == PacketKind::DataFragment {
@@ -32,7 +34,7 @@ impl Packet {
             let channel_id = NetId::from_bytes(&mut cursor)?;
             let messages = cursor.read_u8()?;
             for _ in 0..messages {
-                let single_body = SingleBody::read(&mut cursor, has_id(channel_id))?;
+                let single_body = SingleBody::read(&mut cursor, tag(channel_id))?;
                 res.entry(channel_id).or_default().push(single_body.bytes);
             }
         }

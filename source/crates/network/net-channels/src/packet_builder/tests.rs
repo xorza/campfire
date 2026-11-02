@@ -1,4 +1,5 @@
-use bevy_platform::collections::HashMap;
+use std::collections::BTreeMap;
+
 use bytes::Bytes;
 use bytes::BytesMut;
 use campfire_net_core::TickInstant;
@@ -10,6 +11,7 @@ use crate::channel_type_id::ChannelTypeId;
 use crate::error::ReceiveError;
 use crate::fragmented_message::FragmentedMessage;
 use crate::message_id::MessageId;
+use crate::message_id_tag::MessageIdTag;
 use crate::packet::FRAGMENT_LEN;
 use crate::queued_message::QueuedMessage;
 use crate::send_candidate::{CandidateRank, CandidateSink};
@@ -44,7 +46,7 @@ fn net_id(channel: ChannelTypeId) -> NetId {
 struct Staged {
     candidates: Vec<SendCandidate>,
     /// Each message by its channel and key, a fragmented one's index offset by 100.
-    messages: HashMap<(NetId, u32), QueuedMessage>,
+    messages: BTreeMap<(NetId, u32), QueuedMessage>,
 }
 
 impl Staged {
@@ -131,8 +133,8 @@ fn build_staged_packets(builder: &mut PacketBuilder, staged: &Staged) -> Vec<Pac
 }
 
 /// No message of the test channels carries an id.
-fn no_ids(_: NetId) -> bool {
-    false
+const fn no_ids(_: NetId) -> MessageIdTag {
+    MessageIdTag::Untagged
 }
 
 /// A flush gives a packet's message list back before the next packet takes it, so one list of

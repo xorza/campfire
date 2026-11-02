@@ -124,9 +124,9 @@ fn receive_packet(
             .receivers
             .get_mut(channel_id)
             .ok_or(ReceiveError::UnknownChannel(channel_id))?;
-        let has_id = receiver.single_has_id();
+        let tag = receiver.single_tag();
         for _ in 0..messages {
-            let single_body = SingleBody::read(&mut cursor, has_id)?;
+            let single_body = SingleBody::read(&mut cursor, tag)?;
             trace!(
                 target: "campfire_net_debug::transport",
                 kind = "channel_recv_message",
