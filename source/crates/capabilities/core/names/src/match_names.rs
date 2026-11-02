@@ -83,7 +83,7 @@ impl MatchNames {
     }
 
     /// The param `name` of `unit_type`, if its type declares one.
-    pub fn param(&self, unit_type: UnitType, name: &str) -> Option<Scalar> {
+    pub fn param_named(&self, unit_type: UnitType, name: &str) -> Option<Scalar> {
         let run = unit_type.index();
         let at = self.params.named(run, name)?;
         Some(self.params.values(run)[at])

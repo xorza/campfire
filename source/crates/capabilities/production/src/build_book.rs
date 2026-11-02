@@ -244,7 +244,7 @@ impl BuildBook {
             };
             let building = &data.unit_type;
             let scope = TypeScope::of_package(action.package);
-            let unit_type = cx.unit_type(scope, building.as_str());
+            let unit_type = cx.type_named(scope, building.as_str());
             let unit_type = unit_type.filter(|&unit_type| cx.type_of(unit_type).stands());
             let unit_type = unit_type
                 .ok_or_else(|| action.unknown(UnknownName::new(UnitType::NAMES, building)))?;

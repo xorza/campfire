@@ -57,10 +57,10 @@ impl ActionParts {
             .as_ref()
             .map(|when| names.filter(when.filter()));
         let when = when.transpose()?;
-        let ranks = data.load_ranks(ranks, rate, |name| names.cost_target(name))?;
+        let ranks = data.load_ranks(ranks, rate, |name| names.cost_target_named(name))?;
         let delivery = data.delivery.as_ref().map(|delivery| {
             let name = delivery.unit_type();
-            let unit_type = names.unit_type(package, name)?;
+            let unit_type = names.type_named(package, name)?;
             let aim = names
                 .aim(unit_type)
                 .ok_or_else(|| ActionProblem::Section(name.clone()))?;

@@ -137,7 +137,7 @@ impl Interaction {
         let scope = TypeScope::of_package(package);
         let mut room = 0_u64;
         for payload in &enter.payload {
-            let Some(unit_type) = cx.unit_type(scope, payload.unit.as_str()) else {
+            let Some(unit_type) = cx.type_named(scope, payload.unit.as_str()) else {
                 continue;
             };
             let rides = cx.type_of(unit_type).data.section::<RidesData>();

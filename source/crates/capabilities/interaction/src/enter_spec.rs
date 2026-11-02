@@ -258,7 +258,7 @@ impl EnterSpec {
             let exit = exit.ok_or_else(|| BookError::rule(unit.package, at(), TimeTooLarge))?;
             let scope = TypeScope::of_package(unit.package);
             let payload = data.payload.iter().map(|payload| {
-                let unit_type = cx.unit_type(scope, payload.unit.as_str());
+                let unit_type = cx.type_named(scope, payload.unit.as_str());
                 let unit_type = unit_type
                     .ok_or_else(|| unknown(UnknownName::new(UnitType::NAMES, &payload.unit)))?;
                 Ok(RiderPayload {

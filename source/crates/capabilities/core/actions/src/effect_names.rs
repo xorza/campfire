@@ -35,7 +35,7 @@ impl<'a> EffectNames<'a> {
     }
 
     /// The place among the action's params of the param `name`.
-    pub fn param(&self, name: &DeclaredName) -> Result<usize, UnknownName> {
+    pub fn param_named(&self, name: &DeclaredName) -> Result<usize, UnknownName> {
         // A param's place is its place among the action's, by name, as the params' table holds
         // them.
         let param = self.params.keys().position(|held| held == name);

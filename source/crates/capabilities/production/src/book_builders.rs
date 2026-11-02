@@ -228,7 +228,7 @@ pub(crate) fn leaving(
 ) -> Result<UnitType, BookError> {
     let at = || BookPlace::UnitType(unit.place());
     let scope = TypeScope::of_package(unit.package);
-    let Some(left) = cx.unit_type(scope, name.as_str()) else {
+    let Some(left) = cx.type_named(scope, name.as_str()) else {
         let name = UnknownName::new(UnitType::NAMES, name);
         return Err(BookError::unknown(unit.package, at(), name));
     };

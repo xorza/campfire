@@ -239,12 +239,12 @@ fn the_types_number_by_package_then_name_then_avatar_and_scripts_by_package() {
     let standing: Vec<usize> = cx.standing().map(|unit| unit.unit_type.index()).collect();
     assert_eq!(standing, [1, 2, 3]);
     assert!(cx.type_of(UnitType::new(3)).is_avatar());
-    assert_eq!(cx.unit_type(hero_scope, "bolt"), Some(UnitType::new(2)));
+    assert_eq!(cx.type_named(hero_scope, "bolt"), Some(UnitType::new(2)));
     assert_eq!(
-        cx.unit_type(TypeScope::Mode, "hero-x"),
+        cx.type_named(TypeScope::Mode, "hero-x"),
         Some(UnitType::new(3))
     );
-    assert_eq!(cx.unit_type(hero_scope, "tower"), None);
+    assert_eq!(cx.type_named(hero_scope, "tower"), None);
     // A script's id is its place among every package's, the mode's first.
     let hero_index = PackageIndex::new(1);
     assert_eq!(cx.script(hero_index, &paths[2]), Ok(ScriptId::nth(2)));

@@ -214,7 +214,7 @@ impl<'a> BookCx<'a> {
     }
 
     /// The type of `name` in `scope`, if the match declares one.
-    pub fn unit_type(&self, scope: TypeScope, name: &str) -> Option<UnitType> {
+    pub fn type_named(&self, scope: TypeScope, name: &str) -> Option<UnitType> {
         self.type_names.named((scope, name))
     }
 

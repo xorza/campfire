@@ -38,7 +38,7 @@ impl<'a> ActionNames<'a> {
     }
 
     /// What a cost named `name` takes from; none for a name of neither.
-    pub fn cost_target(&self, name: &DeclaredName) -> Option<CostTarget> {
+    pub fn cost_target_named(&self, name: &DeclaredName) -> Option<CostTarget> {
         let none = Names::default();
         let pools = self
             .tables
@@ -60,7 +60,7 @@ impl<'a> ActionNames<'a> {
     }
 
     /// The unit type `name` in the scope that `package` names types in.
-    pub fn unit_type(
+    pub fn type_named(
         &self,
         package: PackageIndex,
         name: &DeclaredName,
