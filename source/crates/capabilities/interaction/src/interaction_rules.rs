@@ -7,7 +7,7 @@ use campfire_sim::Capability;
 use campfire_values::{PackageIndex, TypeScope};
 
 use crate::Interaction;
-use crate::enter_data::{EnterData, FireData, RiderCount};
+use crate::enter_data::{EnterData, FireData};
 use crate::error::{EnterError, UseError};
 use crate::rides_data::RidesData;
 use crate::use_data::UseData;
@@ -142,10 +142,7 @@ impl Interaction {
             };
             let rides = cx.type_of(unit_type).data.section::<RidesData>();
             let rides = rides.ok_or(EnterError::Payload)?;
-            let each = match enter.counts {
-                RiderCount::Size => rides.size.get(),
-                RiderCount::One => 1,
-            };
+            let each = enter.counts.room_of(rides.size.get());
             room += u64::from(each) * u64::from(payload.count);
         }
         if room > u64::from(enter.capacity) {

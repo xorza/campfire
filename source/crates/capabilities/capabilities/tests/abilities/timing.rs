@@ -24,7 +24,7 @@ use campfire_script::FailureKind;
 use campfire_script::internals::FailedCall;
 use campfire_script::{BudgetOf, CapabilityRefusal, ScriptBudgets, ScriptLimits};
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Capability, Position, SimComponent, SimRng, SimWorld, StableId};
+use campfire_sim::{Capability, DueIndex, Position, SimComponent, SimRng, SimWorld, StableId};
 use campfire_stats::{ModifierData, Modifiers, Stats};
 use campfire_units::internals::Spawn;
 use campfire_units::{GroundPoint, Life, Owner, UnitTypeCore, Units};
@@ -740,7 +740,7 @@ fn a_channel_with_no_end_pays_by_its_level_until_an_order_waits_out_its_wind_dow
     let after = |game: &mut Match, tick: u64| game.run_until(tick + 1);
     let underway = |game: &Match, id| game.part::<ActionProgress>(id).in_progress();
     let order = |game: &mut Match, directive| {
-        game.step_with(&[(PlayerSlot::new(0), &Order::payload(&[directive]))]);
+        game.step_orders(PlayerSlot::new(0), &[directive]);
     };
     let walk = |id, x, z| {
         let to = GroundPoint {
@@ -786,6 +786,11 @@ fn a_channel_with_no_end_pays_by_its_level_until_an_order_waits_out_its_wind_dow
     assert_eq!(underway(&game, first), Some(wind_down));
     after(&mut game, 44);
     order(&mut game, walk(first, 5, 0));
+    // The walk it holds is due as the wind-down ends, by the index that gives held orders by
+    // tick, then stable id, so two given in one tick go in the same order in every world.
+    let entity = game.unit_entity(first);
+    let holds = game.resource::<DueIndex<HeldOrder>>();
+    assert_eq!(holds.due_at(entity), Some(Tick::new(48)));
     after(&mut game, 48);
     assert_eq!(underway(&game, first), None);
     assert_eq!(game.part::<Position>(first).get(), Vec3::ZERO);

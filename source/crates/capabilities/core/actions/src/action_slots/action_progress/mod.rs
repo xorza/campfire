@@ -280,6 +280,14 @@ impl ActionProgress {
         matches!(self.underway, Some(InProgress::WindDown { .. }))
     }
 
+    /// The tick a channel's wind-down ends at, while it winds down.
+    pub const fn wind_down_until(&self) -> Option<Tick> {
+        match self.underway {
+            Some(InProgress::WindDown { until, .. }) => Some(until),
+            _ => None,
+        }
+    }
+
     /// Cuts a channel under way, as `cut_channel` does, but makes no unit due.
     const fn cut(&mut self) {
         if let Some(underway @ InProgress::Channel { .. }) = self.underway {

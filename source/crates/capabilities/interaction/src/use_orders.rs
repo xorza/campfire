@@ -1,9 +1,9 @@
 use bevy_ecs::observer::On;
-use bevy_ecs::query::Allow;
+use bevy_ecs::query::{Allow, With};
 use bevy_ecs::system::{ParamSet, Query, Res};
 use campfire_actions::{ActionTarget, ProgressIndexes, SlotsMut};
 use campfire_sim::{DueIndex, EntityIndex, StableId, Unpredicted};
-use campfire_units::{OrderKind, UnitOrdered};
+use campfire_units::{FlightGoal, OrderKind, UnitOrdered};
 
 use crate::riders::Riders;
 use crate::using::{UnitUse, Using};
@@ -24,7 +24,10 @@ impl UseOrders {
         ordered: On<'_, '_, UnitOrdered>,
         mut units: ParamSet<'_, '_, (Using<'_, '_>, UserSlots<'_, '_>)>,
         mut indexes: ProgressIndexes<'_>,
-        (mut containers, index): (Query<'_, '_, &mut Riders>, Res<'_, EntityIndex>),
+        (mut fliers, index): (
+            Query<'_, '_, &mut Riders, With<FlightGoal>>,
+            Res<'_, EntityIndex>,
+        ),
         exits: Option<Res<'_, DueIndex<Riders>>>,
     ) {
         let entity = ordered.entity;
@@ -36,11 +39,12 @@ impl UseOrders {
         let Some(UnitUse { slot, action }) = used else {
             return;
         };
-        // The server notes each unit that comes to a container, for which a flier lands.
+        // The server notes each unit that comes to a flier, for which it lands; a container on
+        // the ground notes none, so its hashed riders change only as one enters.
         if let (OrderKind::Enter { .. }, Some(_)) = (ordered.order, exits.as_ref())
             && let Some(mut riders) = index
                 .get(target)
-                .and_then(|container| containers.get_mut(container).ok())
+                .and_then(|container| fliers.get_mut(container).ok())
             && let Ok(&id) = units.p1().get(entity).map(|(id, _)| id)
         {
             riders.board(id);

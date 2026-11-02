@@ -27,7 +27,8 @@ use campfire_values::{
     UnitType,
 };
 
-use crate::abilities::{effect, int, param, sapper, scaling};
+use crate::abilities::{effect, int, sapper, scaling};
+use crate::param;
 
 /// A match of stats, combat, abilities, projectiles and areas whose `fighter` type has 40 attack
 /// damage and 1 armor, which its weapons read as their damage and their rate, with a homing

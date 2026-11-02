@@ -34,7 +34,7 @@ use campfire_players::Players;
 use campfire_script::ScriptFailures;
 use campfire_script::internals::FailedCall;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Capability, MatchRate, Position, SimWorld, StableId};
+use campfire_sim::{MatchRate, Position, SimWorld, StableId};
 use campfire_stats::ModifierData;
 use campfire_stats::Stats;
 use campfire_units::internals::Spawn;
@@ -49,10 +49,7 @@ use campfire_values::{
 };
 
 use crate::halves;
-use crate::interaction::order;
-
-/// The kind of every rider's one use slot.
-const USES: SlotKind = SlotKind::new(0);
+use crate::interaction::{USES, order, users_match};
 
 /// The containers of a match of riders, each of 500 life that stays as it dies: a `humvee`, which
 /// drives a meter a tick, takes 3 of its allies' riders by their sizes, lets them out 2 ticks
@@ -81,18 +78,7 @@ impl Rides {
 
     /// The match `load` gives, with no player: one a snapshot restores into.
     fn books() -> (Match, Self) {
-        let declared = [
-            Capability::Stats,
-            Capability::Combat,
-            Capability::Navigation,
-            Capability::Abilities,
-            Capability::Orders,
-            Capability::Interaction,
-        ];
-        let mut game = Match::builder(&declared).players(2).build();
-        Units::name_kinds(&mut game, &["true"], &["health", "mana", "rage"], &[]);
-        Abilities::load_types(&mut game);
-        Abilities::load_stats(&mut game);
+        let mut game = users_match();
         for (rider, size) in [("walking caster", 1), ("caster", 2)] {
             let rider = Units::type_named(&game, rider).unwrap();
             Units::give_type(&mut game, rider, UseSlot::new(USES));
@@ -119,69 +105,38 @@ impl Rides {
         let humvee = container(
             &mut game,
             "humvee",
-            EnterSpec {
-                action: board,
-                capacity: 3,
-                counts: RiderCount::Size,
-                riders: allies.clone(),
-                exit: Ticks::new(2),
-                damage: share(500_000_000),
-                full: Share::NONE,
-                capture: false,
-                payload: Box::new([]),
-                fire: FireSpec::None,
-                fire_when: None,
-                sight: false,
-                modifier: None,
-                open: None,
-                assault: Some(share(500_000_000)),
-            },
+            EnterSpec::builder(board, 3)
+                .riders(allies.clone())
+                .exit(Ticks::new(2))
+                .damage(share(500_000_000))
+                .assault(Some(share(500_000_000)))
+                .build(),
         );
         Units::give_type(&mut game, humvee, MoveStep::new(Num::ONE).unwrap());
         let bunker = container(
             &mut game,
             "bunker",
-            EnterSpec {
-                action: board,
-                capacity: 2,
-                counts: RiderCount::One,
-                riders: all,
-                exit: Ticks::new(0),
-                damage: Share::ALL,
-                full: share(350_000_000),
-                capture: true,
-                payload: Box::new([]),
-                fire: FireSpec::None,
-                fire_when: None,
-                sight: true,
-                modifier: None,
-                open: None,
-                assault: None,
-            },
+            EnterSpec::builder(board, 2)
+                .counts(RiderCount::One)
+                .riders(all)
+                .damage(Share::ALL)
+                .full(share(350_000_000))
+                .capture(true)
+                .sight(true)
+                .build(),
         );
         let crawler = container(
             &mut game,
             "crawler",
-            EnterSpec {
-                action: board,
-                capacity: 4,
-                counts: RiderCount::Size,
-                riders: allies,
-                exit: Ticks::new(1),
-                damage: share(100_000_000),
-                full: Share::NONE,
-                capture: false,
-                payload: Box::new([RiderPayload {
+            EnterSpec::builder(board, 4)
+                .riders(allies)
+                .exit(Ticks::new(1))
+                .damage(share(100_000_000))
+                .payload(Box::new([RiderPayload {
                     unit_type: walking,
                     count: 2,
-                }]),
-                fire: FireSpec::None,
-                fire_when: None,
-                sight: false,
-                modifier: None,
-                open: None,
-                assault: None,
-            },
+                }]))
+                .build(),
         );
         let rides = Self {
             humvee,
@@ -358,9 +313,10 @@ fn a_container_takes_no_rider_past_its_room_its_filter_its_size_its_side_or_its_
 
 #[test]
 fn an_entry_opens_only_while_its_container_holds_the_tags_it_names() {
-    // A humvee open while it holds no rider, as its tag `holding` says: the first rider enters, and
-    // the second, ordered once the first is in, finds it closed (04-capabilities/interaction.md, A
-    // bunker is an entry a tag opens).
+    // A humvee open while it holds no rider, as its tag `holding` says: of two riders ordered in
+    // one tick, the first enters, and the second, which reaches it in the same tick, finds it
+    // closed, though the tags derive again only later in the tick (04-capabilities/interaction.md,
+    // A bunker is an entry a tag opens).
     let (mut game, rides) = Rides::books();
     let mut spec = game
         .resource::<ById<UnitType, EnterSpec>>()
@@ -375,10 +331,13 @@ fn an_entry_opens_only_while_its_container_holds_the_tags_it_names() {
     Players::spawn(&mut game, 2, 1);
     let humvee = container(&mut game, gated, 0, 0, Some(0));
     let [first, second] = [1, -1].map(|x| rider(&mut game, "walking caster", x, 0, 0));
-    enter(&mut game, 0, first, humvee);
+    let into = OrdersDirective::Enter { target: humvee };
+    let now = game.now().get();
+    let orders = [first, second].map(|rider| Order::one(rider, into));
+    game.step_orders(PlayerSlot::new(0), &orders);
+    game.run_until(now + 4);
     assert_eq!(riders(&game, humvee), [first]);
-    enter(&mut game, 0, second, humvee);
-    assert_eq!(riders(&game, humvee), [first]);
+    assert!(!is_out(&mut game, second));
     assert_eq!(failed(&mut game), []);
 }
 
@@ -580,6 +539,17 @@ fn riders_walk_into_an_idle_container_that_drives_which_stands_where_it_stood() 
             .collect();
         game.step_orders(PlayerSlot::new(0), &orders);
         let mut entered = [None; 3];
+        // The humvee, on the ground, notes no rider that comes to it, so its riders change only
+        // in the ticks one enters, and are sent and hashed again only then.
+        let change = |game: &Match| {
+            let entity = game.unit_entity(humvee);
+            game.entity(entity)
+                .get_change_ticks::<Riders>()
+                .unwrap()
+                .changed
+        };
+        let mut changed = Vec::new();
+        let mut last = change(&game);
         for tick in 1..60 {
             game.step();
             assert_eq!(ground(&game, humvee), (4, 0), "tick {tick}");
@@ -588,7 +558,14 @@ fn riders_walk_into_an_idle_container_that_drives_which_stands_where_it_stood() 
                     *at = Some(tick);
                 }
             }
+            if change(&game) != last {
+                last = change(&game);
+                changed.push(Some(tick));
+            }
         }
+        let mut entries: Vec<Option<u64>> = entered.to_vec();
+        entries.sort_unstable();
+        assert_eq!((ringed, changed), (ringed, entries));
         // Ringed, the first rider goes round the friend at (0.5, 0) on its way, and enters two
         // ticks later; the friend at (2, 1.5), on a later rider's way, steps aside, to (3.5, 1.5),
         // and the third, which goes round the second, enters before it.
@@ -1035,6 +1012,20 @@ fn a_garrisons_rider_fires_from_the_free_point_nearest_its_target() {
     game.steps(6);
     assert_eq!(ground(&game, rider), (2, 0));
     assert!(Stats::health(&game, target) < 500);
+    // As it fires on from the point it holds, its progress changes each shot, and the bunker's
+    // riders, whose points stand, are not marked changed, so not sent and hashed again.
+    let changed = |game: &Match| {
+        let entity = game.unit_entity(bunker);
+        game.entity(entity)
+            .get_change_ticks::<Riders>()
+            .unwrap()
+            .changed
+    };
+    let aimed = changed(&game);
+    let health = Stats::health(&game, target);
+    game.steps(20);
+    assert!(Stats::health(&game, target) < health);
+    assert_eq!(changed(&game), aimed);
     assert_eq!(failed(&mut game), []);
 }
 

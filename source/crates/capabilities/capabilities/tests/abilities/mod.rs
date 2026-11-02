@@ -19,8 +19,10 @@ use campfire_sim::Capability;
 use campfire_stats::{ModifierData, ModifierEffectData, StatChange, StatOp, Stats};
 use campfire_units::Units;
 use campfire_values::{
-    FilterData, Number, PackageIndex, PackagePath, Param, ParamRef, Ranked, Scalar, Scaling, Stat,
+    FilterData, Number, PackageIndex, PackagePath, Param, Ranked, Scalar, Scaling, Stat,
 };
+
+use crate::param;
 
 /// Lash Out as the MOBA's Husk had it when these tests were written: the engine's tests keep
 /// their own copy, so a balance change to the MOBA's hero changes none of them.
@@ -42,11 +44,6 @@ pub(crate) const fn int(value: i64) -> Number {
     Number::Value(Scalar::Int(value))
 }
 
-pub(crate) fn param(name: &str) -> Number {
-    Number::Param(ParamRef {
-        param: DeclaredName::new(name).unwrap(),
-    })
-}
 /// Halves of a meter.
 pub(crate) const fn half_meters(value: i64) -> Num {
     Num::from_bits(value << (Num::FRAC_BITS - 1))

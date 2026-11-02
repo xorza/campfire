@@ -29,6 +29,24 @@ use campfire_values::{TypeScope, UnitType};
 /// The kind of every user's one use slot.
 const USES: SlotKind = SlotKind::new(0);
 
+/// A match of `stats`, `combat`, `navigation`, `abilities`, `orders` and `interaction`, with its
+/// kinds and the abilities' types and stats loaded, and no player: one a snapshot restores into.
+fn users_match() -> Match {
+    let declared = [
+        Capability::Stats,
+        Capability::Combat,
+        Capability::Navigation,
+        Capability::Abilities,
+        Capability::Orders,
+        Capability::Interaction,
+    ];
+    let mut game = Match::builder(&declared).players(2).build();
+    Units::name_kinds(&mut game, &["true"], &["health", "mana", "rage"], &[]);
+    Abilities::load_types(&mut game);
+    Abilities::load_stats(&mut game);
+    game
+}
+
 /// Each use's hooks: its resolve deals its object 1, each tick of its channel 10, and a cut 100.
 const USE_SCRIPT: &str = r#"
 fn on_resolve(ctx, user, target) {
@@ -67,18 +85,7 @@ impl Objects {
 
     /// The match `load` gives, with no player: one a snapshot restores into.
     fn books() -> (Match, Self) {
-        let declared = [
-            Capability::Stats,
-            Capability::Combat,
-            Capability::Navigation,
-            Capability::Abilities,
-            Capability::Orders,
-            Capability::Interaction,
-        ];
-        let mut game = Match::builder(&declared).players(2).build();
-        Units::name_kinds(&mut game, &["true"], &["health", "mana", "rage"], &[]);
-        Abilities::load_types(&mut game);
-        Abilities::load_stats(&mut game);
+        let mut game = users_match();
         for user in ["walking caster", "caster"] {
             let user = Units::type_named(&game, user).unwrap();
             Units::give_type(&mut game, user, UseSlot::new(USES));

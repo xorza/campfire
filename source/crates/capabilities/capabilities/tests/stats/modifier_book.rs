@@ -11,7 +11,8 @@ use campfire_values::{
     ActionId, ModifierId, NameId, PackageIndex, Param, Rank, Ranked, Scalar, Scaling, Stat,
 };
 
-use crate::stats::{name, param};
+use crate::param;
+use crate::stats::name;
 
 #[test]
 fn a_way_applies_a_modifier_only_when_it_gives_each_param_the_modifier_reads() {

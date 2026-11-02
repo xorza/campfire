@@ -75,6 +75,27 @@ pub struct RiderPayload {
 }
 
 impl EnterSpec {
+    /// The builder of the spec of entry `action` and `capacity`.
+    pub fn builder(action: ActionId, capacity: u32) -> EnterSpecBuilder {
+        EnterSpecBuilder(Self {
+            action,
+            capacity,
+            counts: RiderCount::Size,
+            riders: Filters::default(),
+            exit: Ticks::ZERO,
+            damage: Share::NONE,
+            full: Share::NONE,
+            capture: false,
+            payload: Box::new([]),
+            fire: FireSpec::None,
+            fire_when: None,
+            sight: false,
+            modifier: None,
+            open: None,
+            assault: None,
+        })
+    }
+
     /// Whether its riders' filters take a unit of `tags` whose team the container's regards
     /// with `relation`.
     pub fn admits(&self, relation: Relation, tags: TagSet) -> bool {
@@ -107,13 +128,105 @@ impl EnterSpec {
     pub fn sides(&self, held_by: Option<PlayerSlot>, rider: Option<PlayerSlot>) -> bool {
         held_by.map_or(self.capture, |held_by| Some(held_by) == rider)
     }
+}
 
-    /// The room a rider of `size` takes of it.
-    pub const fn room_of(&self, size: u32) -> u32 {
-        match self.counts {
-            RiderCount::Size => size,
-            RiderCount::One => 1,
-        }
+/// An `EnterSpec` of its entry and capacity, each other field as a container of no `enter` field
+/// set has it: riders counted by size, none selected, no exit time, no damage or full share, no
+/// capture, payload, fire, sight, modifier, open tags or assault.
+#[derive(Debug, Clone)]
+pub struct EnterSpecBuilder(EnterSpec);
+
+impl EnterSpecBuilder {
+    #[must_use]
+    pub const fn counts(mut self, counts: RiderCount) -> Self {
+        self.0.counts = counts;
+        self
+    }
+
+    #[must_use]
+    pub fn riders(mut self, riders: Filters) -> Self {
+        self.0.riders = riders;
+        self
+    }
+
+    #[must_use]
+    pub const fn exit(mut self, exit: Ticks) -> Self {
+        self.0.exit = exit;
+        self
+    }
+
+    #[must_use]
+    pub const fn damage(mut self, damage: Share) -> Self {
+        self.0.damage = damage;
+        self
+    }
+
+    #[must_use]
+    pub const fn full(mut self, full: Share) -> Self {
+        self.0.full = full;
+        self
+    }
+
+    #[must_use]
+    pub const fn capture(mut self, capture: bool) -> Self {
+        self.0.capture = capture;
+        self
+    }
+
+    #[must_use]
+    pub fn payload(mut self, payload: Box<[RiderPayload]>) -> Self {
+        self.0.payload = payload;
+        self
+    }
+
+    #[must_use]
+    pub fn fire(mut self, fire: FireSpec) -> Self {
+        self.0.fire = fire;
+        self
+    }
+
+    #[must_use]
+    pub const fn fire_when(mut self, fire_when: Option<Filter>) -> Self {
+        self.0.fire_when = fire_when;
+        self
+    }
+
+    #[must_use]
+    pub const fn sight(mut self, sight: bool) -> Self {
+        self.0.sight = sight;
+        self
+    }
+
+    #[must_use]
+    pub const fn modifier(mut self, modifier: Option<ModifierId>) -> Self {
+        self.0.modifier = modifier;
+        self
+    }
+
+    #[must_use]
+    pub const fn open(mut self, open: Option<Filter>) -> Self {
+        self.0.open = open;
+        self
+    }
+
+    #[must_use]
+    pub const fn assault(mut self, assault: Option<Share>) -> Self {
+        self.0.assault = assault;
+        self
+    }
+
+    /// The spec; a payload of more riders than its capacity is a caller's bug.
+    pub fn build(self) -> EnterSpec {
+        let spec = self.0;
+        debug_assert!(
+            spec.payload
+                .iter()
+                .map(|each| u64::from(each.count))
+                .sum::<u64>()
+                <= u64::from(spec.capacity),
+            "a payload fits its container"
+        );
+        spec
     }
 }
 

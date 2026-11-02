@@ -30,6 +30,8 @@ use campfire_values::{
     EngineStat, FilterData, Number, Param, ParamRef, Rank, Ranked, Scalar, Scaling, Stat,
 };
 
+use crate::param;
+
 /// `value` sixteenths.
 const fn sixteenths(value: i64) -> Num {
     Num::from_bits(value << (Num::FRAC_BITS - 4))
@@ -230,11 +232,6 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
 /// The declared name `text`.
 fn name(text: &str) -> DeclaredName {
     DeclaredName::new(text).unwrap()
-}
-
-/// The value of the param `text`.
-fn param(text: &str) -> Number {
-    Number::Param(ParamRef { param: name(text) })
 }
 
 /// An application from `source` of modifier `id`, changing `stat` by `value` a stack with `op`,

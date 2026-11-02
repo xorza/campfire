@@ -132,7 +132,19 @@ impl Acquiring {
                 let Some(unit) = targets.enemy(team, other) else {
                     return ControlFlow::Continue(());
                 };
+                // The tests go in order of their cost, the weapons' reach last, each only for a
+                // unit nearer than the best so far, which gives the nearest all of them pass.
                 let relation = targets.relation(team, unit.team);
+                if !acquire.targets.selects(relation, unit.tags) {
+                    return ControlFlow::Continue(());
+                }
+                let distance = metric
+                    .offset(position.get(), unit.position)
+                    .length_squared_bits();
+                let candidate = (distance, other);
+                if nearest.is_some_and(|best| candidate >= best) || !seen.sees(team, other) {
+                    return ControlFlow::Continue(());
+                }
                 let mut weapons = slots.weapons_in(&actions, holder, Some((relation, unit.tags)));
                 let to = Placed::new(unit.position, unit.shape);
                 let reached = weapons.any(|slot| {
@@ -141,15 +153,8 @@ impl Acquiring {
                         .expect("a weapon's slot is learned");
                     targets.reach(from, values.range, values.min_range, to) == RangeFit::Within
                 });
-                if reached && acquire.targets.selects(relation, unit.tags) && seen.sees(team, other)
-                {
-                    let distance = metric
-                        .offset(position.get(), unit.position)
-                        .length_squared_bits();
-                    let candidate = (distance, other);
-                    if nearest.is_none_or(|best| candidate < best) {
-                        nearest = Some(candidate);
-                    }
+                if reached {
+                    nearest = Some(candidate);
                 }
                 ControlFlow::Continue(())
             });
