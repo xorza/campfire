@@ -1,5 +1,5 @@
 use campfire_common::DeclaredName;
-use campfire_names::{Filter, NameTables, TagNames, UnknownName};
+use campfire_names::{Filter, KindNames, TagNames, UnknownName};
 use campfire_units::PoolId;
 use campfire_values::{
     FilterData, NameId, NameKey, Named, Names, PackageIndex, ResourceId, TypeScope, UnitType,
@@ -13,7 +13,7 @@ use crate::delivery::{DeliveryAim, DeliveryAims};
 /// match's world; an error for a name the match does not have.
 #[derive(Debug, Clone, Copy)]
 pub struct ActionNames<'a> {
-    tables: &'a NameTables,
+    tables: &'a KindNames,
     tags: &'a TagNames,
     /// How each projectile type flies; none in a match with no projectiles.
     aims: Option<&'a DeliveryAims>,
@@ -21,7 +21,7 @@ pub struct ActionNames<'a> {
 
 impl<'a> ActionNames<'a> {
     pub const fn new(
-        tables: &'a NameTables,
+        tables: &'a KindNames,
         tags: &'a TagNames,
         aims: Option<&'a DeliveryAims>,
     ) -> Self {

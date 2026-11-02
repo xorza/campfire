@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_common::DeclaredName;
-use campfire_names::{NameTables, UnknownName};
+use campfire_names::{KindNames, UnknownName};
 use campfire_values::{NameId, NameKey, Named, PackageIndex, Param};
 
 /// The match's ids of the names an action's effect lists give, by the match's name tables, and
@@ -9,7 +9,7 @@ use campfire_values::{NameId, NameKey, Named, PackageIndex, Param};
 /// load or in a match's world; an error for a name the match does not have.
 #[derive(Debug, Clone, Copy)]
 pub struct EffectNames<'a> {
-    tables: &'a NameTables,
+    tables: &'a KindNames,
     /// The action's params, by name.
     params: &'a BTreeMap<DeclaredName, Param>,
     package: PackageIndex,
@@ -18,7 +18,7 @@ pub struct EffectNames<'a> {
 impl<'a> EffectNames<'a> {
     /// The names of the lists of an action of `package` with `params`, by `tables`.
     pub const fn new(
-        tables: &'a NameTables,
+        tables: &'a KindNames,
         params: &'a BTreeMap<DeclaredName, Param>,
         package: PackageIndex,
     ) -> Self {

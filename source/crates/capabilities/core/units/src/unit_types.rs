@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use campfire_common::DeclaredName;
-use campfire_declarations::{BookCx, BookError, BookPlace, ById, Fact, Section, SourceKind};
+use campfire_declarations::{BookCx, BookError, BookPlace, ById, Fact, Section};
 use campfire_names::TagNames;
 use campfire_script::StateSchema;
 use campfire_values::{
@@ -83,33 +83,43 @@ impl UnitTypes {
         origin: TypeOrigin,
         data: &UnitTypeCore,
     ) -> Result<UnitType, TypesError> {
+        let tags = self.tags_of(data)?;
+        let added = Arc::make_mut(&mut self.types).try_add((scope, &*origin.name));
+        let unit_type = match added {
+            Ok(unit_type) => unit_type,
+            Err(error) => return Err(TypesError::of_names(error, &origin.name)),
+        };
+        self.add(unit_type, tags, origin, data);
+        Ok(unit_type)
+    }
+
+    /// The tags of `data`, each new one declared.
+    fn tags_of(&mut self, data: &UnitTypeCore) -> Result<TagSet, TypesError> {
         let mut tags = TagSet::NONE;
         for name in &data.tags {
             tags = tags.with(self.declare(name.as_str())?);
         }
+        Ok(tags)
+    }
+
+    /// Adds the type `unit_type`, the next its names number, of `tags`, `origin` and `data`.
+    fn add(&mut self, unit_type: UnitType, tags: TagSet, origin: TypeOrigin, data: &UnitTypeCore) {
+        debug_assert_eq!(
+            unit_type.index(),
+            self.states.len(),
+            "the types load in order"
+        );
         let params = data
             .params
             .iter()
             .map(|(name, &value)| (name.as_str(), value));
-        let added = Arc::make_mut(&mut self.types).try_add((scope, &*origin.name));
-        let unit_type = match added {
-            Ok(unit_type) => unit_type,
-            Err(NamesError::Full) => return Err(TypesError::TooManyTypes),
-            Err(NamesError::Repeated) => return Err(TypesError::Repeated(origin.name.into())),
-        };
         let run = Arc::make_mut(&mut self.params).push(params);
         debug_assert_eq!(run, unit_type.index(), "one run of params per type");
         let fields = data.state.iter();
         let fields = fields.map(|(name, field)| (name.as_str(), field.audience, &field.decl));
         self.states.push(StateSchema::new(fields));
-        debug_assert_eq!(
-            self.states.len(),
-            unit_type.index() + 1,
-            "one schema per type"
-        );
         self.type_tags.push(tags);
         self.origins.push(origin);
-        Ok(unit_type)
     }
 
     /// The tag `name`, which joins the match's tags if it is new; an error past the most tags a
@@ -183,9 +193,9 @@ impl UnitTypes {
     }
 
     /// The match's unit types and tags: the release's engine tags, then every tag the packages
-    /// name, then each package's types, in the order `cx` numbers them, an avatar's tagged
-    /// `avatar`; an error for a type its scope names already, or past the most types or tags a
-    /// match holds.
+    /// name, then each package's types, numbered by `cx`'s table, which they share, an avatar's
+    /// tagged `avatar`; an error for a type its scope names already, or past the most types or
+    /// tags a match holds.
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let source = cx.source();
         let fail = |error| BookError::rule(PackageIndex::MODE, BookPlace::Types, error);
@@ -193,33 +203,18 @@ impl UnitTypes {
         for name in cx.fact::<DeclaredTags>()?.of_packages(source.engine_tags) {
             types.declare(name.as_str()).map_err(fail)?;
         }
-        for (index, package) in cx.packages() {
-            let scope = TypeScope::of_package(index);
-            for (name, data) in package.units {
-                let origin = TypeOrigin {
-                    package: index,
-                    name: name.as_str().into(),
-                };
-                types
-                    .load(scope, origin, &UnitTypeCore::from(data))
-                    .map_err(fail)?;
-            }
-            if let SourceKind::Avatar(data) = package.kind {
-                let origin = TypeOrigin {
-                    package: index,
-                    name: package.name.into(),
-                };
-                types
-                    .load(TypeScope::Mode, origin, &UnitTypeCore::from(data))
-                    .map_err(fail)?;
-            }
+        if let Some(refusal) = cx.type_refusal() {
+            return Err(fail(TypesError::of_names(refusal.error, &refusal.name)));
         }
+        types.types = Arc::clone(cx.type_names());
         for unit in cx.types() {
-            debug_assert_eq!(
-                types.types.named((unit.scope, unit.name)),
-                Some(unit.unit_type),
-                "the build numbers the types as their load does"
-            );
+            let core = UnitTypeCore::from(unit.data);
+            let tags = types.tags_of(&core).map_err(fail)?;
+            let origin = TypeOrigin {
+                package: unit.package,
+                name: unit.name.into(),
+            };
+            types.add(unit.unit_type, tags, origin, &core);
             if unit.is_avatar() {
                 types.give_tag(unit.unit_type, Avatar::TAG.tag());
             }

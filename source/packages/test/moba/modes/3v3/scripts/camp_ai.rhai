@@ -1,5 +1,5 @@
 fn on_think(ctx, unit) {
-    let away = unit.position.distance_to(unit.spawn_pos);
+    let away = unit.position.distance_to(unit.spawn_position);
     if away > unit.params.leash_range {
         ctx.order_reset();
         return;
@@ -15,6 +15,6 @@ fn on_think(ctx, unit) {
         }
     }
     if away > unit.params.home_slack {
-        ctx.order_move(unit.spawn_pos);
+        ctx.order_move(unit.spawn_position);
     }
 }

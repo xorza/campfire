@@ -68,8 +68,8 @@ pub enum UnitsSystems {
     Begin,
     /// The tick ends: the units whose lifespan ended despawn.
     End,
-    /// The tick closes: the script states of units that never spawned are dropped, and what the
-    /// scripts printed reaches its report.
+    /// The tick closes: the steps that end each tick, the scripts' among them, and the drop of
+    /// the script states of units that never spawned.
     Close,
 }
 

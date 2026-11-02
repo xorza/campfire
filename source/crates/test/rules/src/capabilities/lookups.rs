@@ -68,7 +68,7 @@ const LOOKUPS: [(&str, &str); 109] = [
     ("progression/track_modifier_book.rs", "named"),
     ("progression/type_tracks.rs", "named"),
     ("progression/xp_effect_data.rs", "named"),
-    ("script/scripts/script_facts/mod.rs", "hook_named"),
+    ("script/scripts/script_facts.rs", "hook_named"),
     ("stats/action_params.rs", "named"),
     ("stats/modifier_book.rs", "named"),
     ("stats/modifier_effect_data.rs", "named"),
@@ -99,7 +99,7 @@ const LOOKUPS: [(&str, &str); 109] = [
     // The load, and a filter a script names.
     ("names/filter.rs", "named"),
     ("names/match_names.rs", "named"),
-    ("names/name_tables.rs", "named"),
+    ("names/kind_names.rs", "named"),
     ("values/filter_data.rs", "named"),
     // A probe's unit type, as a command line or a test names it.
     ("match_probe/probe_spec.rs", "named"),

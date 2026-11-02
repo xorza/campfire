@@ -196,7 +196,6 @@ pub use crate::unit_type_book::UnitTypeBook;
 pub use crate::unit_type_core::{TypeParamsData, TypeTagsData, UnitTypeCore};
 pub use crate::unit_types::{UnitTypeBooks, UnitTypes};
 pub use crate::units::{Units, UnitsSystems};
-pub use crate::units_api::UnitsApi;
 pub use crate::units_call::UnitsCall;
 pub use crate::units_world::UnitsWorld;
 pub use crate::variation::Variation;

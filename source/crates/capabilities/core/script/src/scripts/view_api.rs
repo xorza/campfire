@@ -82,7 +82,7 @@ impl ViewApi {
             )
             .bind(
                 field(
-                    "spawn_pos",
+                    "spawn_position",
                     "where it spawned, where it respawns; `()` with none",
                 ),
                 |unit: &mut Unit| -> Checked<ScriptValue> {

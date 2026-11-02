@@ -322,7 +322,7 @@ fn vectors_add_subtract_and_scale_each_rounded_once() {
     // radians would pass what a number holds, turn as their 184° modulo 360° does.
     let probe = r#"fn probe(ctx, of) {
         let d = of.position.direction_to(ctx.find(of, of.position, 6, "enemies")[0].position);
-        [d.rotated_deg(90), d.rotated_deg(1 << 38), d.rotated_deg(184)]
+        [d.rotated(90), d.rotated(1 << 38), d.rotated(184)]
     }"#;
     let read = Units::probe(&mut game, probe, of)
         .unwrap()
@@ -509,14 +509,14 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     assert_eq!(radius(&mut game, of), body.radius().unwrap());
     assert_eq!(radius(&mut game, near), Num::ZERO);
     // Where it spawned, which a delivery has none of.
-    let spawn_pos = |game: &mut Match, unit| {
-        let source = "fn probe(ctx, of) { of.spawn_pos }";
+    let spawn_position = |game: &mut Match, unit| {
+        let source = "fn probe(ctx, of) { of.spawn_position }";
         Units::probe(game, source, unit).unwrap()
     };
-    assert_eq!(spawn_pos(&mut game, of).cast::<Vec3>(), spawn.get());
+    assert_eq!(spawn_position(&mut game, of).cast::<Vec3>(), spawn.get());
     let unit_type = Units::type_named(&game, "unit").unwrap();
     let delivery = Deliveries::spawn_of(&mut game, of, unit_type, (1, 0, 0), ());
-    assert!(spawn_pos(&mut game, delivery).is_unit());
+    assert!(spawn_position(&mut game, delivery).is_unit());
     assert_eq!(
         value(&mut game, "of.params.help_window_ms").as_int(),
         Some(2000)
