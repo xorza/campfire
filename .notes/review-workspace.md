@@ -36,16 +36,6 @@ The coordinator checked these bugs in the code: play-1, play-2, combat-1 (the ra
 
 Batches go most impactful first. A batch that needs another stands after it. Each batch ends with `cargo drive check` and `cargo drive test` passing, as AGENTS.md's workflow says. An item marked **Decide** waits for the owner's choice between the options it names.
 
-### 14. Client
-
-Files: `apps/client/src/view/{effects,look_states,shot_stand_ins,minimap,ghost,fog,unit_looks,unit_models}/mod.rs`, `apps/client/src/view/look_states/draw_show.rs`, `apps/client/src/{command_panel,perk_panel}/mod.rs`, `apps/client/src/inventory_bar.rs`, `apps/client/locale/en.ftl`, `apps/server/src/opening/mod.rs`, `network/net-udp/` (`UdpLinks::admission`).
-
-- [ ] **apps-3.** `effects/mod.rs:123`, `look_states/mod.rs:158,165`, `shot_stand_ins/mod.rs:55-57`, `command_panel/mod.rs:258`, `minimap/mod.rs:391`, `ghost/mod.rs:70`: systems of modules that join every mode take combat's, production's, stats' and vision's books as `Option`, against 02-engine-core.md (A client module list). `Fog` (`fog/mod.rs:80`) and `PerkPanel` (`perk_panel/mod.rs:127`) take as `Option` a book that their required capability always declares. Target: the dependent systems become modules with those needs, take `Res<…>`, and the dead `Option`s go.
-- [ ] **apps-6.** `draw_show.rs:137`, `unit_looks/mod.rs:800`, `unit_models/mod.rs:407`: for a model that shows a clip's rounds, each shot rebuilds the hide list as strings (about 12 allocations) and matches every node by name (about 400 compares and 20 inserts). The 2026-10-29 target said the dress resolves every node a look names. Target: the dress resolves each hideable name to entities once, `held_nodes` returns a bit set, and `redress` changes only the nodes that flipped, through `set_if_neq`.
-- [ ] **apps-8.** `command_panel/mod.rs:420,972`: `show` rebuilds the button layout each frame and collects a new `Vec<Does>` each frame for a look that places its buttons. Target: a scratch `Vec` in a `Local`, and a rebuild only when the selection, the slots, the queue, the riders or the tags change.
-- [ ] **apps-5.** `command_panel/mod.rs:1230-1231`, `perk_panel/mod.rs:177-195`, `inventory_bar.rs:221`: "ready in {n} s", "done", "rank {} · {} xp", "held" and others are English in `write!` beside the `en.ftl` messages. Target: each is an `EngineMessage` with Fluent arguments.
-- [ ] **apps-7.** `opening/mod.rs:84-93,110`: `Opening::player_slots` counts the spectators too. Rename it for what it bounds (`seats`), here and in `UdpLinks::admission`.
-
 ### 15. Zero Hour scripts
 
 Files: `source/packages/zero-hour/scripts/{bot,mode}.rhai`, `capabilities/mode/src/game_map.rs`, `capabilities/capabilities/src/bot/bot_api.rs`.
@@ -83,6 +73,7 @@ Files: `session/protocol/src/session_log/{journal_replay,journal_shape}.rs`, `se
 - **core-5.** No name is removed: engine tests' scripts call every one the packages leave unused, `direction_to`, `rotated_deg` and `Hit.direction` among them, so the new release test lists the 37 names no package uses, and a name a package starts or stops using changes the list; `spawn_pos` became `spawn_position` and `rotated_deg` `rotated`.
 - **nt-5.** The frame steps stay two, as the endpoint's spawn entities and trigger unlinks through commands and the plain host keeps a map; the plain host now honors the reason a carry returns, the path the protocol tests missed.
 - **imp-9.** The losses stay each stage's, appended as its stage ends, as their order is the Zero Hour golden's; the docs now say so, and that the models wait for a look before their write.
+- **apps-3.** Only the fog's and the perk panel's books became `Res`; the systems of modules that join every mode still take four capabilities' books as `Option`, as their split into modules of those needs touches seven views, now in the issue log.
 
 ## Decisions
 
@@ -103,3 +94,5 @@ Files: `session/protocol/src/session_log/{journal_replay,journal_shape}.rs`, `se
 - **ns-7.** `InterpolationHolders::refresh` needs the registry, whose rules hold the typed systems that read the holders, so the method makes the modules a cycle, which the rules refuse; the registry's fill of the holders stays.
 - **imp-5.** Serialize on `ModifierData`, `AuraData` and `AreaData` needs it on each nested type whose `Deserialize` is hand-written, `StatChange`, `Stat`, `FilterData` and `StateDecl` among them, and a skip rule beside each `serde(default)` to keep the files canonical, a second statement of each default; the Zero Hour check loads every written section through the engine's own reader, so a renamed field fails a check before it ships.
 - **imp-6.** A file's meshes serve every look that names one of its render objects, in the looks' order, so the converter knows a file's last use only once every look converted; freeing them sooner needs a count of each file's uses, a pass of its own over the looks, for the peak of an offline run with no bound it breaks.
+- **apps-6.** The redress runs for each shot of a model that shows its rounds, some hundreds of name compares; resolving every hideable node to entities in the dress is a rework of the look's dress for a cost no frame time measured, now in the issue log.
+- **apps-8.** The panel rebuilds into a kept `Local` and swaps only when the layout differs, so its cells change only then; what is left is one small list a frame for a placed look, which a scratch would add as a fifth parameter of `fill`; in the issue log beside the redress.

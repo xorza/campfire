@@ -126,7 +126,7 @@ fn run(tap: &LogTap) -> Result<ExitCode, LaunchError> {
     };
     let opening = open(waiting, setup).map_err(no_session)?;
     let local = socket.local_address();
-    let admission = UdpLinks::admission(opening.player_slots(), opening.server().times.grace);
+    let admission = UdpLinks::admission(opening.seats(), opening.server().times.grace);
     let listening = announce(&opening, &mode, local, tls_key);
     let session = opening.session.span();
     let port_map = port_map

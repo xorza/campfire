@@ -3,8 +3,8 @@ use std::fmt;
 use bevy::ecs::resource::Resource;
 use campfire_client_files::PanelCommand;
 use campfire_common::EnumAll;
-use fluent_bundle::FluentResource;
 use fluent_bundle::concurrent::FluentBundle;
+use fluent_bundle::{FluentArgs, FluentResource};
 use unic_langid::LanguageIdentifier;
 
 /// The engine's own messages, which no package gives, in Mozilla's Fluent as a package's text is
@@ -27,6 +27,18 @@ pub(crate) enum EngineMessage {
     Rally,
     Exit,
     Evacuate,
+    /// A time in whole seconds, `seconds`.
+    Seconds,
+    /// A cast on its cooldown, ready in `seconds`.
+    ReadyIn,
+    /// A research held.
+    Done,
+    /// A player's rank, `level`, and its experience, `xp`.
+    Rank,
+    /// A player's points to spend, `points`.
+    Points,
+    /// A perk held.
+    Held,
 }
 
 /// The engine's English file.
@@ -57,6 +69,12 @@ impl EngineMessage {
             Self::Rally => "command-rally",
             Self::Exit => "command-exit",
             Self::Evacuate => "command-evacuate",
+            Self::Seconds => "time-seconds",
+            Self::ReadyIn => "button-ready",
+            Self::Done => "button-done",
+            Self::Rank => "perk-rank",
+            Self::Points => "perk-points",
+            Self::Held => "perk-held",
         }
     }
 }
@@ -76,17 +94,34 @@ impl EngineText {
         Self { bundle }
     }
 
-    /// The text of `message`.
+    /// The text of `message`, which takes no argument.
     pub(crate) fn text(&self, message: EngineMessage) -> String {
+        let mut text = String::new();
+        self.write(message, &[], &mut text);
+        text
+    }
+
+    /// Appends to `out` the text of `message`, each of its arguments by its name in `args`, as
+    /// its value writes itself.
+    pub(crate) fn write(
+        &self,
+        message: EngineMessage,
+        args: &[(&'static str, &dyn fmt::Display)],
+        out: &mut String,
+    ) {
         let pattern = self
             .bundle
             .get_message(message.id())
             .and_then(|message| message.value())
             .expect("the engine's file gives each message a value, as a test proves");
+        let mut fluent = FluentArgs::new();
+        for &(name, value) in args {
+            fluent.set(name, value.to_string());
+        }
         let mut errors = Vec::new();
-        let text = self.bundle.format_pattern(pattern, None, &mut errors);
+        let given = (!args.is_empty()).then_some(&fluent);
+        out.push_str(&self.bundle.format_pattern(pattern, given, &mut errors));
         debug_assert!(errors.is_empty(), "{errors:?}");
-        text.into_owned()
     }
 }
 
@@ -104,8 +139,22 @@ mod tests {
 
     #[test]
     fn the_engine_s_file_gives_each_of_its_messages_and_no_other() {
+        // Each message of an argument takes 1, and the rank 3 and 450.
         let text = EngineText::english();
-        let shown = EngineMessage::ALL.map(|message| text.text(message));
+        let (one, three, many) = (1, 3, 450);
+        let args = |message| -> Vec<(&'static str, &dyn fmt::Display)> {
+            match message {
+                EngineMessage::Seconds | EngineMessage::ReadyIn => vec![("seconds", &one)],
+                EngineMessage::Rank => vec![("level", &three), ("xp", &many)],
+                EngineMessage::Points => vec![("points", &one)],
+                _ => Vec::new(),
+            }
+        };
+        let shown = EngineMessage::ALL.map(|message| {
+            let mut shown = String::new();
+            text.write(message, &args(message), &mut shown);
+            shown
+        });
         assert_eq!(
             shown,
             [
@@ -118,6 +167,12 @@ mod tests {
                 "Set rally point",
                 "Exit",
                 "Evacuate",
+                "1 s",
+                "ready in 1 s",
+                "done",
+                "rank 3 · 450 xp",
+                "1 points",
+                "held",
             ]
         );
         let resource = FluentResource::try_new(ENGLISH.to_owned()).unwrap();

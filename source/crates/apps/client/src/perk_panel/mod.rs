@@ -1,4 +1,4 @@
-use std::fmt::Write as _;
+use std::fmt::{self, Write as _};
 
 use bevy::app::{App, Plugin, Startup, Update};
 use bevy::camera::visibility::Visibility;
@@ -27,6 +27,7 @@ use campfire_progression::{
 use campfire_values::PerkId;
 
 use crate::client_packages::ClientPackages;
+use crate::engine_text::{EngineMessage, EngineText};
 use crate::input_map::{Act, InputMap};
 use crate::own_player::OwnPlayer;
 use crate::ui_style::{self, Corner, DIMMED, Panel, PanelFunds, PanelRow, PanelRows, TEXT};
@@ -122,20 +123,14 @@ impl PerkPanelPlugin {
             Option<Res<'_, JoinState>>,
             Res<'_, ClientPackages>,
         ),
-        (perks, book, mut laid): (
-            Res<'_, MatchPerks>,
-            Option<Res<'_, PerkBook>>,
-            ResMut<'_, Laid>,
-        ),
+        (perks, book, mut laid): (Res<'_, MatchPerks>, Res<'_, PerkBook>, ResMut<'_, Laid>),
         (experience, points, holdings): PlayerProgress<'_, '_>,
         (rows, funds): PerkNodes<'_, '_>,
         (mut texts, mut colors, perk_rows): RowLines<'_, '_>,
         mut commands: Commands<'_, '_>,
-        mut line: Local<'_, String>,
+        (text, mut line): (Res<'_, EngineText>, Local<'_, String>),
     ) {
-        let (Some(file), Some(book), Some(player_slot)) =
-            (perks.0.as_ref(), book, own.player_slot())
-        else {
+        let (Some(file), Some(player_slot)) = (perks.0.as_ref(), own.player_slot()) else {
             return;
         };
         if !laid.0 {
@@ -174,10 +169,13 @@ impl PerkPanelPlugin {
             .map(|points| points.get());
         line.clear();
         if let Some(rank) = rank {
-            write!(line, "rank {} · {} xp", rank.level.get(), rank.xp)
-                .expect("a String takes any text");
+            let level = rank.level.get();
+            let rank: [(&str, &dyn fmt::Display); 2] = [("level", &level), ("xp", &rank.xp)];
+            text.write(EngineMessage::Rank, &rank, &mut line);
+            line.push_str(" · ");
         }
-        write!(line, " · {} points", points.unwrap_or(0)).expect("a String takes any text");
+        let shown = points.unwrap_or(0);
+        text.write(EngineMessage::Points, &[("points", &shown)], &mut line);
         ui_style::set_text(&mut texts, *funds, &line);
         let held = holdings
             .of_player_slot(player_slot)
@@ -191,11 +189,12 @@ impl PerkPanelPlugin {
             let state = Self::state(&book, row.perk, learner);
             line.clear();
             match state {
-                PerkState::Learnable(cost) => write!(line, "{cost}"),
-                PerkState::Held => write!(line, "held"),
-                PerkState::Locked => Ok(()),
+                PerkState::Learnable(cost) => {
+                    write!(line, "{cost}").expect("a String takes any text");
+                }
+                PerkState::Held => text.write(EngineMessage::Held, &[], &mut line),
+                PerkState::Locked => {}
             }
-            .expect("a String takes any text");
             ui_style::set_text(&mut texts, row.state, &line);
             let color = if state == PerkState::Locked {
                 DIMMED

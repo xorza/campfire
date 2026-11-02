@@ -45,15 +45,15 @@ impl UdpLinks {
         UdpClient::new(ServerTrust::pinned(tls_key), Self::setup())
     }
 
-    /// At most `player_slots` live links from one address, and `player_slots` new handshakes from
-    /// it, which come back over `grace` (08-sessions.md, Limits for each address, from the
-    /// session's player slots); and twice `player_slots` live links and handshakes in all, as each
-    /// player slot's link may stay while its player's next one opens (11-net-stack/udp.md, A
-    /// server bounds its live packet sessions).
-    pub const fn admission(player_slots: NonZeroU32, grace: Duration) -> AdmissionSetup {
+    /// At most `seats` live links from one address, a session's player slots and the most
+    /// spectators it admits, and `seats` new handshakes from it, which come back over `grace`
+    /// (08-sessions.md, Limits for each address, from the session's player slots); and twice
+    /// `seats` live links and handshakes in all, as each seat's link may stay while its next one
+    /// opens (11-net-stack/udp.md, A server bounds its live packet sessions).
+    pub const fn admission(seats: NonZeroU32, grace: Duration) -> AdmissionSetup {
         AdmissionSetup::new(
-            player_slots,
-            player_slots.saturating_mul(NonZeroU32::new(2).unwrap()),
+            seats,
+            seats.saturating_mul(NonZeroU32::new(2).unwrap()),
             grace,
         )
     }

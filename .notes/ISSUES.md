@@ -7,6 +7,8 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Research
 
+- **Client.** Systems of client modules that join every mode take combat's, production's, stats' and vision's books as `Option` (`view/effects/mod.rs`, `view/look_states/mod.rs`, `view/shot_stand_ins/mod.rs`, `command_panel/mod.rs`, `view/minimap/mod.rs`, `view/ghost/mod.rs`), where 02-engine-core.md (A client module list) has each part a module of the capability it needs.
+- **Client.** For a model that shows a clip's rounds, each shot rebuilds the hide list as strings and matches every node by name (`look_states/draw_show.rs`, `unit_looks/mod.rs`, `unit_models/mod.rs`), and the command panel's `show` rebuilds its layout each frame, collecting a `Vec<Does>` for a look that places its buttons.
 - **Net.** A replicated value or diff whose tick the confirmed tick map no longer holds is dropped with `Ok` while Replicon counts it toward its tick's completion: with whole replication a client that predicted the dropped change rolls back to the stale value at each completed tick, and with diffs the entity's diff chain breaks for good, interpolation's `pending` growing without bound. Which ticks a buffered mutation can still name is in Replicon's private `BufferedMutations`.
 - **Rules.** `every_rule::the_workspace_keeps_every_rule` takes 1.35 s alone, `--test-threads 1`, past the bound of 1 s; of the other 2,772 tests, only the 3v3's scripted match, which is exempt, passes it (measured 2 November 2026).
 

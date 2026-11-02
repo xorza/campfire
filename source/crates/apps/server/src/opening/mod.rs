@@ -17,12 +17,12 @@ use crate::opening::error::OpeningError;
 
 pub(crate) mod error;
 
-/// What a server starts with: its session, whose terms the mode's rules admit, and the player_slots
-/// of that session.
+/// What a server starts with: its session, whose terms the mode's rules admit, and the seats of
+/// that session.
 #[derive(Debug)]
 pub(crate) struct Opening {
     pub(crate) session: SessionOpening,
-    player_slots: NonZeroU32,
+    seats: NonZeroU32,
 }
 
 /// What `Opening::of` needs.
@@ -83,15 +83,12 @@ impl Opening {
         let terms = session.terms();
         let player_slots =
             u32::try_from(terms.player_slots.len()).expect("a session's player slots fit u32");
-        let player_slots = player_slots
+        let seats = player_slots
             .checked_add(visibility.max_spectators())
-            .expect("a session's player slots fit u32");
-        let player_slots = NonZeroU32::new(player_slots)
-            .expect("the rules admit a session of a player slot at least");
-        Ok(Self {
-            session,
-            player_slots,
-        })
+            .expect("a session's seats fit u32");
+        let seats =
+            NonZeroU32::new(seats).expect("the rules admit a session of a player slot at least");
+        Ok(Self { session, seats })
     }
 
     /// The terms of the session it starts.
@@ -104,11 +101,11 @@ impl Opening {
         self.session.server()
     }
 
-    /// The player slots of the session it starts: its player slots and the most spectators it
-    /// admits, which no address of honest players passes in live connections (08-sessions.md,
-    /// Limits for each address, from the session's player slots).
-    pub(crate) const fn player_slots(&self) -> NonZeroU32 {
-        self.player_slots
+    /// The seats of the session it starts: its player slots and the most spectators it admits,
+    /// which no address of honest players passes in live connections (08-sessions.md, Limits for
+    /// each address, from the session's player slots).
+    pub(crate) const fn seats(&self) -> NonZeroU32 {
+        self.seats
     }
 
     /// The session a stop ended, under the data directory `data`: none when the directory holds
