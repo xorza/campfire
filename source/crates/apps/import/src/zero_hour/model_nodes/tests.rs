@@ -274,7 +274,7 @@ fn a_slots_barrels_launch_from_their_launch_bones_or_the_models_place() {
     // which takes `x` to `y`: the rail's (2, 0, 4), halved to (1, 0, 2), turns to (0, 1, 2) and
     // moves to (10, 1, 2), on glTF's axes (10, 2, −1), still pointing up; the barrel of no rail
     // stands at the node, (10, 0, 0), pointing along its `x`, now W3D's `y`, glTF's `−z`; each
-    // within 2⁻¹⁸, as the turns' `f32` steps round (riders-and-upgrades.md, A carried model's
+    // within 2⁻¹⁸, as the turns' `f32` steps round (02-engine-core.md, A carried model's
     // barrels are its carrier's).
     let host = HostNode {
         pose: RigidPose {

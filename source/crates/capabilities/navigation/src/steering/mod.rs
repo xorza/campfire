@@ -261,7 +261,7 @@ impl Steering {
     /// place clears. One whose side clears the walker already stays, a walk as deep as
     /// `AsideDepth::MOST` moves none (04-capabilities/navigation.md, An idle friend steps aside),
     /// and the unit the walk goes into stays, as the walker passes through it
-    /// (entries-and-blocking.md, A walker passes through the unit it walks into).
+    /// (04-capabilities/navigation.md, A walker passes through the unit it walks into).
     pub(crate) fn asides(
         &self,
         steered: Steered,
@@ -363,9 +363,9 @@ impl Steering {
     /// where `steered` stands too: within the two radii and the walker's step of it, as near as the
     /// walker's brake lets it come, so it has arrived, as the A* Pathfinding Project stops a unit
     /// whose destination is crowded (04-capabilities/navigation.md, A walker stuck by a crowded goal
-    /// has arrived; entries-and-blocking.md, No personal space between walkers). The unit the walk
-    /// goes into crowds nothing, as the walker passes through it (entries-and-blocking.md, A walker
-    /// passes through the unit it walks into).
+    /// has arrived; 04-capabilities/navigation.md, No personal space between walkers). The unit the
+    /// walk goes into crowds nothing, as the walker passes through it
+    /// (04-capabilities/navigation.md, A walker passes through the unit it walks into).
     pub(crate) fn crowded(&self, steered: Steered, waypoint: Vec3) -> bool {
         let Steered {
             position: at,
@@ -397,8 +397,8 @@ impl Steering {
     /// the walkers it touches too. The short route goes to the last waypoint within the window,
     /// or to where the way leaves it, and the walker goes on from there; one that cannot end
     /// there keeps its route. One that `planner` has no work left for this tick keeps its route.
-    /// The unit its walk goes into blocks it nowhere (entries-and-blocking.md, A walker passes
-    /// through the unit it walks into).
+    /// The unit its walk goes into blocks it nowhere (04-capabilities/navigation.md, A walker
+    /// passes through the unit it walks into).
     pub(crate) fn steer(
         &mut self,
         planner: &mut RoutePlanner,
@@ -462,7 +462,7 @@ impl Steering {
         });
         if stuck {
             // A walker that keeps this one back blocks its short route where it stands; one that
-            // meets it head on steps aside, which its brake sees (entries-and-blocking.md, A
+            // meets it head on steps aside, which its brake sees (04-capabilities/navigation.md, A
             // head-on block steps the lower priority aside).
             let gatherers = &self.gatherers;
             self.walking.visit_near(at, walker.radius + step, |other| {
@@ -549,7 +549,7 @@ impl Steered {
 
 /// The idle unit `id` of `idle`, if a walker `by` may move it, as `moves` says of its team, and its
 /// gait of the unit's but when its route goes through its team's units or it is stuck
-/// (entries-and-blocking.md, A walker that steps moves no unit that drives aside).
+/// (04-capabilities/navigation.md, A walker that steps moves no unit that drives aside).
 fn movable(idle: &[Idle], moves: Moves, by: MovedBy, id: StableId) -> Option<Idle> {
     let at = idle.binary_search_by_key(&id, |idle| idle.id).ok()?;
     Some(idle[at]).filter(|idle| {

@@ -1174,7 +1174,7 @@ impl Making {
     /// type `unit_type`, as the server refuses it: an upgrade it withholds whose trigger `held`
     /// says its holder holds or queues, or an upgrade it triggers whose conflict `held` says either
     /// holder holds or queues, as the upgrade reads the player's modifiers and the unit's alike
-    /// (riders-and-upgrades.md, A conflicting upgrade is refused).
+    /// (04-capabilities/production.md, A conflict holds back both of its sides).
     fn held_back(
         self,
         conflicts: &UpgradeConflicts,

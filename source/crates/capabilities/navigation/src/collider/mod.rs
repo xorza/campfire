@@ -18,11 +18,11 @@ pub(crate) mod contact;
 /// for a unit that drives, the way it faces, the one way it may be pushed; its team; whether it
 /// leaves its producer, passing through its team's units (04-capabilities/navigation.md, A new
 /// unit leaves its exit); the unit its walk goes into, if any, which it passes through, either way
-/// (entries-and-blocking.md, A walker passes through the unit it walks into); the way it faces as
-/// it walks this tick, none for one that stands; its facing where it steps, as two walkers that
-/// step another way pass through each other; and whether a static body parted it this
-/// tick, which pins it against the other walkers. A unit that cannot walk, such as a tower or a
-/// building, is never pushed; only such a unit has a box.
+/// (04-capabilities/navigation.md, A walker passes through the unit it walks into); the way it
+/// faces as it walks this tick, none for one that stands; its facing where it steps, as two walkers
+/// that step another way pass through each other; and whether a static body parted it this tick,
+/// which pins it against the other walkers. A unit that cannot walk, such as a tower or a building,
+/// is never pushed; only such a unit has a box.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Collider {
     pub id: StableId,
@@ -133,12 +133,12 @@ impl Collider {
     /// chain of walkers shrinks its overlaps with each pass and never ends them. A walker that
     /// went into the other this tick, within 45° of the way it faces, and not the other into it,
     /// takes the whole overlap, so no walker slides another across its way
-    /// (entries-and-blocking.md, A unit outside the cone neither blocks nor pushes); else a unit
-    /// that walks into one that stands takes it, so no unit shoves another aside; two that both
-    /// walk, or both stand, share it, each by the other's weight over the two's, the higher id
+    /// (04-capabilities/navigation.md, A unit outside the cone neither blocks nor pushes); else a
+    /// unit that walks into one that stands takes it, so no unit shoves another aside; two that
+    /// both walk, or both stand, share it, each by the other's weight over the two's, the higher id
     /// taking the odd bits; one that may not be pushed leaves the whole overlap to the other; a
-    /// unit that drives moves only along its facing, and the other takes the rest. Two on one
-    /// spot part along x, the higher id towards +x.
+    /// unit that drives moves only along its facing, and the other takes the rest. Two on one spot
+    /// part along x, the higher id towards +x.
     pub(crate) fn resolve(colliders: &mut [Self], contacts: &[Contact]) -> usize {
         debug_assert!(colliders.is_sorted_by_key(|collider| collider.id));
         for pass in 0..Self::PASSES {
@@ -292,8 +292,8 @@ impl Collider {
 
     /// Whether the two may separate: they stand on one layer, one of them may be pushed, not both
     /// gather, neither walks into the other, and they are no two walkers that step another way,
-    /// which pass through each other a moment (entries-and-blocking.md, Walkers that step pass
-    /// those that step another way).
+    /// which pass through each other a moment (04-capabilities/navigation.md, Walkers that step
+    /// pass those that step another way).
     fn may_separate(&self, other: &Self) -> bool {
         let crossing = (self.walking && other.walking) && self.stepping.crosses(other.stepping);
         self.layer == other.layer

@@ -242,7 +242,7 @@ pub struct LookState {
 
 /// The barrels of the weapon slot `slot` of the state's model at the place `model` among its
 /// models, in the order its shots take them, where each shot's fire effect plays and which muzzle
-/// flash it shows, each node of that model's (riders-and-upgrades.md, A carried model's barrels
+/// flash it shows, each node of that model's (02-engine-core.md, A carried model's barrels
 /// are its carrier's).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -361,7 +361,7 @@ impl LookDraw {
     }
 
     /// Adds `model` to the models of each of its states, as a portable structure is drawn at its
-    /// container in every state (riders-and-upgrades.md, A model may be drawn at another's bone).
+    /// container in every state (02-engine-core.md, A model may be drawn at another's bone).
     pub fn add_model(&mut self, model: &ClientModel) {
         for state in &mut self.states {
             state.models.push(model.clone());

@@ -235,7 +235,7 @@ impl CombatImport {
             // A leader of spawns fights by them: its own weapon, as a mob's harmless one, goes
             // (09-zero-hour.md, The import converts a mob). A portable structure an upgrade makes
             // inside it adds its starting set, of the slots past its own, armed by the upgrade's
-            // tag (riders-and-upgrades.md, A portable structure is a part of its carrier).
+            // tag (09-zero-hour.md, A portable structure is a part of its carrier).
             let own = fight.starting_weapons().filter(|_| !typed.leads());
             let mut sources = Vec::new();
             if let Some(set) = own {
@@ -465,7 +465,7 @@ impl CombatImport {
     /// object it fires, when that object has one; then each type's look its weapons by the places
     /// of their slots in `additions`, which its attack conditions test (09-zero-hour.md, A
     /// condition is the game's name for a test), and the barrels and rounds of its carried
-    /// structures' models at those slots (riders-and-upgrades.md, A carried model's barrels are its
+    /// structures' models at those slots (02-engine-core.md, A carried model's barrels are its
     /// carrier's).
     pub(crate) fn complete_looks(
         &self,
@@ -532,7 +532,7 @@ impl CombatImport {
     /// weapon slot of the type, the barrels its model's bones give the slot, or the model of the
     /// structure it carries whose weapons take the slot, as Zero Hour launches the slot's weapon
     /// of each set from them (04-capabilities/combat.md, A shot leaves its weapon's barrel;
-    /// riders-and-upgrades.md, A carried model's barrels are its carrier's); a weapon in two slots
+    /// 02-engine-core.md, A carried model's barrels are its carrier's); a weapon in two slots
     /// takes the first's.
     pub(crate) fn barrels(&self, additions: &mut Additions) {
         for (_, added) in additions.iter_mut() {

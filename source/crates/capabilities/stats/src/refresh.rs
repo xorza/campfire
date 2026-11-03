@@ -253,7 +253,7 @@ impl Refresh {
     /// Adds each living unit's regen to its pools: each pool's `regen` stat a second, and its
     /// `regen_share` stat's share of its maximum a second, rounded down, the tick rate's share a
     /// tick, the remainder carried so a second gains exactly the regen
-    /// (riders-and-upgrades.md, A pool regains a share of its maximum).
+    /// (04-capabilities/stats.md, A pool regains a share of its maximum).
     pub(crate) fn regenerate(
         (pool_book, rate): (Res<'_, PoolBook>, Res<'_, MatchRate>),
         mut units: Query<

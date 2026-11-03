@@ -106,7 +106,7 @@ fn amounts(world: &World, entity: Entity, pool: PoolId) -> (Num, Num) {
 fn a_pool_regains_its_share_of_its_maximum_a_second() {
     // Mana of 250 regains an eighth of it a second, as its share stat says, 31.25: spent to
     // nothing, it gains 31.25 ÷ 30 a tick, its remainder carried, so 30 ticks gain exactly 31.25
-    // (riders-and-upgrades.md, A pool regains a share of its maximum).
+    // (04-capabilities/stats.md, A pool regains a share of its maximum).
     let hero = stats(&[
         (stat("health"), Num::int(380), Num::ZERO),
         (stat("mana"), Num::int(250), Num::ZERO),
@@ -1122,7 +1122,7 @@ fn a_held_modifier_of_one_source_holds_from_the_lowest_source_alone() {
     // Two carriers, at 0 and 2, of an aura of 2 m on allies that holds `rallied`, which an ally at
     // 1 takes from both, and `heartened` of one source, which it takes from the first alone, the
     // lower id; the first gone, it takes `heartened` from the second
-    // (riders-and-upgrades.md, A held modifier may hold from one source).
+    // (04-capabilities/stats.md, A held modifier may hold from one source).
     let mut game = Match::builder(&[Capability::Stats]).build();
     let book = StatBook::new(&Stats::rules(), Num::int(6));
     book.load_into(&mut game);
@@ -1181,7 +1181,7 @@ fn a_client_holds_a_modifier_of_one_source_from_an_unseen_source_alone() {
     // On a predicting client, the ally holds `heartened` from the first carrier, the lower id, as
     // the server sent it, while the client holds none of that carrier's modifiers, so it cannot
     // see its aura: the second carrier's aura, which it sees, adds none beside it, as the server
-    // holds the lowest source's alone (riders-and-upgrades.md, A held modifier may hold from one
+    // holds the lowest source's alone (04-capabilities/stats.md, A held modifier may hold from one
     // source).
     let mut game = Match::builder(&[Capability::Stats])
         .role(Role::Client)

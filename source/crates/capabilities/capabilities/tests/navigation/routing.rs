@@ -161,10 +161,11 @@ fn a_walker_reaches_a_goal_by_a_unit_that_stands_and_ends_short_of_one_inside_it
     // A walker of 0.5 m of team 0 walks from (−4, 0) a quarter meter a tick, and a friend of 4 m
     // at work stands at (5, 0). A goal at (0.4, 0) lies 4.6 m off the friend, past their two
     // radii, 4.5 m: with no push between them, the walker stands on it in tick 18, 4.4 m on
-    // (entries-and-blocking.md, No personal space between walkers). A goal at (0.6, 0) lies within
-    // the two radii, where the walker's body cannot stand: it brakes to touch the friend, and its
-    // short route round the friend ends on the reached cell nearest the goal, (0.25, −0.25), where
-    // it arrives short in tick 19 (04-capabilities/navigation.md, A route ends short, not never).
+    // (04-capabilities/navigation.md, No personal space between walkers). A goal at (0.6, 0) lies
+    // within the two radii, where the walker's body cannot stand: it brakes to touch the friend,
+    // and its short route round the friend ends on the reached cell nearest the goal, (0.25,
+    // −0.25), where it arrives short in tick 19 (04-capabilities/navigation.md, A route ends short,
+    // not never).
     let half = Num::HALF;
     let run = |goal: Vec3| {
         let mut game = walk_match();
@@ -216,7 +217,7 @@ fn a_route_goes_round_a_block_of_idle_friends_and_through_it_when_walled_in() {
     // passing the walker; the walker and each friend that steps aside walk through the idle
     // friends they move aside, which step aside in turn, braking behind each until it clears,
     // and the walker arrives in its tick 68 (04-capabilities/navigation.md, A route prices the
-    // units on it; entries-and-blocking.md, A walker brakes behind a unit that blocks it;
+    // units on it; 04-capabilities/navigation.md, A walker brakes behind a unit that blocks it;
     // 04-capabilities/navigation.md, A friend yields to the nearest place clear of the way;
     // 04-capabilities/navigation.md, A walker walks through the friends it moves aside).
     let half = Num::HALF;

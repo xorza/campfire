@@ -28,7 +28,7 @@ pub(crate) struct RulesNames {
     pub(crate) garrisoned: DeclaredName,
     /// The stat a propaganda tower's heal adds to every weapon's rate of fire, and the share of its
     /// most life a unit regains a second, which the heal adds to
-    /// (riders-and-upgrades.md, A propaganda tower is an aura).
+    /// (09-zero-hour.md, A propaganda tower is an aura).
     pub(crate) propaganda_rate: Stat,
     pub(crate) life_regen_share: Stat,
     /// The tag of a type that counts for a multiplayer victory (09-zero-hour.md, Defeat by the

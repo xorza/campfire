@@ -264,8 +264,8 @@ fn a_cell_costs_by_whether_its_walker_may_move_the_units_of_its_team_in_it() {
     );
     // A red walker's price that leaves out the unit it walks into: the cells of that unit alone
     // cost nothing, are no wall and hold no unit, and every other is as before; a unit that does
-    // not stand is left out of nothing (entries-and-blocking.md, A walker passes through the unit
-    // it walks into).
+    // not stand is left out of nothing (04-capabilities/navigation.md, A walker passes through the
+    // unit it walks into).
     let mut runs = Vec::new();
     let mut excusing = |unit, walls| {
         let excused = costs.excuse(unit, (walker, Some(red)), &mut runs);

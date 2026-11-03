@@ -13,7 +13,7 @@ use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// The portable structure an upgrade module `module` of `rules` makes inside its object, as
 /// `OCL_OverlordGattlingCannon` makes the Overlord's Gattling cannon (`ContainInsideSourceObject`),
-/// which the import folds into its object (riders-and-upgrades.md, A portable structure is a part
+/// which the import folds into its object (09-zero-hour.md, A portable structure is a part
 /// of its carrier); none for a module of no such creation.
 pub(crate) fn structure<'r>(
     rules: &'r ZeroHourRules,
@@ -53,8 +53,8 @@ pub(crate) fn transport<'r>(
 }
 
 /// The tag the `PassengersFireUpgrade` module `module` gives its object, its first trigger's name
-/// suffixed `fire`, while which its riders fire (riders-and-upgrades.md, A rider's fire follows its
-/// container's tags); none for a module of no trigger.
+/// suffixed `fire`, while which its riders fire (04-capabilities/interaction.md, A rider's fire
+/// follows its container's tags); none for a module of no trigger.
 pub(crate) fn fire_tag(module: &IniUpgradeModule) -> Result<Option<DeclaredName>, NameError> {
     trigger_tag(module, "fire")
 }

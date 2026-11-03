@@ -62,7 +62,7 @@ pub(crate) struct UnitModelsPlugin;
 
 /// A model drawn at a node of the first model of its draw's state, its host, which stands where
 /// that node does each frame: the host, the node's name, the node as its host's dressing found it,
-/// and the model's own scale (riders-and-upgrades.md, A model may be drawn at another's bone).
+/// and the model's own scale (02-engine-core.md, A model may be drawn at another's bone).
 #[derive(Component, Debug)]
 pub(crate) struct AtBone {
     host: Entity,
@@ -356,7 +356,7 @@ impl UnitModelsPlugin {
     /// Stands each model drawn at a bone where its host's node stands this frame, its animation and
     /// its turret's turn applied: the place and the turn of the node in its unit's drawing, through
     /// each of its parents up to its host, at the model's own scale alone, as a bone's transform in
-    /// the original is rigid, its model's scale moving its pivots alone (riders-and-upgrades.md, A
+    /// the original is rigid, its model's scale moving its pivots alone (02-engine-core.md, A
     /// model may be drawn at another's bone). The node is looked up once, as its host is dressed:
     /// one whose host's scene has not spawned, or holds no such node, which is logged once, stays
     /// as it is, and one whose host went is left for its draw to remove.

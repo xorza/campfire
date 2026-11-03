@@ -876,7 +876,7 @@ fn a_types_weapons_that_fire_a_projectile_take_their_slots_barrels() {
     // weapon fires no projectile and its second takes the primary's already. A type its model
     // gives no bones takes none. A turret each carries arms their fourth slot with a weapon that
     // fires one, which takes the barrel of the turret's own first slot, of no bones of the type
-    // too (riders-and-upgrades.md, A carried model's barrels are its carrier's).
+    // too (02-engine-core.md, A carried model's barrels are its carrier's).
     let mut ini = WeaponIni::default();
     ini.read(MISSILE_WEAPONS.as_bytes()).unwrap();
     let mut rules = ZeroHourRules {
@@ -966,10 +966,10 @@ fn garrison_range() -> BonusData {
 #[test]
 fn a_portable_structures_weapons_arm_its_carrier_by_its_upgrades_tag_past_its_own_slots() {
     // A carrier of a cannon whose upgrade makes a turret of flak and missiles inside it, as the
-    // Overlord's makes its Gattling cannon (riders-and-upgrades.md, A portable structure is a
+    // Overlord's makes its Gattling cannon (09-zero-hour.md, A portable structure is a
     // part of its carrier). The turret's model, drawn at a bone, holds the barrels of its own two
     // slots and the rounds of its first; a second structure's, which no weapon of the carrier's
-    // is, holds one barrel (riders-and-upgrades.md, A carried model's barrels are its carrier's).
+    // is, holds one barrel (02-engine-core.md, A carried model's barrels are its carrier's).
     let objects = "Object Carrier
   WeaponSet
     Conditions = None

@@ -482,11 +482,11 @@ pub(crate) struct TransportTicks {
     pub(crate) evacuated: u64,
 }
 
-/// The entry play's steps (entries-and-blocking.md, A walk may go into a unit;
-/// entries-and-blocking.md, A walker passes through the unit it walks into): its ticks; how many
-/// ride the Troop Crawler, the Helix and the Overlord's bunker once each boarding ends; and whether
-/// the crawler and the Overlord stood, as their boardings ended, where they stood as their riders
-/// were ordered in.
+/// The entry play's steps (04-capabilities/navigation.md, A walk may go into a unit;
+/// 04-capabilities/navigation.md, A walker passes through the unit it walks into): its ticks; how
+/// many ride the Troop Crawler, the Helix and the Overlord's bunker once each boarding ends; and
+/// whether the crawler and the Overlord stood, as their boardings ended, where they stood as their
+/// riders were ordered in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct EntrySteps {
     pub(crate) ticks: EntryTicks,

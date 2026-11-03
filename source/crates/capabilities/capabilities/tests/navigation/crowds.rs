@@ -71,8 +71,8 @@ fn overlap(track: &[Vec<Vec3>]) -> bool {
 fn walkers_abreast_keep_their_lines_and_one_behind_a_slower_walker_brakes_to_it() {
     // Three walkers abreast, 1 m apart, touching, along +x a quarter meter a tick from x = −10 to
     // 10: none is in another's way, so none brakes or moves another, and each keeps its line to
-    // the bit and arrives in tick 80, 20 m on (entries-and-blocking.md, A unit outside the cone
-    // neither blocks nor pushes).
+    // the bit and arrives in tick 80, 20 m on (04-capabilities/navigation.md, A unit outside the
+    // cone neither blocks nor pushes).
     let quarter = Num::QUARTER;
     let mut game = open(&[]);
     let units = [-2, 0, 2].map(|z| walker(&mut game, (-20, z), (20, z), quarter));
@@ -101,10 +101,10 @@ fn walkers_abreast_keep_their_lines_and_one_behind_a_slower_walker_brakes_to_it(
     // A walker of an eighth of a meter a tick from x = −6 to 10, and one of a quarter from −8 to
     // 12, 2 m behind it on its line. The faster closes a meter in 8 ticks, to touch the slower,
     // and from then brakes to the slower's advance, an eighth, so it never overlaps it, and the
-    // slower walks as it would alone (entries-and-blocking.md, A walker brakes behind a unit that
-    // blocks it). The slower stands at its goal from tick 128, 16 m on, as it would alone; the
-    // faster stays behind it until then, and the slower, an idle friend on its way, steps aside,
-    // to stand from tick 137, and the faster passes and stands from tick 147.
+    // slower walks as it would alone (04-capabilities/navigation.md, A walker brakes behind a unit
+    // that blocks it). The slower stands at its goal from tick 128, 16 m on, as it would alone; the
+    // faster stays behind it until then, and the slower, an idle friend on its way, steps aside, to
+    // stand from tick 137, and the faster passes and stands from tick 147.
     let eighth = Num::from_bits(ONE / 8);
     let alone = {
         let mut game = open(&[]);
@@ -136,7 +136,7 @@ fn columns_that_cross_keep_their_lines_and_the_second_waits_for_the_first() {
     // quarter meter a tick, each walker's goal 10, 9 and 8 m on, front first, so no walker meets
     // one that arrived. The first column crosses the origin from tick 32 to 44; the second's
     // first walker reaches it as the last of the first passes, brakes behind it, as it lies in
-    // its way and goes across it, and goes on as it clears (entries-and-blocking.md, A walker
+    // its way and goes across it, and goes on as it clears (04-capabilities/navigation.md, A walker
     // brakes behind a unit that blocks it). Each walker keeps its line to the bit.
     let quarter = Num::QUARTER;
     let mut game = open(&[]);
@@ -219,7 +219,7 @@ fn of_two_walkers_head_on_the_higher_id_steps_to_its_right_and_both_walk_on() {
     // they touch in tick 14, 7 m closed, and in tick 15 each brakes to a stop; the one of the
     // higher id, bound for −x, steps 1 m to its right, +z, and both walk on, the lower id along
     // its line but for a graze of 0.027 m as the other comes back to its line past it
-    // (entries-and-blocking.md, A head-on block steps the lower priority aside). Alone, each
+    // (04-capabilities/navigation.md, A head-on block steps the lower priority aside). Alone, each
     // arrives in tick 32, 8 m on; the lower id arrives in tick 36, and the higher in 38.
     let quarter = Num::QUARTER;
     let mut game = open(&[]);
@@ -247,7 +247,7 @@ fn of_two_walkers_head_on_in_a_lane_the_lower_priority_steps_into_an_alcove_or_b
     // and both walk on, the other along its line but for a graze of a bit as the first comes back
     // past it, within collision's slack, and arrive in ticks 52 and 59. With no alcove, no side
     // leaves room for either: both stand touching, stuck, until they stop
-    // (entries-and-blocking.md, A head-on block steps the lower priority aside;
+    // (04-capabilities/navigation.md, A head-on block steps the lower priority aside;
     // 04-capabilities/navigation.md, A stuck walker plans again, then stops).
     let quarter = Num::QUARTER;
     let run = |alcove: bool| {

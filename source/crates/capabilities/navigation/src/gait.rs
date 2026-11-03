@@ -15,8 +15,8 @@ pub enum Gait {
 impl Gait {
     /// Whether a walker of this gait may move a unit of `other` aside on a way no unit of its team
     /// blocks: one that steps moves no unit that drives, as Zero Hour's `moveAllies` lets no
-    /// infantry push a vehicle off a path no ally blocks (entries-and-blocking.md, A walker that
-    /// steps moves no unit that drives aside).
+    /// infantry push a vehicle off a path no ally blocks (04-capabilities/navigation.md, A walker
+    /// that steps moves no unit that drives aside).
     pub(crate) const fn moves(self, other: Self) -> bool {
         !matches!((self, other), (Self::Step, Self::Drive))
     }
@@ -33,8 +33,8 @@ impl Stepping {
 
     /// Whether it and `other` are of two units that step and face no one way: the dot of their
     /// facings is a quarter or less, as Zero Hour's `blockedBy` lets infantry that do not move in
-    /// the same direction pass through each other (entries-and-blocking.md, Walkers that step pass
-    /// those that step another way).
+    /// the same direction pass through each other (04-capabilities/navigation.md, Walkers that step
+    /// pass those that step another way).
     pub(crate) fn crosses(self, other: Self) -> bool {
         let (Some(a), Some(b)) = (self.0, other.0) else {
             return false;

@@ -303,7 +303,7 @@ team's units or once stuck, and a mover braked to a stop counted stuck, on the i
 
 The check before and after a mover that a brake holds below its top speed, and that drives no
 slower than the brake, turns toward its waypoint by its whole turn rate with its velocity cut to
-the brake, and a wheel's turning speed reads its top speed (entries-and-blocking.md, A blocked
+the brake, and a wheel's turning speed reads its top speed (04-capabilities/navigation.md, A blocked
 mover turns where it stands).
 
 | Play | Before | After |
@@ -326,8 +326,8 @@ mover turns where it stands).
 
 The check before and after Zero Hour's mode lets two walkers that step pass each other while
 both walk and their facings' dot is a quarter or less, the brake leaving such a pair be and
-collision parting none (entries-and-blocking.md, Walkers that step pass those that step another
-way), over a blocked mover that turns where it stands.
+collision parting none (04-capabilities/navigation.md, Walkers that step pass those that step
+another way), over a blocked mover that turns where it stands.
 
 | Play | Before | After |
 | --- | --- | --- |

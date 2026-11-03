@@ -37,7 +37,7 @@ impl Routing {
     /// through that unit's cells, and once its route serves that walk, a new place of the unit it
     /// may not go straight on to asks again only when it lies more than a tenth of the walker's
     /// distance to it from the route's goal, keeping the walker's progress, as one walk
-    /// (entries-and-blocking.md, A walk into a unit follows it).
+    /// (04-capabilities/navigation.md, A walk into a unit follows it).
     /// A walker with no destination forgets its route, unless it arrived short. A change of the
     /// static bodies asks the routes it changes as it is tracked, as `StaticTracking` says. A
     /// walker that asks or forgets its route forgets its progress. One on its path asks as one
@@ -154,8 +154,8 @@ impl Routing {
 
     /// Whether a route planned to `planned` still serves a walker at `at` bound for `goal`: the
     /// two lie at most a tenth of the walker's distance to `goal` apart, as Zero Hour's
-    /// `isSamePosition` keeps a path to a goal object that moved (entries-and-blocking.md, A walk
-    /// into a unit follows it).
+    /// `isSamePosition` keeps a path to a goal object that moved (04-capabilities/navigation.md, A
+    /// walk into a unit follows it).
     const fn near_enough(at: Vec3, planned: Vec3, goal: Vec3) -> bool {
         // Offsets within the world's bound square below 2⁹², and a hundred times that fits.
         let moved = goal.ground_offset(planned).length_squared_bits();

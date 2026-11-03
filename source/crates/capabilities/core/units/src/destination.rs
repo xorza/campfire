@@ -19,8 +19,8 @@ use crate::unit_entity::UnitEntity;
 pub struct Destination(Option<WalkGoal>);
 
 /// Where a walk goes: to a point, or into the unit `unit`, at `at`, the place its capability took
-/// for the unit last, which the walker passes through as it walks into it (entries-and-blocking.md,
-/// A walk may go into a unit).
+/// for the unit last, which the walker passes through as it walks into it
+/// (04-capabilities/navigation.md, A walk may go into a unit).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WalkGoal {
     Point(Vec3),

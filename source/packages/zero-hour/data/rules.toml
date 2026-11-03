@@ -127,11 +127,11 @@ blocks = ["move"]
 # The tags of the markers its players start at and their starting units rally at; its layers,
 # the ground and the air its helicopters fly in (04-capabilities/navigation.md, Fliers share a
 # layer); that infantry walks through infantry that moves another way, as `blockedBy` lets it
-# (entries-and-blocking.md, Walkers that step pass those that step another way); and where a
+# (04-capabilities/navigation.md, Walkers that step pass those that step another way); and where a
 # transport lands: the first point a sphere of 5 clears on rings 5 apart, as
 # `tryPosition` tests and `findPositionAround` spaces them, then the first of 400 cells about it
-# its body clears, as `adjustToLandingDestination` walks them (riders-and-upgrades.md, A flier
-# lands where Zero Hour's transport lands).
+# its body clears, as `adjustToLandingDestination` walks them (04-capabilities/navigation.md, A
+# flier lands where Zero Hour's transport lands).
 [navigation]
 spawn_tags = ["start", "rally"]
 layers = ["ground", "air"]

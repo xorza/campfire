@@ -218,7 +218,7 @@ impl LookStates {
     /// The barrels the weapon slot `slot` fires from, of the first of its draws whose shown state,
     /// or the state its transition goes to, names them, of its look in `looks`, and the model
     /// whose nodes they are, none during a transition; none when no draw names them
-    /// (riders-and-upgrades.md, A carried model's barrels are its carrier's).
+    /// (02-engine-core.md, A carried model's barrels are its carrier's).
     pub(crate) fn barrels<'l>(&self, looks: &'l UnitLooks, slot: u8) -> Option<SlotBarrels<'l>> {
         let draws = looks.draws(self.unit_type, self.variation)?.draws();
         self.draws.iter().zip(draws).find_map(|(show, draw)| {

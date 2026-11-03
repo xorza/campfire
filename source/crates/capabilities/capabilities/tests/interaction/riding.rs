@@ -432,7 +432,7 @@ fn a_riders_walk_follows_a_container_that_drives_and_ends_short_of_one_walled_of
     // its reach of 1 m, at 8 m, in tick 13, 6 ticks after the humvee stops; the entry winds up 3
     // ticks and resolves in tick 17. As it keeps pace with the humvee for 8 ticks, it comes no
     // nearer it, and it is never stuck, as its progress grows by each move of its goal
-    // (entries-and-blocking.md, A walk into a unit follows it).
+    // (04-capabilities/navigation.md, A walk into a unit follows it).
     let humvee = container(&mut game, rides.humvee, 2, 0, Some(0));
     let follower = rider(&mut game, "walking caster", -6, 0, 0);
     let to = GroundPoint::new(Num::int(10), Num::ZERO);
@@ -509,12 +509,12 @@ fn riders_walk_into_an_idle_container_that_drives_which_stands_where_it_stood() 
     // A humvee that drives stands idle at (2, 0), and three riders on the x axis at −2, −6 and
     // −8 are ordered into it at once; then the same with four idle friends ringing it 1.5 m off.
     // Each rider's walk goes into the humvee, which so never steps aside for it and blocks none
-    // of its routes (entries-and-blocking.md, A walker passes through the unit it walks into).
-    // The first walks 2 m, a meter a tick from the tick of its order, to stand 2 m from the
+    // of its routes (04-capabilities/navigation.md, A walker passes through the unit it walks
+    // into). The first walks 2 m, a meter a tick from the tick of its order, to stand 2 m from the
     // humvee's center, its reach of 1 m from the humvee's body, at the end of tick 1; its entry
     // winds up 3 ticks from tick 2 and resolves in tick 5. The second, 6 m from there, stands
-    // behind the first a tick as the first winds up at x = 0, and enters in tick 10; the third
-    // goes round the second as it winds up, and enters in tick 12.
+    // behind the first a tick as the first winds up at x = 0, and enters in tick 10; the third goes
+    // round the second as it winds up, and enters in tick 12.
     for ringed in [false, true] {
         let (mut game, rides) = Rides::load();
         driving(&mut game, rides);
@@ -621,7 +621,7 @@ fn a_rider_meets_a_container_that_drives_at_it_and_follows_one_that_drives_round
     // over the 16 ticks the humvee moves, its route's last waypoint moves with it while the line
     // to it from the waypoint before is clear, and one tick plans a route, as the humvee leaves
     // that line round the wall's north end, more than a tenth of the rider's distance from the
-    // route's goal (entries-and-blocking.md, A walk into a unit follows it).
+    // route's goal (04-capabilities/navigation.md, A walk into a unit follows it).
     let (mut game, rides) = Rides::load();
     driving(&mut game, rides);
     for z in [-2, 0, 2, 4, 6, 8] {
@@ -1232,13 +1232,13 @@ fn a_flier_over_a_static_body_lands_where_zero_hours_transport_lands() {
     game.steps(10);
     assert_eq!(game.part::<Position>(flier).get().y, Num::int(8));
     // A rider 4 m off is ordered in: the chinook, which would land on the bunker, takes the first
-    // point of its rings where its probe clears (riders-and-upgrades.md, A flier lands where Zero
-    // Hour's transport lands). Each point of the ring of 1 m lies within the bunker or on its edge;
-    // the first of the ring of 2 m, at 0°, (2, 0), lies 1 m past the edge, more than the probe's
-    // half meter, and 2 m from the rider, more than the 1 m of their radii. The spiral's first cell
-    // is that point's, [2, 3] × [0, 1], whose center (2.5, 0.5) a walker of its radius stands in,
-    // 1.5 m past the bunker's edge and √2.5 m from the rider. The chinook flies there and lands,
-    // though its rider walks under it first, and the rider enters.
+    // point of its rings where its probe clears (04-capabilities/navigation.md, A flier lands where
+    // Zero Hour's transport lands). Each point of the ring of 1 m lies within the bunker or on its
+    // edge; the first of the ring of 2 m, at 0°, (2, 0), lies 1 m past the edge, more than the
+    // probe's half meter, and 2 m from the rider, more than the 1 m of their radii. The spiral's
+    // first cell is that point's, [2, 3] × [0, 1], whose center (2.5, 0.5) a walker of its radius
+    // stands in, 1.5 m past the bunker's edge and √2.5 m from the rider. The chinook flies there
+    // and lands, though its rider walks under it first, and the rider enters.
     let rider = rider(&mut game, "walking caster", 4, 0, 0);
     order(
         &mut game,
@@ -1259,7 +1259,7 @@ fn a_riders_fire_follows_its_containers_tags() {
     // Humvees whose riders fire while they hold `holding`, and while they do not: each takes the
     // tag as its first rider is in, after the rider's fire is tested, so the first humvee's rider
     // takes its fire as the tags change, and the second's never does
-    // (riders-and-upgrades.md, A rider's fire follows its container's tags).
+    // (04-capabilities/interaction.md, A rider's fire follows its container's tags).
     let gated = |game: &mut Match, name, when| {
         let spec = EnterSpec {
             fire: FireSpec::Center(Filter::of_match(game, "all")),

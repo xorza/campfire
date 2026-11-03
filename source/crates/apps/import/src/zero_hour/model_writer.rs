@@ -342,9 +342,9 @@ impl ModelWriter<'_> {
     /// (`AttachToBoneInContainer`), drawn at that bone of its carrier's model, at the structure's
     /// scale, hidden from its root down but while its carrier holds its upgrade's tag, as the
     /// structure stands on its carrier while it lives, and hiding what that state hides, its
-    /// barrels' flashes among it (riders-and-upgrades.md, A model may be drawn at another's bone);
+    /// barrels' flashes among it (02-engine-core.md, A model may be drawn at another's bone);
     /// each with what of its look waits for the slots its structure's weapons take
-    /// (riders-and-upgrades.md, A carried model's barrels are its carrier's). None of a model the
+    /// (02-engine-core.md, A carried model's barrels are its carrier's). None of a model the
     /// package lacks.
     fn carried_models(
         &mut self,
@@ -418,7 +418,7 @@ impl ModelWriter<'_> {
     /// `object`, its carrier, the object whose model gives its type's bones, launches from, in the
     /// carrier's unit's frame at its scale: those of the structure's default state's model as its
     /// first animation places it, at the bone as the carrier's default model rests, at the
-    /// structure's scale (riders-and-upgrades.md, A carried model's barrels are its carrier's);
+    /// structure's scale (02-engine-core.md, A carried model's barrels are its carrier's);
     /// none of a model the package lacks, or of a bone the carrier's model lacks.
     fn carried_launches(
         &mut self,

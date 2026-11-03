@@ -220,8 +220,8 @@ impl Walking {
             // A mover comes nearer by its speed, which it gains and loses over ticks, not by its
             // step (04-capabilities/navigation.md, A mover keeps a velocity); a walker braked
             // behind a unit that moves by the step the brake let it take, and one braked to a stop,
-            // a mover among them, by its whole step, so it is stuck (entries-and-blocking.md, A
-            // walker brakes behind a unit that blocks it).
+            // a mover among them, by its whole step, so it is stuck (04-capabilities/navigation.md,
+            // A walker brakes behind a unit that blocks it).
             let full = step.get();
             let braked = last.get();
             let stepped = braked
@@ -490,9 +490,9 @@ impl Walking {
     /// walker's step and a mover's speed are cut to what the brake lets it take. One that yields
     /// to a walker head on steps aside to the right of its way by the two radii, by a waypoint put
     /// at the head of its route, or to the left where the walls or a static body leave no room
-    /// there (entries-and-blocking.md, A head-on block steps the lower priority aside). Each
-    /// walker's `BrakedStep` takes the step its brake let it take. A predicting client brakes its units behind its
-    /// own alone, as a unit it holds stands where the server last had it.
+    /// there (04-capabilities/navigation.md, A head-on block steps the lower priority aside). Each
+    /// walker's `BrakedStep` takes the step its brake let it take. A predicting client brakes its
+    /// units behind its own alone, as a unit it holds stands where the server last had it.
     pub(super) fn move_units(
         (models, grid, statics, navigation, crowd): (
             Res<'_, ById<UnitType, MovementModel>>,
@@ -737,18 +737,19 @@ impl Walking {
 
     /// Parts the living bodies of one layer that overlap, as `Collider::resolve` says: no body
     /// pushes another that it does not overlap, as walkers brake behind the units in their way
-    /// (entries-and-blocking.md, A unit outside the cone neither blocks nor pushes). A body a
-    /// forced move moves passes through the others, and parts from them once the move ends. Only
-    /// a unit that can walk is moved, and one walking to a destination yields to one that stands,
-    /// the one that went into the other first of all. The static bodies' contacts come from `statics`, which holds them as the
-    /// stage starts. A predicting client also parts its own units from the units it holds as the
-    /// server sent them that cannot walk, such as towers, which never move. Every other held unit
-    /// is where the server last had it, behind the client's ticks, and may have started or stopped
-    /// walking since, so the server alone parts the client's units from it. Every tick reads the
-    /// bodies into `colliders`, finds their contacts with `broadphase`, and writes back the bodies
-    /// a contact may have pushed, by their places in `pushed`, buffers it keeps: a body that may
-    /// not be pushed, or that no contact names, stays where it stood. A walker the contacts leave
-    /// in a static body stands at the nearest place it may, as `stand_clear` says.
+    /// (04-capabilities/navigation.md, A unit outside the cone neither blocks nor pushes). A body a
+    /// forced move moves passes through the others, and parts from them once the move ends. Only a
+    /// unit that can walk is moved, and one walking to a destination yields to one that stands, the
+    /// one that went into the other first of all. The static bodies' contacts come from `statics`,
+    /// which holds them as the stage starts. A predicting client also parts its own units from the
+    /// units it holds as the server sent them that cannot walk, such as towers, which never move.
+    /// Every other held unit is where the server last had it, behind the client's ticks, and may
+    /// have started or stopped walking since, so the server alone parts the client's units from it.
+    /// Every tick reads the bodies into `colliders`, finds their contacts with `broadphase`, and
+    /// writes back the bodies a contact may have pushed, by their places in `pushed`, buffers it
+    /// keeps: a body that may not be pushed, or that no contact names, stays where it stood. A
+    /// walker the contacts leave in a static body stands at the nearest place it may, as
+    /// `stand_clear` says.
     pub(super) fn collide(
         mut units: Query<
             '_,

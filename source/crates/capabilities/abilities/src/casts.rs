@@ -210,9 +210,9 @@ impl Casts {
             if reach != RangeFit::Within {
                 let to = checked.walk_to(position.get(), body, reach, &targets);
                 // A walk that arrived short of its goal ends its cast, as no path comes nearer
-                // (riders-and-upgrades.md, An approach that cannot reach ends). An entry walks into
-                // its container, as Zero Hour's rider ignores its container on its way
-                // (entries-and-blocking.md, A walk may go into a unit).
+                // (04-capabilities/actions.md, An approach that cannot reach ends). An entry walks
+                // into its container, as Zero Hour's rider ignores its container on its way
+                // (04-capabilities/navigation.md, A walk may go into a unit).
                 match (walk.as_mut(), to) {
                     (Some(walk), Some(to)) if !walk.gives_up(to) => {
                         match (action.kind, checked.target) {

@@ -1799,12 +1799,12 @@ fn a_portable_structures_model_is_drawn_at_its_carriers_bone_while_its_upgrades_
     // A carrier of the tank's model whose upgrade makes a turret, of the tank's model too, drawn
     // at its container's `Turret` bone: each of the carrier's states draws the turret's model at
     // that bone, hidden from its root down, the tank's `RootTransform`, but while the carrier
-    // holds the upgrade's tag (riders-and-upgrades.md, A model may be drawn at another's bone).
+    // holds the upgrade's tag (02-engine-core.md, A model may be drawn at another's bone).
     // The turret's first slot flashes the tank's `MuzzleFX`, which its model hides as the turret's
     // state does, and which waits, of the turret's own slot, for the slots its weapons take
-    // (riders-and-upgrades.md, A carried model's barrels are its carrier's). It launches from that
-    // bone too: in the turret's model, `MUZZLEFX01` stands 1 up the `TURRET` pivot's `y`, which a
-    // half turn about `z` at (1, 2, 3) takes to (1, 1, 3); drawn at the carrier's `TURRET`, the same
+    // (02-engine-core.md, A carried model's barrels are its carrier's). It launches from that bone
+    // too: in the turret's model, `MUZZLEFX01` stands 1 up the `TURRET` pivot's `y`, which a half
+    // turn about `z` at (1, 2, 3) takes to (1, 1, 3); drawn at the carrier's `TURRET`, the same
     // pose, it stands at (1, 2, 3) + (−1, −1, 3) = (0, 1, 6), its two half turns none, so along
     // `x`: on glTF's axes (0, 6, −1).
     let FixtureInstall {

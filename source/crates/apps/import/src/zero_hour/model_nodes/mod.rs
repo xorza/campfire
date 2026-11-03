@@ -49,7 +49,7 @@ pub(crate) struct ModelBarrel {
 
 /// Where a carried model stands on its host's model: the pose at rest, on W3D's axes, of the
 /// host's node it is drawn at, and its own scale over its host's, as the client stands it rigid at
-/// that node at its own scale alone (riders-and-upgrades.md, A model may be drawn at another's
+/// that node at its own scale alone (02-engine-core.md, A model may be drawn at another's
 /// bone).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct HostNode {
@@ -254,7 +254,7 @@ impl ModelNodes {
     }
 
     /// The launches `launches` gives, of the model drawn at `host`, in its host model's frame
-    /// (riders-and-upgrades.md, A carried model's barrels are its carrier's).
+    /// (02-engine-core.md, A carried model's barrels are its carrier's).
     pub(crate) fn launches_on(
         &self,
         weapon: &WeaponBones,

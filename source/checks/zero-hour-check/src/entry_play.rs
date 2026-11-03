@@ -24,13 +24,13 @@ const BUNKER_TAG: &str = "upgrade_chinaoverlordbattlebunker_created";
 /// China's player slot in the play's match.
 const CHINA: u32 = 1;
 
-/// The entry play on Tournament Desert (entries-and-blocking.md, A walk may go into a unit;
-/// entries-and-blocking.md, A walker passes through the unit it walks into): player 1, America,
-/// and player 2, China, each from its base start, China ordered nothing but the play's orders. Its
-/// two Troop Crawlers let their 16 Red Guards out, as its first Overlord buys its battle bunker;
-/// the first crawler's 8 walk back into it, then the second's into a Helix, of 5 places, and the 3
-/// it leaves into the Overlord's bunker once bought, each container standing where it stood while
-/// its riders walk in but the Helix, which lands for them.
+/// The entry play on Tournament Desert (04-capabilities/navigation.md, A walk may go into a unit;
+/// 04-capabilities/navigation.md, A walker passes through the unit it walks into): player 1,
+/// America, and player 2, China, each from its base start, China ordered nothing but the play's
+/// orders. Its two Troop Crawlers let their 16 Red Guards out, as its first Overlord buys its
+/// battle bunker; the first crawler's 8 walk back into it, then the second's into a Helix, of 5
+/// places, and the 3 it leaves into the Overlord's bunker once bought, each container standing
+/// where it stood while its riders walk in but the Helix, which lands for them.
 #[derive(Debug)]
 pub(crate) struct EntryPlay;
 

@@ -91,7 +91,7 @@ impl EffectModifier {
 
 impl UpgradeImport {
     /// Takes the upgrades the propaganda towers' entries of `propaganda` name
-    /// (riders-and-upgrades.md, A propaganda tower is an aura).
+    /// (09-zero-hour.md, A propaganda tower is an aura).
     pub(crate) fn take_propaganda(&mut self, propaganda: &PropagandaImport) {
         self.upgrades.extend(propaganda.named.iter().cloned());
     }
@@ -258,7 +258,7 @@ impl UpgradeImport {
             // An upgrade that makes a portable structure inside its object gives it the
             // structure's part by its tag: a transport's entry opens, and a cannon's weapons arm
             // (04-capabilities/interaction.md, A bunker is an entry a tag opens;
-            // riders-and-upgrades.md, A portable structure is a part of its carrier).
+            // 09-zero-hour.md, A portable structure is a part of its carrier).
             UpgradeEffect::ObjectCreation { .. }
                 if portable_structure::structure(rules, module).is_some() =>
             {

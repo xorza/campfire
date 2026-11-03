@@ -139,9 +139,9 @@ pub(crate) struct CrowdPrice<'a> {
 }
 
 /// A unit that stands that a walker walks into, which its price leaves out
-/// (entries-and-blocking.md, A walker passes through the unit it walks into): what it adds to the
-/// counts the walker's price reads in each cell it holds, and those cells for the walker's kind,
-/// one run a row, rows in order, on a grid of `columns` columns.
+/// (04-capabilities/navigation.md, A walker passes through the unit it walks into): what it adds to
+/// the counts the walker's price reads in each cell it holds, and those cells for the walker's
+/// kind, one run a row, rows in order, on a grid of `columns` columns.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Excused<'a> {
     counts: UnitCounts,

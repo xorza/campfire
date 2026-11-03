@@ -62,7 +62,7 @@ impl TypeUpgrades {
 
     /// Each conflict of an upgrade `modifier` triggers: what withholds the upgrade it buys, which
     /// a research of `modifier` is refused for, as Zero Hour's `CommandSetUpgrade` shows no other
-    /// once one is bought (riders-and-upgrades.md, A conflicting upgrade is refused).
+    /// once one is bought (04-capabilities/production.md, A conflict holds back both of its sides).
     pub fn withholding(&self, modifier: ModifierId) -> impl Iterator<Item = ModifierId> + '_ {
         self.0
             .iter()

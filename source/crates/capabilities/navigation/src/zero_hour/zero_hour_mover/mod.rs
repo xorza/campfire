@@ -202,7 +202,8 @@ impl ZeroHourMover {
     /// one its `blocked` flag holds that drives no slower than its brake: its velocity is cut to
     /// the brake, as `scrubVelocity2D` cuts it, to none below the still speed, and it turns toward
     /// its goal by its whole turn rate, whatever its speed, with no push, so a wheel braked to a
-    /// stop turns where it stands (entries-and-blocking.md, A blocked mover turns where it stands).
+    /// stop turns where it stands (04-capabilities/navigation.md, A blocked mover turns where it
+    /// stands).
     fn hold(&self, steer: Steer, stance: &mut Stance, drive: &mut ZeroHourDrive) {
         let speed = drive.speed();
         if steer.speed < self.still {

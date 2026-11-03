@@ -96,10 +96,10 @@ impl Fliers {
     /// Finds, before the tick's flight, the point each living flier lands at that lands, walks
     /// nowhere and is still in the air, and holds it in its goal, so it lands there whatever walks
     /// under it after, as Zero Hour's transport takes its point once, as its landing begins
-    /// (riders-and-upgrades.md, A flier lands where Zero Hour's transport lands). It finds a point
-    /// again only once it hovers away from it, at no arrival there. A flier lands where it hovers
-    /// when its body has room on the ground there; else at the first point of rings about it,
-    /// outward by the mode's ring, at which a circle of the mode's probe clears the walls, the
+    /// (04-capabilities/navigation.md, A flier lands where Zero Hour's transport lands). It finds a
+    /// point again only once it hovers away from it, at no arrival there. A flier lands where it
+    /// hovers when its body has room on the ground there; else at the first point of rings about
+    /// it, outward by the mode's ring, at which a circle of the mode's probe clears the walls, the
     /// static bodies and the first layer's units, as `findPositionAround` takes it, moved to the
     /// first cell of the mode's spiral about that point a walker of its radius on the first layer
     /// may stand in, clear of the bodies of the first layer's units, as

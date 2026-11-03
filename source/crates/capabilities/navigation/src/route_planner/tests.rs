@@ -76,7 +76,7 @@ fn a_route_says_whether_it_goes_through_a_cell_its_teams_units_stand_in() {
     // from (0.5, 1.5) to (4.5, 1.5) in a corridor one cell wide goes through it, at 42 past its
     // step, and its route says so; on open ground it goes round it, by two diagonal steps of 14
     // for two straight ones of 10, cheaper by 34, and its route goes through none
-    // (entries-and-blocking.md, A walker that steps moves no unit that drives aside).
+    // (04-capabilities/navigation.md, A walker that steps moves no unit that drives aside).
     let team = Team::new(0);
     let through = |rows: &[&str]| {
         let Walled { grid, statics } = walled(rows);

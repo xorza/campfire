@@ -115,7 +115,7 @@ impl ModifierData {
 /// How many sources a carrier holds a modifier from at once by holds, as auras and containers hold
 /// it: each one's instance, or the lowest source's alone, as Zero Hour's propaganda towers each
 /// heal a unit only from its one benefactor (`attemptHealingFromSoleBenefactor`) and a Dota aura of
-/// one name does not stack (riders-and-upgrades.md, A held modifier may hold from one source).
+/// one name does not stack (04-capabilities/stats.md, A held modifier may hold from one source).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HeldSources {

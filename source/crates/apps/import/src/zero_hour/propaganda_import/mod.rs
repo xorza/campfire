@@ -19,7 +19,7 @@ use crate::zero_hour::type_name::TypeName;
 use crate::zero_hour::upgrade_drop_cause::UpgradeDropCause;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
-/// Zero Hour's propaganda towers as auras (riders-and-upgrades.md, A propaganda tower is an
+/// Zero Hour's propaganda towers as auras (09-zero-hour.md, A propaganda tower is an
 /// aura): the upgrades the entries of the towers' upgrades name, and the modifiers of the auras
 /// and of their heals; and the towers it drops, by their object's name. It gives each type of a
 /// `PropagandaTowerBehavior` of its own or whose upgrade makes a portable tower inside it the

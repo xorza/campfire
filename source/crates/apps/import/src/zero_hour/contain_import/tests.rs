@@ -318,8 +318,8 @@ fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes()
     // tag, the upgrade's name suffixed `created`; the Helix 5 infantry or vehicles but an aircraft,
     // each 100 ms apart, its infantry firing once it holds its passengers' upgrade's tag, the
     // upgrade's name suffixed `fire` (04-capabilities/interaction.md, A bunker is an entry a tag
-    // opens; riders-and-upgrades.md, A rider's fire follows its container's tags). The tower of no
-    // bunker's upgrade goes.
+    // opens; 04-capabilities/interaction.md, A rider's fire follows its container's tags). The
+    // tower of no bunker's upgrade goes.
     let opened = FilterTag {
         name: DeclaredName::new("upgrade_fortressbunker_created").unwrap(),
         negated: false,

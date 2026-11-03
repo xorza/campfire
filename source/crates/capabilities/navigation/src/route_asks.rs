@@ -112,8 +112,8 @@ struct PartySearch<'s, 'a> {
 
 impl<'a> RouteSearch<'a> {
     /// What `member` may walk, priced by the crowd, walled as its `walls` says, but for the unit
-    /// it walks into, whose cells it puts in `excused` (entries-and-blocking.md, A walker passes
-    /// through the unit it walks into).
+    /// it walks into, whose cells it puts in `excused` (04-capabilities/navigation.md, A walker
+    /// passes through the unit it walks into).
     fn walkable<'r>(&self, member: &PlanWalker, excused: &'r mut Vec<Range<usize>>) -> Walkable<'r>
     where
         'a: 'r,

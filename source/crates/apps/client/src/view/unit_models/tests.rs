@@ -519,7 +519,7 @@ fn a_model_at_a_bone_stands_where_its_hosts_node_stands_at_its_own_scale() {
     // A host of scale 2 whose `turret`, a meter up and turned 90° about up, holds `firepoint01`
     // a meter along its +x: the node stands at 2 × (0, 1, −1), as the turn takes +x to −z, turned
     // 90°, and a model of scale 0.5 at it stands there of its own scale, 0.5, as the host's scale
-    // moves its nodes alone (riders-and-upgrades.md, A model may be drawn at another's bone). The
+    // moves its nodes alone (02-engine-core.md, A model may be drawn at another's bone). The
     // tolerance is the `f32` rounding of the quarter turn's sine and cosine.
     let mut world = World::new();
     let quarter = Quat::from_rotation_y(FRAC_PI_2);

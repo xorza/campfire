@@ -406,7 +406,7 @@ impl Containers {
     /// to leave it, once it walks nowhere, where its body has room on the ground, and lifts it
     /// again once none does; once it is on the ground, each unit that waits for it enters again,
     /// and a unit that took another order or went comes no more (04-capabilities/navigation.md, A
-    /// flier lands for its riders; riders-and-upgrades.md, A flier lands where Zero Hour's
+    /// flier lands for its riders; 04-capabilities/navigation.md, A flier lands where Zero Hour's
     /// transport lands).
     pub(crate) fn land(
         mut fliers: Landers<'_, '_>,
@@ -663,7 +663,7 @@ impl Containers {
     /// Marks each rider of a container whose tags changed, and whose fire waits for tags, as one
     /// that fires while the container's tags pass them, and takes the mark while they do not, as
     /// `PassengersFireUpgrade` lets the Helix's riders fire once it holds its bunker
-    /// (riders-and-upgrades.md, A rider's fire follows its container's tags).
+    /// (04-capabilities/interaction.md, A rider's fire follows its container's tags).
     pub(crate) fn arm(
         containers: Retagged<'_, '_>,
         (specs, index): (Res<'_, ById<UnitType, EnterSpec>>, Res<'_, EntityIndex>),

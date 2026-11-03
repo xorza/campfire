@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 /// The step a walker was let take in the last Move stage, as its brake or its turn held it, none
 /// when it took its whole step: a walker behind it brakes to that step, the advance it reads of
 /// it, so the order the walkers move in changes none of them, and its own stuck count counts that
-/// step while it is braked behind a unit that moves (entries-and-blocking.md, A walker brakes
+/// step while it is braked behind a unit that moves (04-capabilities/navigation.md, A walker brakes
 /// behind a unit that blocks it).
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]

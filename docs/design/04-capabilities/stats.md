@@ -14,11 +14,13 @@
 
 - **At most eight pools,** so a unit's pools are fixed arrays a rollback copies without allocating.
 - **A rising maximum raises the amount by as much, and a falling one keeps it.** League of Legends' rule, where Dota 2 keeps the fraction, which needs a rounding the engine does not take.
+- **A pool regains a share of its maximum.** A pool's `regen_share` names a stat of the share of its maximum it regains a second, besides its `regen`, rounded down and carried as regen is, so a propaganda tower's aura heals each unit 1 % of its own most life a second, as `PropagandaTowerBehavior` heals `HealPercentEachSecond` of the unit's maximum. Refused: a heal by a script each pulse, beside the aura's pass that already holds the modifier; a regen scaled by a param, which reads its source's stats, the tower's, not the healed unit's.
 
 ## Modifiers
 
 - **An interval's policy at a respawn.** A dead carrier's intervals run no hook, and keep their clock; as the carrier comes back, the modifier's `interval_revival` says what its interval does: `continue`, the default, comes when it would have, `reset` comes a whole interval later, and `fire_and_reset` comes at once, then a whole interval on, the three policies of Unreal's `EGameplayEffectPeriodInhibitionRemovedPolicy`. An interval never comes twice in one tick, so a clock that fell behind does not burst.
 - **One instance per id and source.** A carrier holds at most one instance of an id from each source; a reapply refreshes, stacks or is ignored, as the modifier says.
+- **A held modifier may hold from one source.** A modifier's `held_sources = "one"` keeps, of the holds a carrier takes of it in a tick, the lowest source's alone, so two towers heal a unit once, as `attemptHealingFromSoleBenefactor` takes one benefactor and Dota's auras of one name do not stack. Refused: an instance from each source, under which every tower in reach adds its heal.
 - **A duration counts whole ticks from the end of its tick,** so it holds the same at any rate to within one tick.
 - **An instance lives while something keeps it.** A passive's rank, an aura, an area, a player and an application each keep it; it ends only when nothing does.
 - **An instance ends with its last stack.** An instance left with no stack ends, with its clock, its hooks and intervals, whether its stacks ran out or a script wrote `m.stacks = 0`, so the two ways to none end alike; a passive stays with none, as its rank keeps it. Refused: an instance of no stack that `has_modifier` reported and whose intervals ran on.

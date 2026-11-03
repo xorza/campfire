@@ -47,8 +47,8 @@ pub struct Route {
 /// What the planner found of a route beside its waypoints: whether its last waypoint is the goal,
 /// and whether it goes through a cell a unit of its walker's team stands in, so the walker may
 /// move such a unit aside whatever its gait, as Zero Hour's path that crosses a cell an ally holds
-/// is blocked by an ally (entries-and-blocking.md, A walker that steps moves no unit that drives
-/// aside).
+/// is blocked by an ally (04-capabilities/navigation.md, A walker that steps moves no unit that
+/// drives aside).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RouteFound {
     pub(crate) reached: bool,

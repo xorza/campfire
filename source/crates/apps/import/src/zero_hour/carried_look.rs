@@ -6,7 +6,7 @@ use campfire_values::PackagePath;
 /// What of a portable structure's model, which its carrier's draws hold at a bone, waits for the
 /// weapon slots the structure's weapons take among its carrier's: the parts of the structure's own
 /// slots, and the first of its carrier's slots they take, once the combat import arms the carrier
-/// with them (riders-and-upgrades.md, A carried model's barrels are its carrier's).
+/// with them (02-engine-core.md, A carried model's barrels are its carrier's).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CarriedLook {
     structure: DeclaredName,

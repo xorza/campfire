@@ -182,7 +182,8 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
         EffectModifier::tagged(&declared("upgrade_a_created"))
     );
     // Passengers that fire by an upgrade fire while their container holds the first trigger's
-    // tag suffixed `fire` (riders-and-upgrades.md, A rider's fire follows its container's tags).
+    // tag suffixed `fire` (04-capabilities/interaction.md, A rider's fire follows its container's
+    // tags).
     let fire = module(UpgradeEffect::PassengersFire, &["Upgrade_A"]);
     let entry = import.module(sources, &fire, &[]).unwrap();
     assert_eq!(entry.modifier, declared("upgrade_a_fire"));

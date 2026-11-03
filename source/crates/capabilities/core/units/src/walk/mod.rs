@@ -39,7 +39,8 @@ impl WalkItem<'_, '_> {
     }
 
     /// Sets the unit to walk into `unit`, which stands at `at`, by the rule of `to`, so the
-    /// walker passes through it on its way (entries-and-blocking.md, A walk may go into a unit).
+    /// walker passes through it on its way (04-capabilities/navigation.md, A walk may go into a
+    /// unit).
     pub fn to_unit(&mut self, unit: StableId, at: Vec3) {
         self.go(Some(WalkGoal::Into { unit, at }));
     }

@@ -228,7 +228,7 @@ fn a_draw_shows_the_transition_between_two_keys_and_lets_a_state_finish_its_clip
     let at = |app: &App| (show(app).showing(), show(app).pending());
     assert_eq!(at(&app), (Some(Showing::State(0)), None));
     // The first slot's barrels are of the model at their place among the shown state's models,
-    // none during a transition, whose models are its own (riders-and-upgrades.md, A carried
+    // none during a transition, whose models are its own (02-engine-core.md, A carried
     // model's barrels are its carrier's).
     let fires_under = |app: &App| {
         let states = app.world().get::<LookStates>(root).unwrap();

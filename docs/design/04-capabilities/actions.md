@@ -18,6 +18,7 @@
 - **An interruption spends nothing.** A tag that blocks the action's group, or a new order, interrupts the windup back to its order with nothing spent.
 - **A target an action does not take is ignored,** so a client may always send the unit under the cursor.
 - **An action may need tags.** An action's `when` is a tag test in the same syntax; an action whose test fails does not start, holds no passive, and no weapon choice or scan takes it, as OpenRA's `Armament` takes `RequiresCondition` and Zero Hour's weapon set of `PLAYER_UPGRADE` replaces the one of none; an order of it is refused, as Zero Hour's panel disables the button of an upgrade not held, though an order a block stops waits: a stun ends, and a missing upgrade may never come; it keeps its slot, so a client binds its keys to the same slots whatever its unit holds (Slot kinds in the mode's order). Refused: actions granted and taken away by modifiers, which move a unit's slots as it is upgraded.
+- **An approach that cannot reach ends.** A cast whose walk to its target arrived short of it ends its order, as a build's and a gather's walk give up by `gives_up`, and as Zero Hour's `AIInternalMoveToState` fails when its path does, so the unit stands idle and takes the next order. Refused: an order that stays approaching with no walk, which a player sees as a unit that ignored its order.
 
 ## Over time
 

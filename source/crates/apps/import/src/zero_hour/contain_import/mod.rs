@@ -139,7 +139,7 @@ impl ContainImport {
                 }
             };
             // A transport whose riders fire by an upgrade lets its infantry fire while it holds
-            // the upgrade's tag, as `PassengersFireUpgrade` does (riders-and-upgrades.md, A
+            // the upgrade's tag, as `PassengersFireUpgrade` does (04-capabilities/interaction.md, A
             // rider's fire follows its container's tags).
             let upgraded = object.upgrades().iter().find(|module| {
                 module.effect == UpgradeEffect::PassengersFire && !module.triggers.is_empty()

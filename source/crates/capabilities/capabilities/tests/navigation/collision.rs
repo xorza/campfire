@@ -8,8 +8,8 @@ fn bodies_brake_part_and_block_the_way() {
     // Bodies of 0.5 m walking a quarter meter a tick. A from x = 0 and B from x = 3 walk at each
     // other: 3 − 0.5 t apart after tick t, so they touch after tick 4, at 1 and 2, 1 m apart, the
     // sum of their radii, and in tick 5 each brakes to a stop, where they never overlap
-    // (entries-and-blocking.md, A walker brakes behind a unit that blocks it); the crowd tests
-    // show how they pass.
+    // (04-capabilities/navigation.md, A walker brakes behind a unit that blocks it); the crowd
+    // tests show how they pass.
     let quarter = Num::QUARTER;
     let half = Num::HALF;
     let mut game = blocking_walk_match();

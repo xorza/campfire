@@ -8,7 +8,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 /// condition of an upgrade shows and hides over those, in order, the nodes that show the rounds of
 /// a weapon slot's clip, and the node of its state's first model it is drawn at, none for one
 /// drawn at its unit, as a portable structure is drawn at its container's bone
-/// (riders-and-upgrades.md, A model may be drawn at another's bone).
+/// (02-engine-core.md, A model may be drawn at another's bone).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClientModel {

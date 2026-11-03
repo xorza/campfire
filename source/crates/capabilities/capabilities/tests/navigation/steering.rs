@@ -235,8 +235,8 @@ fn an_idle_friend_on_a_walkers_way_steps_aside_before_it_stalls_and_an_enemy_or_
         )
     };
     // Where the friend ends, in bits of 2⁻²⁴: on its place aside, the two radii off the walker's
-    // way, at (0.5, −0.75), as no walker pushes it (entries-and-blocking.md, A unit outside the
-    // cone neither blocks nor pushes).
+    // way, at (0.5, −0.75), as no walker pushes it (04-capabilities/navigation.md, A unit outside
+    // the cone neither blocks nor pushes).
     let ends = [
         (Gait::Step, 60, [8388608, 0, -12582912]),
         (Gait::Drive, 60, [8388608, 0, -12582912]),
@@ -253,8 +253,8 @@ fn an_idle_friend_on_a_walkers_way_steps_aside_before_it_stalls_and_an_enemy_or_
     // The walker round the enemy ends on its goal. The friend at work costs it more, so its route
     // goes round the friend's cells, along z = 0.25, and the walker brakes to touch the friend
     // there, at x = 0.5 − √0.9375, its body's 1 m from the friend's, which stays where it stood,
-    // as no overlap is left to part (entries-and-blocking.md, A walker brakes behind a unit that
-    // blocks it).
+    // as no overlap is left to part (04-capabilities/navigation.md, A walker brakes behind a unit
+    // that blocks it).
     let held = [
         (1, false, [[100663296, 0, 0], [8388608, 0, 0]], 202, 1),
         (0, true, [[-7855862, 0, 4194304], [8388608, 0, 0]], 217, 6),
@@ -278,7 +278,7 @@ fn a_walker_passes_through_the_idle_friend_it_walks_into_and_a_client_walks_it_a
     // walker reaches the friend's place in tick 5, 6 m on, and has arrived, its walk over, so
     // collision parts the two on one spot along x, the walker, of the higher id, to +x, half a
     // meter each way. A client predicts the walk alike, as it moves no friend
-    // aside (entries-and-blocking.md, A walker passes through the unit it walks into).
+    // aside (04-capabilities/navigation.md, A walker passes through the unit it walks into).
     let half = Num::HALF;
     let mut game = walk_match();
     let mut client = Match::builder(&[Capability::Navigation])
@@ -341,19 +341,17 @@ fn a_wide_walker_passes_wide_idle_friends_that_yield_to_free_room_and_stops_at_h
     // lies the two radii, 2 m, off the walker's way, up its alcove, at (−1.25, 2.25) and
     // (3.75, 2.25), and the walker, braked behind each until it clears its way, arrives in tick
     // 79, 11 past the 68 its 17 m take (04-capabilities/navigation.md, A friend yields to the
-    // nearest place clear of the way; entries-and-blocking.md, A walker brakes behind a unit that
-    // blocks it).
-    // With none, a friend's search passes through the other to a place ahead, past the walker's
-    // way, and the other steps ahead in turn (04-capabilities/navigation.md, A friend yields
-    // through the friends that yield). With the lane open past x = 6, they leave it, the first to
-    // (7.25, 2.25), the second, parted from the walker as it passes, to (7.24, −1.87), and the
-    // walker arrives in tick 81.
-    // With it closed, they drive on until the lane's end holds no place clear of the walker's way,
-    // at x 7.25 and 9.25, each hemmed in, firm, the first as its step aside ends short where it
-    // began; the walker's route walls them, and it arrives short of its goal in tick 64, at
-    // (5.25, −0.25), the reached cell nearest the goal; an order of its own frees the first, which
-    // then walks (04-capabilities/navigation.md, A friend that cannot yield is firm, and a stuck
-    // walker's route walls it).
+    // nearest place clear of the way; 04-capabilities/navigation.md, A walker brakes behind a unit
+    // that blocks it). With none, a friend's search passes through the other to a place ahead, past
+    // the walker's way, and the other steps ahead in turn (04-capabilities/navigation.md, A friend
+    // yields through the friends that yield). With the lane open past x = 6, they leave it, the
+    // first to (7.25, 2.25), the second, parted from the walker as it passes, to (7.24, −1.87), and
+    // the walker arrives in tick 81. With it closed, they drive on until the lane's end holds no
+    // place clear of the walker's way, at x 7.25 and 9.25, each hemmed in, firm, the first as its
+    // step aside ends short where it began; the walker's route walls them, and it arrives short of
+    // its goal in tick 64, at (5.25, −0.25), the reached cell nearest the goal; an order of its own
+    // frees the first, which then walks (04-capabilities/navigation.md, A friend that cannot yield
+    // is firm, and a stuck walker's route walls it).
     let one = Num::ONE;
     let goal = Vec3::from((9, 0, 0));
     let run = |lane: Lane| {

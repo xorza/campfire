@@ -103,8 +103,8 @@ impl EnterSpec {
     }
 
     /// Whether a rider of `rider` fires from a container of it of `tags`: one its fire takes,
-    /// while the container's tags pass its `fire_when` (riders-and-upgrades.md, A rider's fire
-    /// follows its container's tags).
+    /// while the container's tags pass its `fire_when` (04-capabilities/interaction.md, A rider's
+    /// fire follows its container's tags).
     pub fn rider_fires(&self, rider: TagSet, tags: TagSet) -> bool {
         self.fire.fires(rider)
             && self

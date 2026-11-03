@@ -10,8 +10,8 @@ use crate::gait::Stepping;
 
 /// The units that may block a walker, as the Move stage starts, by stable id, and a grid of their
 /// bodies: what each walker's brake reads, so the order the walkers move in changes none of them
-/// (entries-and-blocking.md, A walker brakes behind a unit that blocks it). Kept between ticks, so
-/// a tick allocates nothing once its buffers have grown.
+/// (04-capabilities/navigation.md, A walker brakes behind a unit that blocks it). Kept between
+/// ticks, so a tick allocates nothing once its buffers have grown.
 #[derive(Debug, Default)]
 pub(crate) struct Blocking {
     units: Vec<Blocker>,
@@ -112,10 +112,11 @@ impl Blocking {
     /// measures' own half a bit. The unit its walk goes into, one of another layer, one it
     /// passes through, and, of a walker that steps, one that walks and steps another way block it
     /// not
-    /// (entries-and-blocking.md, Walkers that step pass those that step another way). Of two that block each other head on, both braked to a stop,
-    /// the one of the lower weight, then of the higher stable id, yields, as
-    /// `hasHigherPathPriority` ranks a vehicle over a soldier and then the lower id of two that
-    /// face each other (entries-and-blocking.md, A head-on block steps the lower priority aside).
+    /// (04-capabilities/navigation.md, Walkers that step pass those that step another way). Of two
+    /// that block each other head on, both braked to a stop, the one of the lower weight, then of
+    /// the higher stable id, yields, as `hasHigherPathPriority` ranks a vehicle over a soldier and
+    /// then the lower id of two that face each other (04-capabilities/navigation.md, A head-on
+    /// block steps the lower priority aside).
     pub(crate) fn brake(&self, id: StableId, way: &Going, step: Num) -> Brake {
         let mut brake = Brake {
             step: None,

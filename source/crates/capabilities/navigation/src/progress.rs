@@ -105,7 +105,7 @@ impl Progress {
     /// of a chase or of a walk into a unit moves: the walk goes on toward it, and the nearest it
     /// came grows by the move, the farthest the goal may have gone from where it stood then, so a
     /// walker that steps toward a goal that moves away comes nearer by its step, and one that
-    /// stands does not (entries-and-blocking.md, A walk into a unit follows it).
+    /// stands does not (04-capabilities/navigation.md, A walk into a unit follows it).
     pub(crate) fn goal_moved(&mut self, from: Vec3, to: Vec3) {
         if let Some(nearest) = &mut self.toward
             && nearest.waypoint == from

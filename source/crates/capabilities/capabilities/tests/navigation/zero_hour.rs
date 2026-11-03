@@ -105,8 +105,8 @@ fn a_mover_that_gathers_speed_slowly_is_not_stuck() {
     // never stuck, as a walker of its step would be after `Progress::stuck_after` ticks. An enemy
     // of 9 m that stands across the ground's whole width on its way then brakes it to a stop,
     // touching it, 9.5 m from its center, and from then on it is stuck by its whole step, so it
-    // counts a stuck tick each tick (entries-and-blocking.md, A walker brakes behind a unit that
-    // blocks it).
+    // counts a stuck tick each tick (04-capabilities/navigation.md, A walker brakes behind a unit
+    // that blocks it).
     let mut game = walk_match();
     Navigation::load_open_pathing(&mut game, Num::ONE, [-8, -8], [28, 8], [ground(Num::HALF)]);
     let slow = Num::from_bits(1 << 20);

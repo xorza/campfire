@@ -263,8 +263,8 @@ fn two_gatherers_or_a_walker_and_the_unit_it_walks_into_pass_through_each_other(
         ]
     );
     // A walker 1.5 m from a unit it walks into, either way round, does not part from the other
-    // (entries-and-blocking.md, A walker passes through the unit it walks into); one that walks
-    // into a third unit is near a unit 2.25 m off, within its reach of contacts, as ever.
+    // (04-capabilities/navigation.md, A walker passes through the unit it walks into); one that
+    // walks into a third unit is near a unit 2.25 m off, within its reach of contacts, as ever.
     for walker in [0, 1] {
         let mut pair = row(&[
             (Num::ZERO, Num::ZERO, true),
@@ -287,9 +287,9 @@ fn two_gatherers_or_a_walker_and_the_unit_it_walks_into_pass_through_each_other(
     three[0].into = Some(three[2].id);
     assert!(three[0].near(&three[1]));
     // Two walkers that step 1.5 m apart, one facing 90° off the other's way, a dot of 0, pass
-    // through each other (entries-and-blocking.md, Walkers that step pass those that step another
-    // way); facing 60° off, a dot of a half, or both standing, they part a quarter meter each way,
-    // and a walker that walks into one that stands takes the whole half meter.
+    // through each other (04-capabilities/navigation.md, Walkers that step pass those that step
+    // another way); facing 60° off, a dot of a half, or both standing, they part a quarter meter
+    // each way, and a walker that walks into one that stands takes the whole half meter.
     let crossing = |degrees: i64, walking: [bool; 2]| {
         let mut pair = row(&[
             (Num::ZERO, Num::ZERO, true),
@@ -348,7 +348,7 @@ fn a_heavier_body_moves_less_and_one_that_drives_moves_only_along_its_facing() {
     // Both walk. The first went along +x this tick, into the second, which lies along its way:
     // it takes the whole half meter. Each went into the other, head on, or the first went across,
     // along +z, which holds the second in no cone: they share it, a quarter meter each
-    // (entries-and-blocking.md, A unit outside the cone neither blocks nor pushes).
+    // (04-capabilities/navigation.md, A unit outside the cone neither blocks nor pushes).
     let went = |first: [i128; 2], second: Option<[i128; 2]>| {
         let mut pair = pair();
         pair[0].going = Direction::of(first);

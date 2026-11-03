@@ -297,10 +297,10 @@ fn a_trained_unit_leaves_through_its_team_at_once_and_reaches_its_crowded_rally_
     // fourth, which spawn into the grunts before them, leave a tick longer. The friends at the exit
     // stay where they stood, and the grunts, which never stall, arrive in ticks 10, 9, 9 and 8, the
     // crowd at the rally point making room by its steps aside, each grunt braking behind a friend
-    // until it clears its way (entries-and-blocking.md, A walker brakes behind a unit that blocks
-    // it), and the later grunts stopping against the earlier ones (04-capabilities/navigation.md,
-    // A crowded goal ends the walk), and the steps aside 2 deep at most
-    // (04-capabilities/navigation.md, An idle friend steps aside).
+    // until it clears its way (04-capabilities/navigation.md, A walker brakes behind a unit that
+    // blocks it), and the later grunts stopping against the earlier ones
+    // (04-capabilities/navigation.md, A crowded goal ends the walk), and the steps aside 2 deep at
+    // most (04-capabilities/navigation.md, An idle friend steps aside).
     let run = |gait: Gait, weight: i64| {
         let mut game = ordering_match();
         let shop = Shop::place(&mut game);

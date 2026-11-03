@@ -734,8 +734,9 @@ impl<F: QueryFilter> ResearchCheck<'_, '_, '_, F> {
     /// upgrade its modifier triggers is held by the player or the producer, or queued as a player
     /// research by the player's units or as any research by the producer, as the upgrade's own test
     /// reads the player's and the unit's modifiers alike, so no research pays for an upgrade its
-    /// conflict then withholds (riders-and-upgrades.md, A conflicting upgrade is refused). A player
-    /// research of a producer of no player counts as held, as no player could hold it.
+    /// conflict then withholds (04-capabilities/production.md, A conflict holds back both of its
+    /// sides). A player research of a producer of no player counts as held, as no player could hold
+    /// it.
     pub(crate) fn refuses(&self, spec: ResearchSpec, id: StableId, entity: Entity) -> bool {
         let (_, &unit_type, owner, queue, carried) =
             self.queues.get(entity).expect("a producer has a queue");

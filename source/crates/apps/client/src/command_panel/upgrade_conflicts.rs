@@ -10,7 +10,7 @@ use campfire_values::{ModifierId, UnitType};
 /// What refuses a research of a modifier on a unit of a type, by the type's upgrades' conflicts:
 /// the triggers of the upgrades the modifier withholds, which refuse it held by the research's own
 /// holder, and the conflicts of the upgrades it triggers, which refuse it held by either holder
-/// (riders-and-upgrades.md, A conflicting upgrade is refused).
+/// (04-capabilities/production.md, A conflict holds back both of its sides).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Conflict {
     pub(crate) withheld: Box<[ModifierId]>,

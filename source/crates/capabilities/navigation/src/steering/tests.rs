@@ -139,8 +139,8 @@ fn a_walk_that_may_move_an_idle_friend_walks_through_it_and_one_too_deep_goes_ro
     // aside, walk straight to it, with no detour; a step aside as deep as `AsideDepth::MOST`, which
     // moves no friend, steers round it, by a short route that cannot end on it, and so does a walk
     // of its own that steps where the friend drives (04-capabilities/navigation.md, A walker walks
-    // through the friends it moves aside; entries-and-blocking.md, A walker that steps moves no
-    // unit that drives aside).
+    // through the friends it moves aside; 04-capabilities/navigation.md, A walker that steps moves
+    // no unit that drives aside).
     let quarter = Num::QUARTER;
     let walker = Walker {
         layer: Layer::FIRST,
@@ -296,7 +296,7 @@ fn a_walker_moves_aside_only_an_idle_unit_it_may_move_on_its_next_stretch() {
     assert_eq!(asides(Moves::None, own), []);
     // The friend on the way drives: it stays for the walker, which steps, and steps aside for one
     // that drives, or for the walker once its route goes through its team's units or it is stuck
-    // (entries-and-blocking.md, A walker that steps moves no unit that drives aside).
+    // (04-capabilities/navigation.md, A walker that steps moves no unit that drives aside).
     let mut driving = bodies;
     driving[1].gait = Gait::Drive;
     steering.read(&statics, Moves::Team, driving);
@@ -326,8 +326,8 @@ fn a_walker_moves_aside_only_an_idle_unit_it_may_move_on_its_next_stretch() {
         );
     }
     // A walk into the friend on the way at (3, 0) passes through it, so it stays, and the friend
-    // ahead to the left still steps aside (entries-and-blocking.md, A walker passes through the
-    // unit it walks into).
+    // ahead to the left still steps aside (04-capabilities/navigation.md, A walker passes through
+    // the unit it walks into).
     let into = Steered {
         into: Some(bodies[1].body.id),
         ..steered
@@ -343,7 +343,7 @@ fn a_goal_a_standing_unit_crowds_lies_within_the_two_radii_and_the_step_as_the_w
     // A unit of 0.5 m stands at the origin; a walker of 0.5 m, a quarter meter a step, stands at
     // (−1.25, 0), the two radii and its step off it, both bounds in. A last waypoint as near is
     // crowded, and one an eighth farther is not; a walker an eighth farther is not crowded either,
-    // and none is by the unit its walk goes into (entries-and-blocking.md, No personal space
+    // and none is by the unit its walk goes into (04-capabilities/navigation.md, No personal space
     // between walkers).
     let half = Num::HALF;
     let statics = BodyIndex::new(half);
