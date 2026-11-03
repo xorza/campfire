@@ -1006,6 +1006,42 @@ End
             module(UpgradeEffect::Armor, &["Upgrade_Lost"], false, &[]),
         ]
     );
+    // A command set's upgrade of the set it names, and of another set it names besides.
+    let mut sets = ObjectFiles::default();
+    sets.read(
+        b"Object A
+ Behavior = CommandSetUpgrade M1
+  TriggeredBy = Upgrade_B
+  CommandSet = BunkerSet
+ End
+ Behavior = CommandSetUpgrade M2
+  TriggeredBy = Upgrade_C
+  CommandSet = OtherSet
+  CommandSetAlt = AltSet
+ End
+ Behavior = CommandSetUpgrade M3
+ End
+End
+",
+    )
+    .unwrap();
+    let set = |set: Option<&str>, alt: Option<&str>| UpgradeEffect::CommandSet {
+        set: set.map(str::to_owned),
+        alt: alt.map(str::to_owned),
+    };
+    assert_eq!(
+        sets.named("A").unwrap().upgrades(),
+        [
+            module(set(Some("BunkerSet"), None), &["Upgrade_B"], false, &[]),
+            module(
+                set(Some("OtherSet"), Some("AltSet")),
+                &["Upgrade_C"],
+                false,
+                &[]
+            ),
+            module(set(None, None), &[], false, &[]),
+        ]
+    );
     let text = "Object A\n Behavior = MaxHealthUpgrade M\n  ChangeType = HALF\n End\nEnd\n";
     assert_eq!(
         ObjectFiles::default().read(text.as_bytes()),

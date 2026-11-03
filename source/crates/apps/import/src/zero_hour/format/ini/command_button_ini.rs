@@ -57,6 +57,21 @@ pub(crate) enum ButtonCommand {
     Other,
 }
 
+impl ButtonCommand {
+    /// Whether its button makes an action of its producer: a train, a build, an upgrade or a
+    /// power.
+    pub(crate) const fn makes_action(self) -> bool {
+        matches!(
+            self,
+            Self::UnitBuild
+                | Self::DozerConstruct
+                | Self::PlayerUpgrade
+                | Self::ObjectUpgrade
+                | Self::SpecialPower
+        )
+    }
+}
+
 impl CommandButtonIni {
     /// Reads one INI file, adding its buttons to those read before: a button read again keeps
     /// the fields it does not name and takes the new ones, as an override does.

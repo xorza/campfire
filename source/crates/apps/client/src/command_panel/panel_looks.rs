@@ -6,11 +6,11 @@ use bevy::ecs::resource::Resource;
 use bevy::image::Image;
 use bevy::math::Rect;
 use campfire_client_files::{
-    GridCell, HudFile, Key, PanelButton, PanelCommand, PanelGrid, PanelIcon,
+    GridCell, HudFile, Key, PanelButton, PanelCommand, PanelGrid, PanelIcon, PanelPlaces,
 };
 use campfire_names::MatchNames;
 use campfire_units::TypeOriginBook;
-use campfire_values::{ActionId, NameId, PackageIndex, PackagePath, UnitType};
+use campfire_values::{ActionId, NameId, PackageIndex, PackagePath, Tag, TagSet, UnitType};
 use tracing::error;
 
 use crate::engine_text::{EngineMessage, EngineText};
@@ -19,16 +19,26 @@ use crate::view::client_data::ClientLoad;
 /// What the panel draws of its buttons, as the packages' client files give it (02-engine-core.md, A
 /// button's look is its action's; 02-engine-core.md, A look places its buttons): the HUD file's
 /// grid, the face of each action whose look gives one and of each command, the places of each unit
-/// type's look's buttons, by type, none for a look that places none, and the face of each type
-/// whose look gives its icon, which a button that stands for its unit shows. A place past the grid,
-/// and an action no action of the match is, are logged and left out.
+/// type's look's buttons, by type, none for a look that places none, with the places its upgrades
+/// put in their stead, and the face of each type whose look gives its icon, which a button that
+/// stands for its unit shows. A place past the grid, an action no action of the match is, and an
+/// upgrade's tag the match does not name are logged and left out.
 #[derive(Resource, Debug)]
 pub(super) struct PanelLooks {
     grid: PanelGrid,
     actions: BTreeMap<ActionId, CellFace>,
     commands: BTreeMap<PanelCommand, CommandFace>,
-    places: Vec<Box<[LookPlace]>>,
+    places: Vec<TypePlaces>,
     units: Vec<Option<CellFace>>,
+}
+
+/// The places of a type's look's buttons, and those each of its upgrades puts in their stead while
+/// its unit holds its tag, in the look's order (02-engine-core.md, An upgrade swaps a look's
+/// panel).
+#[derive(Debug, Default)]
+pub(super) struct TypePlaces {
+    own: Box<[LookPlace]>,
+    upgrades: Box<[(Tag, Box<[LookPlace]>)]>,
 }
 
 /// A button's face: its icon, none for a button that shows its name, and its key.
@@ -127,36 +137,55 @@ impl PanelLooks {
         let places = origins
             .iter()
             .map(|(_, origin)| {
-                let look = load.of(origin.package).units.units().get(&*origin.name);
-                let places = look.into_iter().flat_map(|look| &look.panel);
-                let placed = places.filter_map(|place| {
-                    let look = &*origin.name;
-                    let Some(cell) = grid.cell(place.place) else {
+                let Some(look) = load.of(origin.package).units.units().get(&*origin.name) else {
+                    return TypePlaces::default();
+                };
+                let placed = |panel: &PanelPlaces| -> Box<[LookPlace]> {
+                    let places = panel.iter().filter_map(|place| {
+                        let look = &*origin.name;
+                        let Some(cell) = grid.cell(place.place) else {
+                            error!(
+                                look,
+                                place = place.place,
+                                "a look's place is past its panel's grid"
+                            );
+                            return None;
+                        };
+                        let button = match &place.button {
+                            PanelButton::Action(name) => {
+                                let action =
+                                    names.named::<ActionId>((origin.package, name.as_str()));
+                                let Some(action) = action else {
+                                    error!(
+                                        look,
+                                        action = name.as_str(),
+                                        "a look's place names no action"
+                                    );
+                                    return None;
+                                };
+                                PlacedButton::Action(action)
+                            }
+                            &PanelButton::Command(command) => PlacedButton::Command(command),
+                        };
+                        Some(LookPlace { cell, button })
+                    });
+                    places.collect()
+                };
+                let upgrades = look.panel_upgrades.iter().filter_map(|upgrade| {
+                    let Some(tag) = names.named::<Tag>(upgrade.tag().as_str()) else {
                         error!(
-                            look,
-                            place = place.place,
-                            "a look's place is past its panel's grid"
+                            look = &*origin.name,
+                            tag = upgrade.tag().as_str(),
+                            "a look's upgraded panel names no tag"
                         );
                         return None;
                     };
-                    let button = match &place.button {
-                        PanelButton::Action(name) => {
-                            let action = names.named::<ActionId>((origin.package, name.as_str()));
-                            let Some(action) = action else {
-                                error!(
-                                    look,
-                                    action = name.as_str(),
-                                    "a look's place names no action"
-                                );
-                                return None;
-                            };
-                            PlacedButton::Action(action)
-                        }
-                        &PanelButton::Command(command) => PlacedButton::Command(command),
-                    };
-                    Some(LookPlace { cell, button })
+                    Some((tag, placed(upgrade.panel())))
                 });
-                placed.collect()
+                TypePlaces {
+                    own: placed(&look.panel),
+                    upgrades: upgrades.collect(),
+                }
             })
             .collect();
         let units = origins
@@ -195,11 +224,14 @@ impl PanelLooks {
         self.units.get(unit_type.index())?.as_ref()
     }
 
-    /// The buttons the look of `unit_type` places, none for a look that places none.
-    pub(super) fn places(&self, unit_type: UnitType) -> &[LookPlace] {
-        self.places
-            .get(unit_type.index())
-            .map_or(&[], |places| places)
+    /// The buttons the look of `unit_type` places for a unit that holds `tags`: those of the last
+    /// of its upgrades whose tag it holds, or else its own; none for a look that places none.
+    pub(super) fn places(&self, unit_type: UnitType, tags: TagSet) -> &[LookPlace] {
+        let Some(places) = self.places.get(unit_type.index()) else {
+            return &[];
+        };
+        let upgraded = (places.upgrades.iter()).rfind(|(tag, _)| tags.contains(*tag));
+        upgraded.map_or(&places.own, |(_, upgraded)| upgraded)
     }
 
     /// The cell of the button at `slot_order` of a look that places none, as the grid's places
@@ -223,7 +255,9 @@ pub(super) mod reach_in {
     use campfire_client_files::{PanelCommand, PanelGrid};
     use campfire_values::ActionId;
 
-    use crate::command_panel::panel_looks::{CellFace, CommandFace, LookPlace, PanelLooks};
+    use crate::command_panel::panel_looks::{
+        CellFace, CommandFace, LookPlace, PanelLooks, TypePlaces,
+    };
 
     impl PanelLooks {
         /// Looks of `grid`, of the faces `actions`, of commands of no face named by their
@@ -241,6 +275,12 @@ pub(super) mod reach_in {
                         name: format!("{command:?}"),
                     };
                     (command, face)
+                })
+                .collect();
+            let places = (places.into_iter())
+                .map(|own| TypePlaces {
+                    own,
+                    upgrades: Box::new([]),
                 })
                 .collect();
             Self {

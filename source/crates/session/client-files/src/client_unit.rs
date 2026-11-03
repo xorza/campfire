@@ -7,7 +7,7 @@ use crate::chassis::Chassis;
 use crate::client_model::{ClientModel, ModelTop};
 use crate::death_fall::DeathFall;
 use crate::panel_icon::PanelIcon;
-use crate::panel_place::PanelPlaces;
+use crate::panel_place::{PanelPlaces, PanelUpgrade};
 use crate::set_match::SetMatch;
 use crate::state_animation::{AnimationMode, StateAnimation};
 use crate::state_set::StateSet;
@@ -61,6 +61,11 @@ pub struct ClientUnit {
     /// slot order (02-engine-core.md, A look places its buttons).
     #[serde(default, skip_serializing_if = "PanelPlaces::is_empty")]
     pub panel: PanelPlaces,
+    /// The panels its unit's upgrades put in place of `panel`, each while its unit holds its tag,
+    /// the last in this order of those it holds winning, as Zero Hour's `CommandSetUpgrade` overrides its
+    /// object's command set (02-engine-core.md, An upgrade swaps a look's panel).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub panel_upgrades: Vec<PanelUpgrade>,
     /// The icon a button that stands for its unit shows, as a container's exit shows its rider,
     /// none for a type of none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -307,6 +312,7 @@ impl ClientUnit {
             },
             chassis: None,
             panel: PanelPlaces::EMPTY,
+            panel_upgrades: Vec::new(),
             icon: None,
             voices: UnitVoices::NONE,
             radar: RadarShown::Everyone,

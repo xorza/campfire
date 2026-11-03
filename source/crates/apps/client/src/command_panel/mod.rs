@@ -952,7 +952,7 @@ impl Shown {
             Does::Command(command) => looks.command(command).face.key,
             Does::Exit { .. } => looks.command(PanelCommand::Exit).face.key,
         };
-        let places = looks.places(held.unit_type);
+        let places = looks.places(held.unit_type, held.tags);
         if places.is_empty() {
             let laid = actions()
                 .enumerate()

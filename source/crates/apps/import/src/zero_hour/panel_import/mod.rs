@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroU8;
 
 use campfire_client_files::{
-    ButtonLook, IconRect, Key, PanelButton, PanelCommand, PanelGrid, PanelIcon, PanelPlace,
-    PlaceOrder,
+    ButtonLook, EmptyUpgrade, IconRect, Key, PanelButton, PanelCommand, PanelGrid, PanelIcon,
+    PanelPlace, PanelPlaces, PanelUpgrade, PlaceOrder,
 };
 use campfire_common::DeclaredName;
 
@@ -18,13 +18,17 @@ use crate::zero_hour::panel_drop_cause::PanelDropCause;
 use crate::zero_hour::type_name::TypeName;
 
 /// The buttons of the install's command sets as its producers' panels place them
-/// (02-engine-core.md, A look places its buttons): each producer's places, the face of each action
-/// and command a button gives, the first button's, and what it drops of them, counted.
+/// (02-engine-core.md, A look places its buttons): each producer's places, the places of each
+/// panel its upgrades put in their stead (02-engine-core.md, An upgrade swaps a look's panel), the
+/// face of each action and command a button gives, the first button's, the action each
+/// producer's own buttons made, and what it drops of them, counted.
 #[derive(Debug, Default)]
 pub(crate) struct PanelButtons {
     pub(crate) places: BTreeMap<TypeName, Vec<PanelPlace>>,
+    pub(crate) upgraded: BTreeMap<TypeName, Vec<PanelUpgrade>>,
     pub(crate) actions: BTreeMap<DeclaredName, ButtonFace>,
     pub(crate) commands: BTreeMap<PanelCommand, ButtonFace>,
+    made: BTreeMap<(TypeName, String), DeclaredName>,
     pub(crate) dropped: Losses<PanelDropCause>,
 }
 
@@ -58,8 +62,7 @@ impl PanelButtons {
     pub(crate) const PLACES: u8 = 14;
 
     /// Places at `place` of `producer`'s panel the button `name`, `button`, which made `action`,
-    /// none for a button the import does not convert, its key of its label in `strings`; a command
-    /// of an order the engine holds places it; another is dropped, as is a place past the last.
+    /// none for a button the import does not convert, as `placed` places it.
     pub(crate) fn place(
         &mut self,
         strings: &StringTable,
@@ -68,6 +71,66 @@ impl PanelButtons {
         button: &CommandButton,
         action: Option<DeclaredName>,
     ) {
+        if let Some(action) = &action {
+            self.made
+                .insert((producer.clone(), name.to_owned()), action.clone());
+        }
+        if let Some(placed) = self.placed(strings, (place, name), button, action) {
+            self.places
+                .entry(producer.clone())
+                .or_default()
+                .push(placed);
+        }
+    }
+
+    /// The place at `place` of a panel an upgrade of `producer` puts in place of its own of the
+    /// button `name`, `button`, as `placed` places it, of the action `producer`'s own panel made
+    /// of the button; an action button its own panel made none of is dropped.
+    pub(crate) fn upgraded_place(
+        &mut self,
+        strings: &StringTable,
+        producer: &TypeName,
+        (place, name): (u8, &str),
+        button: &CommandButton,
+    ) -> Option<PanelPlace> {
+        let action = self.made.get(&(producer.clone(), name.to_owned())).cloned();
+        if button.command.makes_action() && action.is_none() {
+            self.dropped.drop(name, PanelDropCause::UpgradedAction);
+            return None;
+        }
+        self.placed(strings, (place, name), button, action)
+    }
+
+    /// Gives `producer` the panel `places` that its upgrade of the tag `tag`, of the command set
+    /// `set`, puts in place of its own; a panel of no place is dropped, so its own stays.
+    pub(crate) fn upgrade(
+        &mut self,
+        producer: &TypeName,
+        (tag, set): (DeclaredName, &str),
+        places: Vec<PanelPlace>,
+    ) {
+        let places =
+            PanelPlaces::try_from(places).expect("a command set gives each place one button");
+        match PanelUpgrade::new(tag, places) {
+            Ok(panel) => self
+                .upgraded
+                .entry(producer.clone())
+                .or_default()
+                .push(panel),
+            Err(EmptyUpgrade) => self.dropped.drop(set, PanelDropCause::EmptySet),
+        }
+    }
+
+    /// The button `name`, `button`, which made `action`, at `place` of a panel, its key of its
+    /// label in `strings`, its face kept, the first of its action's or command's; a command of an
+    /// order the engine holds places it; another is dropped, as is a place past the last.
+    fn placed(
+        &mut self,
+        strings: &StringTable,
+        (place, name): (u8, &str),
+        button: &CommandButton,
+        action: Option<DeclaredName>,
+    ) -> Option<PanelPlace> {
         let command = match button.command {
             ButtonCommand::Sell => Some(PanelCommand::Sell),
             ButtonCommand::Stop => Some(PanelCommand::Stop),
@@ -88,19 +151,16 @@ impl PanelButtons {
             (None, Some(command)) => PanelButton::Command(command),
             // A button of an action the import did not make is counted by its cause already; a
             // purchase belongs to a player's panel of sciences, never to a unit's.
-            (None, None)
-                if !matches!(
-                    button.command,
-                    ButtonCommand::Other | ButtonCommand::PurchaseScience
-                ) =>
-            {
-                return;
+            (None, None) if button.command.makes_action() => return None,
+            (None, None) => {
+                self.dropped.drop(name, PanelDropCause::Command);
+                return None;
             }
-            (None, None) => return self.dropped.drop(name, PanelDropCause::Command),
         };
         let place = NonZeroU8::new(place).filter(|place| place.get() <= Self::PLACES);
         let Some(place) = place else {
-            return self.dropped.drop(name, PanelDropCause::Place);
+            self.dropped.drop(name, PanelDropCause::Place);
+            return None;
         };
         let face = || ButtonFace {
             button: name.to_owned(),
@@ -115,11 +175,10 @@ impl PanelButtons {
                 self.commands.entry(*command).or_insert_with(face);
             }
         }
-        let places = self.places.entry(producer.clone()).or_default();
-        places.push(PanelPlace {
+        Some(PanelPlace {
             place,
             button: placed,
-        });
+        })
     }
 
     /// The key of `button`'s label in `strings`: the character after its first `&`, a letter or a

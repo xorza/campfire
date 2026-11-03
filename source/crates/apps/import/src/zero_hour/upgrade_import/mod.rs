@@ -9,7 +9,7 @@ use serde::Serialize;
 use crate::zero_hour::additions::Additions;
 use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::dropped::Losses;
-use crate::zero_hour::error::{NameError, ZeroHourError};
+use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::{
     HealthChange, IniUpgradeModule, UpgradeEffect,
 };
@@ -19,6 +19,7 @@ use crate::zero_hour::portable_structure;
 use crate::zero_hour::production_import::ProductionImport;
 use crate::zero_hour::propaganda_import::PropagandaImport;
 use crate::zero_hour::upgrade_drop_cause::UpgradeDropCause;
+use crate::zero_hour::upgrade_tag;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// Zero Hour's upgrades (04-capabilities/production.md, An upgrade is a modifier;
@@ -206,7 +207,7 @@ impl UpgradeImport {
             .collect::<Result<Vec<_>, _>>()?;
         let names = &rules.names;
         let tag = || {
-            let tag = look_tag(module).map_err(|_| UpgradeDropCause::LongName)?;
+            let tag = upgrade_tag::of(module).map_err(|_| UpgradeDropCause::LongName)?;
             tag.ok_or(UpgradeDropCause::NoCondition)
         };
         let (suffix, effect) = match module.effect {
@@ -249,6 +250,11 @@ impl UpgradeImport {
             UpgradeEffect::SubObjects { .. } => {
                 ("subobjects".to_owned(), EffectModifier::tagged(&tag()?))
             }
+            // An upgrade that swaps its object's command set gives the tag its look's panel of
+            // that set tests (02-engine-core.md, An upgrade swaps a look's panel).
+            UpgradeEffect::CommandSet { set: Some(_), .. } => {
+                ("commandset".to_owned(), EffectModifier::tagged(&tag()?))
+            }
             // An upgrade that makes a portable structure inside its object gives it the
             // structure's part by its tag: a transport's entry opens, and a cannon's weapons arm
             // (04-capabilities/interaction.md, A bunker is an entry a tag opens;
@@ -267,7 +273,9 @@ impl UpgradeImport {
                 let tag = tag.ok_or(UpgradeDropCause::NoCondition)?;
                 ("fire".to_owned(), EffectModifier::tagged(&tag))
             }
-            UpgradeEffect::ObjectCreation { .. } | UpgradeEffect::Other(_) => {
+            UpgradeEffect::ObjectCreation { .. }
+            | UpgradeEffect::CommandSet { set: None, .. }
+            | UpgradeEffect::Other(_) => {
                 return Err(UpgradeDropCause::Effect);
             }
         };
@@ -294,26 +302,6 @@ impl UpgradeImport {
             modifier: name,
         })
     }
-}
-
-/// The tag the look of `module`'s object tests for its effect, which the module's modifier gives
-/// (09-zero-hour.md, An upgrade's look is a tag): the name of the model condition it sets, as
-/// its object's states name it, `power_plant_upgraded` of a `PowerPlantUpgrade`, which sets
-/// `POWER_PLANT_UPGRADED`, and its `ConditionFlag` of a `ModelConditionUpgrade`; and of a
-/// `SubObjectsUpgrade`, which sets no condition, `<first trigger>_subobjects`, which its object's
-/// models name. None for a module of another effect, of no flag, or of no trigger; an error past
-/// the bytes a name holds.
-pub(crate) fn look_tag(module: &IniUpgradeModule) -> Result<Option<DeclaredName>, NameError> {
-    let name = match &module.effect {
-        UpgradeEffect::PowerPlant => ImportName::latin("power_plant_upgraded"),
-        UpgradeEffect::ModelCondition { flag: Some(flag) } => ImportName::latin(flag),
-        UpgradeEffect::SubObjects { .. } => match module.triggers.first() {
-            Some(first) => return ImportName::latin(first).suffixed("subobjects").map(Some),
-            None => return Ok(None),
-        },
-        _ => return Ok(None),
-    };
-    name.declared().map(Some)
 }
 
 #[cfg(test)]

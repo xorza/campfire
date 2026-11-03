@@ -49,7 +49,7 @@ use crate::zero_hour::model_converter::WrittenModel;
 use crate::zero_hour::model_nodes::{HostNode, ModelBarrel, NodeChanges};
 use crate::zero_hour::portable_structure;
 use crate::zero_hour::state_drop_cause::StateDropCause;
-use crate::zero_hour::upgrade_import;
+use crate::zero_hour::upgrade_tag;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// The condition states of an object's draw module, or of its whole look, the import does not
@@ -1067,7 +1067,7 @@ impl SubObjectsUpgrade {
             let UpgradeEffect::SubObjects { show, hide } = &module.effect else {
                 continue;
             };
-            let Ok(Some(tag)) = upgrade_import::look_tag(module) else {
+            let Ok(Some(tag)) = upgrade_tag::of(module) else {
                 continue;
             };
             let change = |hide| {

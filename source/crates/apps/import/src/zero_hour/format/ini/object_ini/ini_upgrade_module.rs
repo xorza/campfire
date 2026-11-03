@@ -43,6 +43,13 @@ pub(crate) enum UpgradeEffect {
     ObjectCreation { list: Option<String> },
     /// `PassengersFireUpgrade`: its object's passengers fire from it.
     PassengersFire,
+    /// `CommandSetUpgrade`: its object takes the command set `set`, its `CommandSet`, none for
+    /// none named, or the set `alt`, its `CommandSetAlt`, once its player or it holds its
+    /// `TriggerAlt`, none for none named.
+    CommandSet {
+        set: Option<String>,
+        alt: Option<String>,
+    },
     /// Any other upgrade module, by its class's name as the object writes it.
     Other(String),
 }
@@ -79,6 +86,10 @@ impl IniUpgradeModule {
             },
             "objectcreationupgrade" => UpgradeEffect::ObjectCreation { list: None },
             "passengersfireupgrade" => UpgradeEffect::PassengersFire,
+            "commandsetupgrade" => UpgradeEffect::CommandSet {
+                set: None,
+                alt: None,
+            },
             lower if lower.ends_with("upgrade") => UpgradeEffect::Other(class.to_owned()),
             _ => return None,
         };
@@ -103,6 +114,7 @@ impl IniUpgradeModule {
             UpgradeEffect::SubObjects { .. } => "SubObjectsUpgrade",
             UpgradeEffect::ObjectCreation { .. } => "ObjectCreationUpgrade",
             UpgradeEffect::PassengersFire => "PassengersFireUpgrade",
+            UpgradeEffect::CommandSet { .. } => "CommandSetUpgrade",
             UpgradeEffect::Other(class) => class,
         }
     }
@@ -125,6 +137,12 @@ impl IniUpgradeModule {
             ("hidesubobjects", UpgradeEffect::SubObjects { hide, .. }) => hide.extend(names()),
             ("upgradeobject", UpgradeEffect::ObjectCreation { list }) => {
                 *list = Some(at.value()?.to_owned());
+            }
+            ("commandset", UpgradeEffect::CommandSet { set, .. }) => {
+                *set = Some(at.value()?.to_owned());
+            }
+            ("commandsetalt", UpgradeEffect::CommandSet { alt, .. }) => {
+                *alt = Some(at.value()?.to_owned());
             }
             ("changetype", UpgradeEffect::MaxHealth { change, .. }) => {
                 *change = match at.value()?.to_ascii_uppercase().as_str() {

@@ -269,6 +269,16 @@ fn units_write_and_read_back_their_states_conditions_and_models() {
     assert!(refused("[{ place = 2 }]"));
     assert!(refused(r#"[{ place = 0, command = "stop" }]"#));
     assert!(!refused(r#"[{ place = 2, command = "attack_move" }]"#));
+    // An upgrade's panel of no place fails to read, and one of a place reads.
+    let upgraded = |panel: &str| {
+        let text = format!(
+            "[units.barracks]\ndraws = []\npanel_upgrades = [{{ tag = \"a\", panel = {panel} }}]"
+        );
+        let units = Toml::parse::<ClientUnits>(&text).ok();
+        units.map(|units| units.units["barracks"].panel_upgrades.len())
+    };
+    assert_eq!(upgraded("[]"), None);
+    assert_eq!(upgraded(r#"[{ place = 2, command = "exit" }]"#), Some(1));
     let shell = &units.units["humvee_shell"];
     assert_eq!(
         (&shell.end, &shell.trail),

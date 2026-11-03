@@ -90,6 +90,14 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
             &["Upgrade_A"][..],
             UpgradeDropCause::NoCondition,
         ),
+        (
+            UpgradeEffect::CommandSet {
+                set: None,
+                alt: None,
+            },
+            &["Upgrade_A"][..],
+            UpgradeDropCause::Effect,
+        ),
         // A list that makes no transport inside its object.
         (
             UpgradeEffect::ObjectCreation {
@@ -140,9 +148,17 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
             "user_1",
         ),
         (sub_objects, "upgrade_a_subobjects", "upgrade_a_subobjects"),
+        (
+            UpgradeEffect::CommandSet {
+                set: Some("BunkerSet".to_owned()),
+                alt: None,
+            },
+            "upgrade_a_commandset",
+            "upgrade_a_commandset",
+        ),
     ] {
         let looked = module(effect, &["Upgrade_A"]);
-        assert_eq!(look_tag(&looked), Ok(Some(declared(tag))));
+        assert_eq!(upgrade_tag::of(&looked), Ok(Some(declared(tag))));
         let entry = import.module(sources, &looked, &[]).unwrap();
         assert_eq!(entry.modifier, declared(modifier));
         assert_eq!(
@@ -176,9 +192,9 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
     );
     // An armor's module sets no condition its look tests, nor a radar's, whose modifier gives
     // the radar's tag.
-    assert_eq!(look_tag(&armor), Ok(None));
+    assert_eq!(upgrade_tag::of(&armor), Ok(None));
     let radar = module(UpgradeEffect::Radar, &["Upgrade_A"]);
-    assert_eq!(look_tag(&radar), Ok(None));
+    assert_eq!(upgrade_tag::of(&radar), Ok(None));
     let entry = import.module(sources, &radar, &[]).unwrap();
     assert_eq!(
         import.effects[&entry.modifier],

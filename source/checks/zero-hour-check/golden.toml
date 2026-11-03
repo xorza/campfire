@@ -3,7 +3,7 @@
 drive_ticks = 1711
 
 [fingerprints]
-game = "4c31cf587f38a45a0657afc58beb81692942ae3f817d1a19d04a93d01693d363"
+game = "93e330d245471bc2092b2265f3c5635d8ea2e78dc8e7721af8011ced61633f78"
 rules = "513add17c3c5a482380fe26a6c135fb9f252b6795b205cda6e7cd69fedef750c"
 
 [map]
@@ -66,8 +66,8 @@ powers_dropped = [40, 25, 9, 0, 0, 0]
 
 [upgraded]
 researches = 70
-modules = 450
-dropped = [274, 0, 0, 7, 0, 14, 0, 116]
+modules = 567
+dropped = [182, 0, 0, 7, 0, 14, 0, 116]
 
 [supplied]
 nodes = 4
@@ -101,7 +101,7 @@ keys = 474
 panels = 544
 places = 2339
 commands = 6
-dropped = [1, 31, 2, 0, 0, 4]
+dropped = [1, 31, 2, 0, 0, 4, 62, 2, 5]
 
 [sounds]
 sounds = 465

@@ -9,6 +9,7 @@ use campfire_client_files::{ButtonLook, ClientUnits, HudFile, PanelGrid, PlaceOr
 use campfire_codec::Toml;
 use campfire_declarations::{ByIdBuilder, Role};
 use campfire_math::Vec3;
+use campfire_names::TagNames;
 use campfire_production::internals::TestBuild;
 use campfire_production::{
     BuildStart, NewBuild, Production, Queued, RallyTarget, SiteStart, Style,
@@ -275,7 +276,9 @@ fn a_look_lays_its_buttons_at_its_places_and_one_of_none_its_trains_in_slot_orde
 fn the_looks_load_each_actions_face_and_refuse_a_place_past_the_grid_or_of_no_action() {
     // The barracks' look places the ranger's train at 1, a stop at 16, past the 15 places of the
     // engine's grid of 5 by 3, and an action no action of the match is at 2; the train's look
-    // gives its icon of 60 by 48 pixels and its key, and the HUD file the sale's key.
+    // gives its icon of 60 by 48 pixels and its key, and the HUD file the sale's key. Its bunker's
+    // upgrade puts an exit at 3 in its panel's place, and an upgrade of a tag the match does not
+    // name another.
     let text = r#"
         [units.barracks]
         draws = []
@@ -283,6 +286,10 @@ fn the_looks_load_each_actions_face_and_refuse_a_place_past_the_grid_or_of_no_ac
             { place = 1, action = "train_ranger" },
             { place = 2, action = "nothing" },
             { place = 16, command = "stop" },
+        ]
+        panel_upgrades = [
+            { tag = "bunker", panel = [{ place = 3, command = "exit" }] },
+            { tag = "nothing", panel = [{ place = 1, command = "stop" }] },
         ]
 
         [actions.train_ranger]
@@ -300,6 +307,9 @@ fn the_looks_load_each_actions_face_and_refuse_a_place_past_the_grid_or_of_no_ac
     let train = actions.add((PackageIndex::MODE, "train_ranger"));
     let mut names = MatchNames::default();
     names.set_table(Arc::new(actions));
+    let mut tags = TagNames::default();
+    let bunker = tags.names_mut().add("bunker");
+    names.set_tags(tags);
     let mut hud = HudFile::default();
     let sell = ButtonLook {
         icon: None,
@@ -321,10 +331,17 @@ fn the_looks_load_each_actions_face_and_refuse_a_place_past_the_grid_or_of_no_ac
     });
     let barracks = origins.iter().next().unwrap().0;
     assert_eq!(
-        looks.places(barracks),
+        looks.places(barracks, TagSet::NONE),
         [LookPlace {
             cell: cell(0, 0),
             button: PlacedButton::Action(train),
+        }]
+    );
+    assert_eq!(
+        looks.places(barracks, TagSet::NONE.with(bunker)),
+        [LookPlace {
+            cell: cell(2, 0),
+            button: PlacedButton::Command(PanelCommand::Exit),
         }]
     );
     assert_eq!(

@@ -70,8 +70,8 @@ pub use crate::death_fall::{DeathFall, FallStage, GroundDeath, SelfSpin, Spiral}
 pub use crate::effect_list::{EffectList, ListedSystem};
 pub use crate::effects_file::{EffectSets, EffectsFile};
 pub use crate::error::{
-    ClientFileError, CrowdedPlace, EffectsError, FogFileError, SoundFileError, TeamColorsError,
-    TerrainFileError, TextureLevelsError, UntestedCondition,
+    ClientFileError, CrowdedPlace, EffectsError, EmptyUpgrade, FogFileError, SoundFileError,
+    TeamColorsError, TerrainFileError, TextureLevelsError, UntestedCondition,
 };
 pub use crate::fog_file::{FogFile, FogLevel};
 pub use crate::hud_file::minimap::Minimap;
@@ -84,7 +84,7 @@ pub use crate::map_lights::{MapLight, MapLights};
 pub use crate::material_extras::{Blend, MaterialExtras, TeamPaint};
 pub use crate::object_look::{LookVariant, ObjectLook};
 pub use crate::panel_icon::{IconRect, PanelIcon};
-pub use crate::panel_place::{PanelButton, PanelCommand, PanelPlace, PanelPlaces};
+pub use crate::panel_place::{PanelButton, PanelCommand, PanelPlace, PanelPlaces, PanelUpgrade};
 pub use crate::particle_system::{
     AlphaKey, ColorKey, EmissionVelocity, EmissionVolume, ParticleSystem, SlaveSystem,
 };

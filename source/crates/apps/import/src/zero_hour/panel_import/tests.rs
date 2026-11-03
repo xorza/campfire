@@ -183,3 +183,71 @@ fn a_transports_set_places_an_exit_at_each_of_its_places_and_its_evacuation() {
         Some("SSEvacButton")
     );
 }
+
+#[test]
+fn an_upgrade_s_set_places_the_actions_its_producer_s_own_set_made_and_its_commands() {
+    // The Overlord's own set trains a bunker at 1; its bunker's set places that train at 1 again,
+    // an exit at 2, and a train its own set does not make at 3, which the panel drops, once of
+    // its name; a set of that train alone is dropped whole.
+    let strings = strings();
+    let overlord = TypeName::named("chinatankoverlord");
+    let bunker = DeclaredName::new("upgrade_bunker").unwrap();
+    let tag = DeclaredName::new("upgrade_bunker_commandset").unwrap();
+    let mut buttons = PanelButtons::default();
+    let train = button(ButtonCommand::UnitBuild, "CONTROLBAR:Dozer", None);
+    let exit = button(ButtonCommand::ExitContainer, "CONTROLBAR:Exit", None);
+    buttons.place(
+        &strings,
+        &overlord,
+        (1, "Command_UpgradeBunker"),
+        &train,
+        Some(bunker.clone()),
+    );
+    let mut place = |at: u8, name: &str, button: &CommandButton| {
+        buttons.upgraded_place(&strings, &overlord, (at, name), button)
+    };
+    let places = [
+        place(1, "Command_UpgradeBunker", &train),
+        place(2, "Command_TransportExit", &exit),
+        place(3, "Command_UpgradeGattling", &train),
+    ];
+    let places = places.into_iter().flatten().collect();
+    buttons.upgrade(&overlord, (tag.clone(), "BunkerSet"), places);
+    let alone = buttons.upgraded_place(&strings, &overlord, (1, "Command_UpgradeGattling"), &train);
+    let gattling = DeclaredName::new("upgrade_gattling_commandset").unwrap();
+    buttons.upgrade(
+        &overlord,
+        (gattling, "GattlingSet"),
+        alone.into_iter().collect(),
+    );
+    let at = |place: u8, button| PanelPlace {
+        place: NonZeroU8::new(place).unwrap(),
+        button,
+    };
+    let panel = vec![
+        at(1, PanelButton::Action(bunker.clone())),
+        at(2, PanelButton::Command(PanelCommand::Exit)),
+    ];
+    assert_eq!(
+        buttons.upgraded[&overlord],
+        [PanelUpgrade::new(tag, PanelPlaces::try_from(panel).unwrap()).unwrap()]
+    );
+    assert_eq!(
+        buttons.places[&overlord],
+        [at(1, PanelButton::Action(bunker))]
+    );
+    let causes: Vec<(String, PanelDropCause)> = (&buttons.dropped)
+        .into_iter()
+        .map(|dropped| (dropped.name.clone(), dropped.cause))
+        .collect();
+    assert_eq!(
+        causes,
+        [
+            (
+                "Command_UpgradeGattling".to_owned(),
+                PanelDropCause::UpgradedAction
+            ),
+            ("GattlingSet".to_owned(), PanelDropCause::EmptySet),
+        ]
+    );
+}

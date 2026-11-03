@@ -12,7 +12,7 @@ use crate::zero_hour::format::ini::object_ini::ObjectIni;
 use crate::zero_hour::format::ini::object_ini::ini_object::IniObject;
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::UpgradeEffect;
 use crate::zero_hour::rules_names::RulesNames;
-use crate::zero_hour::upgrade_import;
+use crate::zero_hour::upgrade_tag;
 
 /// What each condition flag of Zero Hour's draw modules tests of a unit, as its looks' conditions
 /// name them (09-zero-hour.md, A condition is the game's name for a test): `NIGHT` and `SNOW` the
@@ -76,7 +76,7 @@ impl LookFlags {
             )
         });
         let upgraded = flags
-            .filter_map(|module| upgrade_import::look_tag(module).ok().flatten())
+            .filter_map(|module| upgrade_tag::of(module).ok().flatten())
             .collect();
         Ok(Self {
             damaged,

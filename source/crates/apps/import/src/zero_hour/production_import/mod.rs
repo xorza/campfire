@@ -26,17 +26,20 @@ use crate::zero_hour::format::ini::creation_list_ini::CreationNugget;
 use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, IniParking, Prerequisite};
 use crate::zero_hour::format::ini::object_ini::ini_object::IniObject;
 use crate::zero_hour::format::ini::object_ini::ini_power::IniAutoHeal;
+use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::UpgradeEffect;
 use crate::zero_hour::format::ini::upgrade_ini::UpgradeKind;
 use crate::zero_hour::game_time;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::NamedObject;
 use crate::zero_hour::imported_type::ImportedType;
+use crate::zero_hour::panel_drop_cause::PanelDropCause;
 use crate::zero_hour::panel_import::PanelButtons;
 use crate::zero_hour::power_drop_cause::PowerDropCause;
 use crate::zero_hour::production_cx::ProductionCx;
 use crate::zero_hour::production_import::power_cast::{PowerCast, PowerModifier, PowerNames};
 use crate::zero_hour::supply_import::{DOCK_RANGE, Spawning, SupplyImport};
 use crate::zero_hour::type_name::TypeName;
+use crate::zero_hour::upgrade_tag;
 use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// Zero Hour's trains, builds and researches (09-zero-hour.md, Every command set's trains and
@@ -185,6 +188,7 @@ impl ProductionImport {
                     );
                 }
             }
+            import.upgraded_panels(rules, &producer);
             made.extend(import.supply_of(&mut cx, &producer));
             made.extend(cx.names.take_fresh());
             for named in made {
@@ -195,6 +199,34 @@ impl ProductionImport {
         }
         import.airfields(cx.additions);
         import
+    }
+
+    /// Places the panel of each `CommandSetUpgrade` of `producer` that names its set, which the
+    /// upgrade's tag swaps in for its own (02-engine-core.md, An upgrade swaps a look's panel), as
+    /// `PanelButtons::upgraded_place` places each button; the other set one also names is dropped.
+    fn upgraded_panels(&mut self, rules: &ZeroHourRules, producer: &NamedObject<'_>) {
+        for module in producer.object.upgrades() {
+            let UpgradeEffect::CommandSet {
+                set: Some(set),
+                alt,
+            } = &module.effect
+            else {
+                continue;
+            };
+            let Ok(Some(tag)) = upgrade_tag::of(module) else {
+                continue;
+            };
+            if let Some(alt) = alt {
+                self.panel.dropped.drop(alt, PanelDropCause::OtherSet);
+            }
+            let buttons = rules.sets.buttons(set).into_iter().flatten();
+            let places = buttons.filter_map(|(place, name)| {
+                let button = rules.buttons.get(name)?;
+                (self.panel).upgraded_place(&rules.strings, &producer.name, (place, name), button)
+            });
+            let places = places.collect();
+            self.panel.upgrade(&producer.name, (tag, set), places);
+        }
     }
 
     /// Gives `seller`, whose command set holds a sale, its `sell` section: its `RefundValue` of

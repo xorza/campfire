@@ -94,6 +94,7 @@ pub(crate) mod type_name;
 pub(crate) mod unit_types;
 pub(crate) mod upgrade_drop_cause;
 pub(crate) mod upgrade_import;
+pub(crate) mod upgrade_tag;
 pub(crate) mod variation_drop_cause;
 pub(crate) mod variation_import;
 pub(crate) mod veterancy_import;
@@ -184,7 +185,7 @@ impl ZeroHour {
     /// The version of what `write` writes from an install: raised with each change of its output,
     /// as a check keeps an import of the same install and version and writes nothing
     /// (09-zero-hour.md, A check keeps an unchanged import).
-    pub const OUTPUT_VERSION: u32 = 94;
+    pub const OUTPUT_VERSION: u32 = 96;
 
     /// Writes the rules package into the new directory `dir`; its fingerprint, which is
     /// `rules_fingerprint`'s.

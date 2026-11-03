@@ -519,6 +519,11 @@ impl<'r> GameWrite<'r> {
                     .expect("a command set gives each place one button");
             }
         }
+        for (producer, panels) in &production.panel.upgraded {
+            if let Some(look) = looks.get_mut(producer.declared()) {
+                look.panel_upgrades.clone_from(panels);
+            }
+        }
         // Each type's icon, its `ButtonImage`, which a button that stands for its unit shows, as
         // a container's exit shows its rider (02-engine-core.md, The client orders entries by the
         // right click).

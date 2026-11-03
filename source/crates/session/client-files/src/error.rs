@@ -158,6 +158,11 @@ pub enum TeamColorsError {
     TooMany(usize),
 }
 
+/// An upgrade's panel that places no button.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("an upgrade's panel places no button")]
+pub struct EmptyUpgrade;
+
 /// A place of the command panel given two buttons.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 #[error("the panel's place {0} holds two buttons")]

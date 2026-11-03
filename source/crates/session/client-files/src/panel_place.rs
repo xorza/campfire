@@ -4,13 +4,29 @@ use campfire_common::{DeclaredName, EnumAll};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::error::CrowdedPlace;
+use crate::error::{CrowdedPlace, EmptyUpgrade};
 
 /// The buttons a look places on the command panel, each at its place, the first 1, as the HUD
 /// file's grid orders them (02-engine-core.md, A look places its buttons); at most one at a place.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct PanelPlaces(Vec<PanelPlace>);
+
+/// A panel an upgrade puts in place of a look's own: the tag its unit holds while it does, and its
+/// places, at least one (02-engine-core.md, An upgrade swaps a look's panel).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PanelUpgrade {
+    tag: DeclaredName,
+    panel: PanelPlaces,
+}
+
+/// An upgrade's panel as a file writes it: its tag and its places.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpgradeFields {
+    tag: DeclaredName,
+    panel: PanelPlaces,
+}
 
 /// A button at a place of the panel.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +68,25 @@ impl PanelPlaces {
 
     pub fn iter(&self) -> std::slice::Iter<'_, PanelPlace> {
         self.0.iter()
+    }
+}
+
+impl PanelUpgrade {
+    /// The panel `panel` while its unit holds `tag`; an error for a panel of no place, which would
+    /// lay its unit's actions in slot order as a look of no places does, not take its place.
+    pub fn new(tag: DeclaredName, panel: PanelPlaces) -> Result<Self, EmptyUpgrade> {
+        if panel.is_empty() {
+            return Err(EmptyUpgrade);
+        }
+        Ok(Self { tag, panel })
+    }
+
+    pub const fn tag(&self) -> &DeclaredName {
+        &self.tag
+    }
+
+    pub const fn panel(&self) -> &PanelPlaces {
+        &self.panel
     }
 }
 
@@ -134,5 +169,13 @@ impl<'de> Deserialize<'de> for PanelPlaces {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let places = Vec::<PanelPlace>::deserialize(deserializer)?;
         Self::try_from(places).map_err(D::Error::custom)
+    }
+}
+
+/// A package's file is untrusted, so an upgrade's panel of no place fails to read.
+impl<'de> Deserialize<'de> for PanelUpgrade {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let UpgradeFields { tag, panel } = UpgradeFields::deserialize(deserializer)?;
+        Self::new(tag, panel).map_err(D::Error::custom)
     }
 }

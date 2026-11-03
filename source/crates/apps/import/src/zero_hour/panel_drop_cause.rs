@@ -17,4 +17,13 @@ pub enum PanelDropCause {
     NoTexture,
     /// A button whose label marks no key, or marks a character no key types.
     NoKey,
+    /// A button of an action in an upgrade's command set that its producer's own set does not
+    /// make, which the producer's slots do not hold.
+    UpgradedAction,
+    /// An upgrade's other command set, which its object takes once it or its player holds
+    /// another upgrade, which no panel shows.
+    OtherSet,
+    /// An upgrade's command set of no button the import converts, under which its producer's own
+    /// panel stays.
+    EmptySet,
 }
