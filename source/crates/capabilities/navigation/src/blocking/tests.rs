@@ -1,6 +1,9 @@
 use campfire_sim::IdAllocator;
+use campfire_units::Facing;
 
 use super::*;
+use crate::crossing::Crossing;
+use crate::gait::Gait;
 
 /// A body of radius 5/8 m at (`x`, `z`) on the first layer, walking along `way` if any a step of
 /// `pace`, of weight 1, of team 0.
@@ -17,6 +20,7 @@ fn unit(id: StableId, (x, z): (Num, Num), way: Option<[i128; 2]>, pace: Num) -> 
         gathering: false,
         weight: Num::ONE,
         into: None,
+        stepping: Stepping::NONE,
     }
 }
 
@@ -151,6 +155,41 @@ fn a_unit_walked_into_passed_through_or_of_another_layer_blocks_nothing() {
     };
     assert_eq!(step_past(gathering(walker), &[gathering(ahead)]), None);
     assert_eq!(step_past(walker, &[gathering(ahead)]), Some(Num::QUARTER));
+    // Of two that step in a mode whose steppers pass, the walker facing along +x, a unit that
+    // walks facing 90° off, a dot of 0, lets it pass, and one 60° off, a dot of a half, brakes
+    // it, as does one that stands; one that drives brakes it whatever way it faces, and so does
+    // a unit that steps a walker that drives. A unit that drives, or one of a mode whose
+    // steppers block, has no stepping.
+    let facing = |degrees: i64| Facing::of(Num::int(degrees));
+    let stepping = |unit: Blocker, degrees: i64| Blocker {
+        stepping: Crossing::StepsPass.stepping(Gait::Step, facing(degrees)),
+        ..unit
+    };
+    let ahead = Blocker {
+        way: Direction::of([0, 1]),
+        ..ahead
+    };
+    assert_eq!(
+        Crossing::StepsPass.stepping(Gait::Drive, facing(0)),
+        Stepping::NONE
+    );
+    assert_eq!(
+        Crossing::Block.stepping(Gait::Step, facing(0)),
+        Stepping::NONE
+    );
+    let braked = Some(Num::QUARTER);
+    assert_eq!(step_past(stepping(walker, 0), &[stepping(ahead, 90)]), None);
+    assert_eq!(
+        step_past(stepping(walker, 0), &[stepping(ahead, 60)]),
+        braked
+    );
+    assert_eq!(step_past(stepping(walker, 0), &[ahead]), braked);
+    assert_eq!(step_past(walker, &[stepping(ahead, 90)]), braked);
+    let standing = Blocker { way: None, ..ahead };
+    assert_eq!(
+        step_past(stepping(walker, 0), &[stepping(standing, 90)]),
+        braked
+    );
 }
 
 #[test]

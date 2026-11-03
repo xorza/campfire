@@ -298,3 +298,64 @@ team's units or once stuck, and a mover braked to a stop counted stuck, on the i
 - **The garrison's slower Rebel.** Of the two Rebels, the one that starts among the base's units
   walks east 90 m round them before it turns for the building, and arrives in tick 985 against
   the other's 750; the golden's 824 was measured before the brake, with no probe of its way.
+
+## The Zero Hour check with a blocked mover's turn, measured, 2026-11-03
+
+The check before and after a mover that a brake holds below its top speed, and that drives no
+slower than the brake, turns toward its waypoint by its whole turn rate with its velocity cut to
+the brake, and a wheel's turning speed reads its top speed (entries-and-blocking.md, A blocked
+mover turns where it stands).
+
+| Play | Before | After |
+| --- | --- | --- |
+| Bases: end, stalls | tick 9,681, 737 | tick 10,910, 278 |
+| Attack: end, stalls | tick 14,272, 69 | tick 14,342, 105 |
+| Entry: Helix, bunker | 767, 743 | 402, 781 |
+| Garrison: garrisoned, outranged, left | 985, 1,310, 940 | 994, 1,361, 880 |
+| Fight: shot, hit, fight | 946, 956, 2,662 | 947, 957, 2,674 |
+| Combat: rockets, walks back | 2, 113 and 118 | 31, 133 and 138 |
+
+- **The supply trucks drive on.** In the bases play, probed each second, no China supply truck
+  is stuck more than 26 ticks in a row; trucks 167 and 168, which stood 96 and 126 s by their
+  supply center, are stuck in 5 and 4 samples, at most 24 and 6 ticks.
+- **The combat play's buggy comes another way.** The rocket buggy's walk turns aside at tick
+  3,282, as a brake holds it, and its first hit on the Crusader comes 31 ticks after it arrives,
+  where it came in 2.
+
+## The Zero Hour check with soldiers that cross, measured, 2026-11-03
+
+The check before and after Zero Hour's mode lets two walkers that step pass each other while
+both walk and their facings' dot is a quarter or less, the brake leaving such a pair be and
+collision parting none (entries-and-blocking.md, Walkers that step pass those that step another
+way), over a blocked mover that turns where it stands.
+
+| Play | Before | After |
+| --- | --- | --- |
+| Bases: end, stalls | tick 10,910, 278 | tick 9,113, 188 |
+| Attack: end, stalls | tick 14,342, 105 | tick 14,103, 59 |
+| Entry: Helix, bunker | 402, 781 | 412, 789 |
+| Garrison: garrisoned, outranged, left | 994, 1,361, 880 | 946, 1,349, 880 |
+| Combat: rockets | 31 | 20 |
+
+- **The Angry Mob is stuck as often either way.** Probed each second, the bases play holds 255
+  samples of a stuck Angry Mob member with the rule and without it, of 531 and 545 stuck samples
+  in all; the 555 of the first measure came before a blocked mover turned where it stands.
+- **A walker and a soldier that stands left in each other stall the entry play.** With collision
+  parting no crossing pair of which one walks, Red Guards 237 and 242, walking into the
+  Overlord's bunker, stood about 330 m short of it from tick 810 to the play's limit, with their
+  walk and a stuck count of 0, and the bunker's boarding never came.
+
+## Zero Hour's bump limit and a still mover's count, measured, 2026-11-03
+
+The check over a blocked mover that turns where it stands and soldiers that cross, with each
+change tried alone.
+
+- **Zero Hour's bump limit on this brake slows its followers.** With a mover's speed capped as
+  `doLocomotor` caps it, at a bump limit that falls by a twentieth each tick its brake holds it
+  and grows by a twentieth each tick once free, the Helix of the entry play was never boarded
+  within the play's limit; with a mover of a speed of 0 counted stuck once it comes no nearer
+  too, the boarding took 918 ticks, from 412, and the bases play stalled 401 times, from 188. This brake holds a walker
+  whose step would reach a unit, where Zero Hour's `blocked` flag comes of a collision alone.
+- **A mover that stands counted stuck stalls the bases play.** Counting a stuck tick for each
+  tick a mover of a speed of 0 comes no nearer its waypoint, as one that turns where it stands
+  does, the bases play stalled 953 times, from 188.

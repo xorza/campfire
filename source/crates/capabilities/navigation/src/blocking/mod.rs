@@ -6,6 +6,8 @@ use campfire_sim::StableId;
 use campfire_units::Layer;
 use campfire_values::Team;
 
+use crate::gait::Stepping;
+
 /// The units that may block a walker, as the Move stage starts, by stable id, and a grid of their
 /// bodies: what each walker's brake reads, so the order the walkers move in changes none of them
 /// (entries-and-blocking.md, A walker brakes behind a unit that blocks it). Kept between ticks, so
@@ -19,8 +21,8 @@ pub(crate) struct Blocking {
 /// A unit as a walker's brake reads it: its body where it stands, its team, if any, the way it
 /// walks this tick, none for one that stands, the step it is to take that way, as the brake of the
 /// tick before let it or its speed is, whether it leaves its producer or gathers, as such a unit
-/// passes through some others, its weight, and the unit its walk goes into, if any, which it
-/// passes through.
+/// passes through some others, its weight, the unit its walk goes into, if any, which it
+/// passes through, and its stepping, as two walkers that step another way pass each other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Blocker {
     pub(crate) id: StableId,
@@ -34,6 +36,7 @@ pub(crate) struct Blocker {
     pub(crate) gathering: bool,
     pub(crate) weight: Num,
     pub(crate) into: Option<StableId>,
+    pub(crate) stepping: Stepping,
 }
 
 /// The way a walker goes this tick, and how far it goes that way before it turns at a waypoint,
@@ -106,8 +109,10 @@ impl Blocking {
     /// touching the unit, on by the step the unit is to take along the way, none for one that
     /// comes toward it, as `calculateMaxBlockedSpeed` brakes a mover to the speed of the one
     /// ahead; the touch is rounded toward the walker, so it ends touching or apart, but for the
-    /// measures' own half a bit. The unit its walk goes into, one of another layer, and one it
-    /// passes through block it not. Of two that block each other head on, both braked to a stop,
+    /// measures' own half a bit. The unit its walk goes into, one of another layer, one it
+    /// passes through, and, of a walker that steps, one that walks and steps another way block it
+    /// not
+    /// (entries-and-blocking.md, Walkers that step pass those that step another way). Of two that block each other head on, both braked to a stop,
     /// the one of the lower weight, then of the higher stable id, yields, as
     /// `hasHigherPathPriority` ranks a vehicle over a soldier and then the lower id of two that
     /// face each other (entries-and-blocking.md, A head-on block steps the lower priority aside).
@@ -132,6 +137,7 @@ impl Blocking {
                     || walker.into == Some(unit.id)
                     || unit.into == Some(walker.id)
                     || Self::passes(&walker, &unit)
+                    || (unit.way.is_some() && walker.stepping.crosses(unit.stepping))
                 {
                     return ControlFlow::Continue(());
                 }

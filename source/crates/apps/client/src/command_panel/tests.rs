@@ -65,8 +65,8 @@ fn a_look_lays_its_buttons_at_its_places_and_one_of_none_its_trains_in_slot_orde
     let books = MakingBooks {
         actions: world.resource::<ActionBook>(),
         builds: world.resource::<BuildBook>(),
-        researches: world.get_resource::<ById<ActionId, ResearchSpec>>(),
-        sales: Some(&sales),
+        researches: world.resource::<ById<ActionId, ResearchSpec>>(),
+        sales: &sales,
     };
     let kind = SlotKind::new(0);
     let rank = Some(Rank::FIRST);
@@ -200,8 +200,9 @@ fn a_look_lays_its_buttons_at_its_places_and_one_of_none_its_trains_in_slot_orde
     ];
     assert_eq!(shown.buttons, laid);
     // With no sales and no queue, neither the sale nor the rally.
+    let none = ById::<UnitType, SellSpec>::default();
     let unsold = MakingBooks {
-        sales: None,
+        sales: &none,
         ..books
     };
     let idle = PanelUnit {
@@ -703,9 +704,8 @@ fn a_train_at_a_place_is_dimmed_while_no_place_is_free_of_units_and_queued_train
         },
         key: None,
     };
-    let has_place = |action, queue: &TrainQueue| {
-        button(action).has_place(Some(&trains), Some(&held), Some(queue))
-    };
+    let has_place =
+        |action, queue: &TrainQueue| button(action).has_place(&trains, Some(&held), Some(queue));
     // One place free: pressed with an empty queue, dimmed once a train at a place waits for it;
     // a train at the exit needs none.
     assert!(has_place(at_place, &queued(0)));
@@ -734,12 +734,12 @@ fn a_train_of_a_modifier_its_player_lacks_is_dimmed() {
         key: None,
     };
     let lacks = |_| false;
-    assert!(!button(train).meets(Some(&requirements), lacks));
-    assert!(button(train).meets(Some(&requirements), |held| held == science));
-    assert!(button(ActionId::new(9)).meets(Some(&requirements), lacks));
+    assert!(!button(train).meets(&requirements, lacks));
+    assert!(button(train).meets(&requirements, |held| held == science));
+    assert!(button(ActionId::new(9)).meets(&requirements, lacks));
     let stop = Button {
         does: Does::Command(PanelCommand::Stop),
         ..button(train)
     };
-    assert!(stop.meets(Some(&requirements), lacks));
+    assert!(stop.meets(&requirements, lacks));
 }

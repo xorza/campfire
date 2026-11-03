@@ -27,7 +27,7 @@ use crate::collider::Collider;
 use crate::collider::contact::{Contact, ContactBodies};
 use crate::crowd_book::CrowdBook;
 use crate::crowd_costs::{CrowdCosts, Stamp, Standing};
-use crate::gait::Gait;
+use crate::gait::{Gait, Stepping};
 use crate::hemmed::Hemmed;
 use crate::movement_model::MovementModel;
 use crate::pathing_grid::PathingGrid;
@@ -489,11 +489,12 @@ impl Walking {
     /// walker's `BrakedStep` takes the step its brake let it take. A predicting client brakes its units behind its
     /// own alone, as a unit it holds stands where the server last had it.
     pub(super) fn move_units(
-        (models, grid, statics, navigation): (
+        (models, grid, statics, navigation, crowd): (
             Res<'_, ById<UnitType, MovementModel>>,
             Option<Res<'_, PathingGrid>>,
             Res<'_, BodyIndex>,
             Res<'_, ById<UnitType, UnitNavigationData>>,
+            Res<'_, CrowdBook>,
         ),
         mut units: Query<
             '_,
@@ -548,6 +549,7 @@ impl Walking {
                     Some(drive) => drive.speed(),
                     None => last.get().map_or(full, |braked| braked.min(full)),
                 };
+                let data = UnitNavigationData::of(&navigation, unit_type);
                 Some(Blocker {
                     id,
                     position: position.get(),
@@ -558,8 +560,9 @@ impl Walking {
                     pace,
                     leaving: leaving.is_some_and(|leaving| leaving.get()),
                     gathering: tags.is_some_and(|tags| tags.passes()),
-                    weight: UnitNavigationData::of(&navigation, unit_type).weight,
+                    weight: data.weight,
                     into: destination.unit(),
+                    stepping: crowd.crossing.stepping(data.gait, *facing),
                 })
             },
         ));
@@ -639,6 +642,7 @@ impl Walking {
                     let mut driver = ZeroHourDriver {
                         mover: &mover,
                         speed: allowed,
+                        top: full,
                         turn: turn.copied(),
                         accel: accel.copied(),
                         stance: Stance {
@@ -761,9 +765,10 @@ impl Walking {
             ),
             (With<MoveStep>, Without<Dead>, Allow<Unpredicted>),
         >,
-        (statics, navigation, mut unparted): (
+        (statics, navigation, crowd, mut unparted): (
             Res<'_, BodyIndex>,
             Res<'_, ById<UnitType, UnitNavigationData>>,
+            Res<'_, CrowdBook>,
             ResMut<'_, UnpartedPairs>,
         ),
         standing: Query<'_, '_, Has<ForcedMove>, StaticUnits>,
@@ -812,6 +817,9 @@ impl Walking {
                             going: facing
                                 .filter(|_| Self::walks(destination, tags, Motion::Own))
                                 .and_then(|&facing| Self::way(facing)),
+                            stepping: facing.map_or(Stepping::NONE, |&facing| {
+                                crowd.crossing.stepping(gait, facing)
+                            }),
                             pinned: false,
                         }
                     },

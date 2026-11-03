@@ -221,6 +221,7 @@ pub(crate) mod internals {
 
     use crate::body_index::{BodyIndex, IndexedBody};
     use crate::collider::Collider;
+    use crate::gait::Stepping;
 
     /// `count` bodies from `seed`: each at a whole centimeter within `span` meters of the origin
     /// on both axes, of a radius from 0.2 to 1.19 m, on one of `layers` layers, and that may be
@@ -253,6 +254,7 @@ pub(crate) mod internals {
                 leaving: false,
                 into: None,
                 going: None,
+                stepping: Stepping::NONE,
                 pinned: false,
             })
             .collect()

@@ -6,12 +6,14 @@ use crate::route::RouteMutItem;
 use crate::zero_hour::zero_hour_drive::ZeroHourDrive;
 use crate::zero_hour::zero_hour_mover::{Stance, Steer, ZeroHourMover};
 
-/// A Zero Hour walker as it drives a tick: its locomotor; its speed in meters a tick, its turn
-/// and its acceleration, as its stats give them; where it stands and faces; and its drive.
+/// A Zero Hour walker as it drives a tick: its locomotor; the speed its brake lets it, in meters
+/// a tick; its top speed, its turn and its acceleration, as its stats give them; where it stands
+/// and faces; and its drive.
 #[derive(Debug)]
 pub(crate) struct ZeroHourDriver<'a> {
     pub(crate) mover: &'a ZeroHourMover,
     pub(crate) speed: Num,
+    pub(crate) top: Num,
     pub(crate) turn: Option<TurnStep>,
     pub(crate) accel: Option<AccelStep>,
     pub(crate) stance: Stance,
@@ -34,6 +36,7 @@ impl ZeroHourDriver<'_> {
         let Self {
             mover,
             speed,
+            top,
             turn,
             accel,
             stance,
@@ -58,6 +61,7 @@ impl ZeroHourDriver<'_> {
         }
         let steer = Steer {
             speed: *speed,
+            top: *top,
             // A walker of no turn step turns at once, and one of no acceleration step gains its
             // speed in a tick.
             turn: turn.map_or(Num::int(180), TurnStep::get),

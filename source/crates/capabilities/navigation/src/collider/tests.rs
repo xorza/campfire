@@ -4,6 +4,8 @@ use bevy_ecs::world::World;
 use campfire_geometry::Radius;
 use campfire_sim::IdAllocator;
 
+use campfire_units::Facing;
+
 use super::*;
 use crate::broadphase::Broadphase;
 use crate::broadphase::internals::statics;
@@ -28,6 +30,7 @@ fn row(at: &[(Num, Num, bool)]) -> Vec<Collider> {
             leaving: false,
             into: None,
             going: None,
+            stepping: Stepping::NONE,
             pinned: false,
         })
         .collect()
@@ -283,6 +286,34 @@ fn two_gatherers_or_a_walker_and_the_unit_it_walks_into_pass_through_each_other(
     ]);
     three[0].into = Some(three[2].id);
     assert!(three[0].near(&three[1]));
+    // Two walkers that step 1.5 m apart, one facing 90° off the other's way, a dot of 0, pass
+    // through each other (entries-and-blocking.md, Walkers that step pass those that step another
+    // way); facing 60° off, a dot of a half, or both standing, they part a quarter meter each way,
+    // and a walker that walks into one that stands takes the whole half meter.
+    let crossing = |degrees: i64, walking: [bool; 2]| {
+        let mut pair = row(&[
+            (Num::ZERO, Num::ZERO, true),
+            (Num::ONE + half, Num::ZERO, true),
+        ]);
+        for ((collider, facing), walking) in pair.iter_mut().zip([0, degrees]).zip(walking) {
+            collider.stepping = Stepping(Some(Facing::of(Num::int(facing))));
+            collider.walking = walking;
+        }
+        resolve(&mut pair);
+        places(&pair)
+    };
+    let kept = [(Num::ZERO, Num::ZERO), (Num::ONE + half, Num::ZERO)];
+    let parted = [
+        (-quarter, Num::ZERO),
+        (Num::ONE + half + quarter, Num::ZERO),
+    ];
+    assert_eq!(crossing(90, [true; 2]), kept);
+    assert_eq!(crossing(60, [true; 2]), parted);
+    assert_eq!(crossing(90, [false; 2]), parted);
+    assert_eq!(
+        crossing(90, [true, false]),
+        [(-half, Num::ZERO), (Num::ONE + half, Num::ZERO)]
+    );
 }
 
 #[test]

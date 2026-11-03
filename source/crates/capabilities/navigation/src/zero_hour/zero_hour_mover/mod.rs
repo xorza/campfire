@@ -33,12 +33,14 @@ pub(crate) struct ZeroHourMover {
     donut: u32,
 }
 
-/// What a mover drives toward this tick: the speed, in meters a tick, the turn, in degrees a tick,
-/// and the gain of speed each tick, its stats give it; its route's next waypoint; and the meters
-/// left along its route to the route's end.
+/// What a mover drives toward this tick: the speed its brake lets it, and the speed, the turn and
+/// the gain of speed each tick its stats give it, as `doLocomotor` passes its locomotor the brake
+/// and the locomotor reads its own top speed, each speed in meters a tick and the turn in degrees
+/// a tick; its route's next waypoint; and the meters left along its route to the route's end.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Steer {
     pub(crate) speed: Num,
+    pub(crate) top: Num,
     pub(crate) turn: Num,
     pub(crate) accel: Num,
     pub(crate) goal: Vec3,
@@ -141,11 +143,12 @@ impl ZeroHourMover {
 
     /// Drives `stance` and `drive` a tick by `steer`, as `locoUpdate_moveTowardsPosition` and
     /// `PhysicsBehavior::update` move a ground unit a frame: a mover in a cell `open` refuses it
-    /// pushes itself out, as `fixInvalidPosition`, and does no more; else its appearance's mover
-    /// turns it and gives its push along its facing, and a mover that braked as its last tick
-    /// ended lands toward its goal. Then its velocity gains the push and loses its lateral
-    /// friction, and moves it unless it brakes. A wheel's arc ahead lies on cells `open` lets it
-    /// stand in.
+    /// pushes itself out, as `fixInvalidPosition`, and does no more; a mover a brake holds below
+    /// its top speed that drives no slower than the brake turns where it stands, as `hold` says;
+    /// else its appearance's mover turns it and gives its push along its facing, and a mover that
+    /// braked as its last tick ended lands toward its goal. Then its velocity gains the push and
+    /// loses its lateral friction, and moves it unless it brakes. A wheel's arc ahead lies on
+    /// cells `open` lets it stand in.
     pub(crate) fn drive(
         &self,
         steer: Steer,
@@ -161,10 +164,14 @@ impl ZeroHourMover {
             self.integrate(stance, drive, correction);
             return;
         }
-        let stop_at_speed = (steer.speed / self.braking) * steer.speed / 2;
+        let stop_at_speed = (steer.top / self.braking) * steer.top / 2;
         if steer.on_path > CELL && steer.on_path > stop_at_speed {
             drive.braking = false;
             drive.factor = ZeroHourDrive::FACTOR;
+        }
+        if steer.speed < steer.top && drive.speed() >= steer.speed {
+            self.hold(steer, stance, drive);
+            return;
         }
         let before = stance.at;
         let braked = drive.braked;
@@ -189,6 +196,25 @@ impl ZeroHourMover {
         }
         let [cos, minus_sin] = stance.facing.way();
         self.integrate(stance, drive, [push * cos, push * minus_sin]);
+    }
+
+    /// Holds a mover a brake holds below its top speed, as `locoUpdate_moveTowardsPosition` holds
+    /// one its `blocked` flag holds that drives no slower than its brake: its velocity is cut to
+    /// the brake, as `scrubVelocity2D` cuts it, to none below the still speed, and it turns toward
+    /// its goal by its whole turn rate, whatever its speed, with no push, so a wheel braked to a
+    /// stop turns where it stands (entries-and-blocking.md, A blocked mover turns where it stands).
+    fn hold(&self, steer: Steer, stance: &mut Stance, drive: &mut ZeroHourDrive) {
+        let speed = drive.speed();
+        if steer.speed < self.still {
+            drive.velocity = [Num::ZERO; 2];
+        } else if speed > steer.speed {
+            drive.velocity = drive.velocity.map(|axis| {
+                axis.checked_mul_div(steer.speed, speed, Rounding::NearestEven)
+                    .expect("a part of a velocity fits")
+            });
+        }
+        self.rotate(stance, steer.goal, steer.turn, drive.braking);
+        self.integrate(stance, drive, [Num::ZERO; 2]);
     }
 
     /// Adds `gain`, `[x, z]` in meters a tick each tick, to the velocity of `drive` and takes its
@@ -309,7 +335,7 @@ impl ZeroHourMover {
         drive: &mut ZeroHourDrive,
         open: impl Fn(Vec3) -> bool,
     ) -> Num {
-        let turn_speed = self.min_turn_speed.max(steer.speed / 4);
+        let turn_speed = self.min_turn_speed.max(steer.top / 4);
         let mut way = Self::toward(stance.at, steer.goal);
         let mut turn = stance.facing.turn_to(way);
         let mut actual = Self::forward(drive.velocity, stance.facing);

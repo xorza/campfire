@@ -3,26 +3,30 @@ use campfire_declarations::{Book, BookCx, BookError};
 use campfire_names::MatchNames;
 use campfire_values::Team;
 
+use crate::crossing::Crossing;
 use crate::mode_navigation_data::ModeNavigationData;
 use crate::moves::Moves;
 
-/// The mode's rule of who moves whom in a crowd, which steering and collision read, and the
-/// mode's teams, whose crowd costs the load makes.
+/// The mode's rules of who moves whom in a crowd, which steering and collision read, and of who
+/// passes whom, which the brake and collision read, and the mode's teams, whose crowd costs the
+/// load makes.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 #[component(immutable)]
 pub(crate) struct CrowdBook {
     pub moves: Moves,
+    pub(crate) crossing: Crossing,
     pub(crate) teams: Box<[Team]>,
 }
 
 impl CrowdBook {
-    /// The rule of the mode's navigation and the mode's teams; the default rule for a load of
+    /// The rules of the mode's navigation and the mode's teams; the default rules for a load of
     /// none, and no team for a match of no mode.
     pub(crate) fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let data = cx.mode_section::<ModeNavigationData>();
         let teams = cx.names_if::<Team>()?;
         Ok(Self {
             moves: data.map_or_else(Moves::default, |data| data.moves),
+            crossing: data.map_or_else(Crossing::default, |data| data.crossing),
             teams: teams.map_or_else(Box::default, |teams| {
                 teams.iter().map(|(team, _)| team).collect()
             }),

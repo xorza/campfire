@@ -8,6 +8,7 @@ use campfire_values::Team;
 use crate::blocking::Bearing;
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::collider::contact::{Contact, ContactBodies};
+use crate::gait::Stepping;
 
 pub(crate) mod contact;
 
@@ -18,8 +19,9 @@ pub(crate) mod contact;
 /// leaves its producer, passing through its team's units (04-capabilities/navigation.md, A new
 /// unit leaves its exit); the unit its walk goes into, if any, which it passes through, either way
 /// (entries-and-blocking.md, A walker passes through the unit it walks into); the way it faces as
-/// it walks this tick, none for one that stands; and whether a static body parted it this tick,
-/// which pins it against the other walkers. A unit that cannot walk, such as a tower or a
+/// it walks this tick, none for one that stands; its facing where it steps, as two walkers that
+/// step another way pass through each other; and whether a static body parted it this
+/// tick, which pins it against the other walkers. A unit that cannot walk, such as a tower or a
 /// building, is never pushed; only such a unit has a box.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Collider {
@@ -37,6 +39,7 @@ pub(crate) struct Collider {
     pub(crate) leaving: bool,
     pub(crate) into: Option<StableId>,
     pub(crate) going: Option<Direction<2>>,
+    pub(crate) stepping: Stepping,
     pub(crate) pinned: bool,
 }
 
@@ -269,6 +272,7 @@ impl Collider {
             leaving: false,
             into: None,
             going: None,
+            stepping: Stepping::NONE,
             pinned: false,
         }
     }
@@ -287,13 +291,17 @@ impl Collider {
     }
 
     /// Whether the two may separate: they stand on one layer, one of them may be pushed, not both
-    /// gather, and neither walks into the other.
+    /// gather, neither walks into the other, and they are no two walkers that step another way,
+    /// which pass through each other a moment (entries-and-blocking.md, Walkers that step pass
+    /// those that step another way).
     fn may_separate(&self, other: &Self) -> bool {
+        let crossing = (self.walking && other.walking) && self.stepping.crosses(other.stepping);
         self.layer == other.layer
             && (self.movable || other.movable)
             && !(self.gathering && other.gathering)
             && self.into != Some(other.id)
             && other.into != Some(self.id)
+            && !crossing
     }
 
     /// The radius of a body that may be pushed, which is a circle.

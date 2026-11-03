@@ -44,6 +44,7 @@ fn mover(
 fn steer(goal: Vec3, on_path: f64, turn: f64) -> Steer {
     Steer {
         speed: Num::int(3),
+        top: Num::int(3),
         turn: num(turn),
         accel: num(1.5),
         goal,
@@ -345,6 +346,48 @@ fn a_wheel_holds_its_turning_speed_and_slides_in_a_turn() {
     assert_eq!(stance.facing, facing(90.0));
     assert_eq!(drive.velocity, [num(1.125), num(0.75)]);
     assert_eq!(stance.at, point(1.125, 0.75));
+}
+
+#[test]
+fn a_braked_mover_turns_where_it_stands_and_a_wheel_turns_by_its_top_speed() {
+    // At 1.5 m a tick east, its goal due north, a brake of 0 below its top speed of 3: its
+    // velocity goes, as the brake lies below the still speed, and it turns its whole 90° where it
+    // stands, though a wheel at a speed of 0 turns by none.
+    let wheel = mover(LocomotorAppearance::FourWheels, |_| {});
+    let braked = |speed: f64| Steer {
+        speed: num(speed),
+        ..steer(point(0.0, -100.0), 100.0, 90.0)
+    };
+    let start = Stance {
+        at: Vec3::ZERO,
+        facing: facing(0.0),
+    };
+    let mut stance = start;
+    let mut drive = moving([1.5, 0.0]);
+    wheel.drive(braked(0.0), &mut stance, &mut drive, |_| true);
+    assert_eq!(
+        stance,
+        Stance {
+            facing: facing(90.0),
+            ..start
+        }
+    );
+    assert_eq!(drive.velocity, [Num::ZERO; 2]);
+    // A brake of 0.75 cuts its velocity to [0.75, 0], with no push; facing north, that is
+    // lateral, and loses a quarter of it: 0.75 − 0.1875 = 0.5625, which moves it.
+    let mut stance = start;
+    let mut drive = moving([1.5, 0.0]);
+    wheel.drive(braked(0.75), &mut stance, &mut drive, |_| true);
+    assert_eq!(stance.facing, facing(90.0));
+    assert_eq!(drive.velocity, [num(0.5625), Num::ZERO]);
+    assert_eq!(stance.at, point(0.5625, 0.0));
+    // Slower than a brake of 1 it drives as a wheel, whose turning speed is a quarter of its top
+    // speed, 0.75, not of the brake, 0.25: at 0.375 m a tick it makes half its turn, 45°, where a
+    // turning speed of the brake's would make the whole 90°.
+    let mut stance = start;
+    let mut drive = moving([0.375, 0.0]);
+    wheel.drive(braked(1.0), &mut stance, &mut drive, |_| true);
+    assert_eq!(stance.facing, facing(45.0));
 }
 
 #[test]

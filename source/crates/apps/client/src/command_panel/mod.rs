@@ -185,13 +185,13 @@ enum Making {
 }
 
 /// The books the panel tells a train, a build and a research apart by, a build's building, and a
-/// research's modifier, none in a mode of no research; and the sales, none in a mode of none.
+/// research's modifier; and the sales.
 #[derive(Debug, Clone, Copy)]
 struct MakingBooks<'a> {
     actions: &'a ActionBook,
     builds: &'a BuildBook,
-    researches: Option<&'a ById<ActionId, ResearchSpec>>,
-    sales: Option<&'a ById<UnitType, SellSpec>>,
+    researches: &'a ById<ActionId, ResearchSpec>,
+    sales: &'a ById<UnitType, SellSpec>,
 }
 
 /// What the panel reads of a unit: its type, its slots, its train queue, its site, its tags, and
@@ -245,16 +245,15 @@ type PanelNodes<'w, 's> = (
     Single<'w, 's, Entity, With<PanelFunds<CommandPanelPlugin>>>,
 );
 
-/// The books the panel reads: the actions, the builds, the researches, none in a mode of no
-/// research, the sales, none in a mode of none, the actions' names, the trains, and the unit
-/// types' upgrades, none in a mode of no stats.
+/// The books the panel reads: production's actions, builds, researches and sales, the actions'
+/// names, production's trains, and the unit types' upgrades, none in a mode of no stats.
 type PanelBooks<'w> = (
     Res<'w, ActionBook>,
     Res<'w, BuildBook>,
-    Option<Res<'w, ById<ActionId, ResearchSpec>>>,
-    Option<Res<'w, ById<UnitType, SellSpec>>>,
+    Res<'w, ById<ActionId, ResearchSpec>>,
+    Res<'w, ById<UnitType, SellSpec>>,
     Res<'w, NameTexts<ActionId>>,
-    Option<Res<'w, ById<ActionId, TrainSpec>>>,
+    Res<'w, ById<ActionId, TrainSpec>>,
     Option<Res<'w, ById<UnitType, TypeUpgrades>>>,
 );
 
@@ -434,7 +433,7 @@ impl CommandPanelPlugin {
         (tick, rate, text): (Res<'_, SimTick>, Res<'_, MatchRate>, Res<'_, EngineText>),
         (setup, requirements, cooldowns): (
             Res<'_, PanelSetup>,
-            Option<Res<'_, RequirementBook>>,
+            Res<'_, RequirementBook>,
             PlayerRows<'_, '_, PlayerCooldowns>,
         ),
         (mut shown, mut next): (ResMut<'_, Shown>, Local<'_, Shown>),
@@ -448,8 +447,8 @@ impl CommandPanelPlugin {
         let books = MakingBooks {
             actions: &book,
             builds: &builds,
-            researches: researches.as_deref(),
-            sales: sales.as_deref(),
+            researches: &researches,
+            sales: &sales,
         };
         next.clear();
         for &unit in selection.get() {
@@ -560,21 +559,16 @@ impl CommandPanelPlugin {
             making.held_back(upgrades, |spec| {
                 let queued = queue.is_some_and(|queue| {
                     let mut entries = queue.entries().iter();
-                    entries.any(|entry| {
-                        researches
-                            .as_deref()
-                            .and_then(|researches| researches.get(entry.action))
-                            == Some(&spec)
-                    })
+                    entries.any(|entry| researches.get(entry.action) == Some(&spec))
                 });
                 queued || Making::Research(spec).done(id, player_holds, unit_holds)
             })
         };
         pressable.0.extend(shown.buttons.iter().map(|&button| {
             !held_back(button)
-                && button.meets(requirements.as_deref(), |held| own.holds(held))
+                && button.meets(&requirements, |held| own.holds(held))
                 && button.enabled(value(button), |costs| own.affords(costs))
-                && button.has_place(trains.as_deref(), places, queue)
+                && button.has_place(&trains, places, queue)
         }));
         let mut tip = None;
         for (entity, cell) in cells.iter().filter(|_| !remade) {
@@ -780,14 +774,10 @@ impl Button {
 
     /// Whether its player holds the modifiers its action requires, as `requirements` gives them
     /// and `holds` says of a modifier; a command needs none.
-    fn meets(
-        self,
-        requirements: Option<&RequirementBook>,
-        holds: impl Fn(ModifierId) -> bool,
-    ) -> bool {
+    fn meets(self, requirements: &RequirementBook, holds: impl Fn(ModifierId) -> bool) -> bool {
         match self.does {
             Does::Action { action, .. } => requirements
-                .and_then(|book| book.of(action))
+                .of(action)
                 .is_none_or(|required| required.modifiers.iter().all(|&held| holds(held))),
             Does::Command(_) | Does::Exit { .. } => true,
         }
@@ -798,7 +788,7 @@ impl Button {
     /// at a place reserves it as it queues).
     fn has_place(
         self,
-        trains: Option<&ById<ActionId, TrainSpec>>,
+        trains: &ById<ActionId, TrainSpec>,
         places: Option<&HeldPlaces>,
         queue: Option<&TrainQueue>,
     ) -> bool {
@@ -810,8 +800,8 @@ impl Button {
         else {
             return true;
         };
-        match (trains, places, queue) {
-            (Some(trains), Some(places), Some(queue)) => places.admits(action, queue, trains),
+        match (places, queue) {
+            (Some(places), Some(queue)) => places.admits(action, queue, trains),
             _ => true,
         }
     }
@@ -943,7 +933,7 @@ impl Shown {
             let making = match books.actions.get(action)?.kind {
                 ActionKind::Train => Making::Train,
                 ActionKind::Build => Making::Build(books.builds.of(action)?.unit_type),
-                ActionKind::Research => Making::Research(*books.researches?.get(action)?),
+                ActionKind::Research => Making::Research(*books.researches.get(action)?),
                 ActionKind::Cast => Making::cast(books.actions.get(action)?.when, tags)?,
                 _ => return None,
             };
@@ -970,9 +960,7 @@ impl Shown {
             }));
         } else {
             let actions: Vec<Does> = actions.collect();
-            let sells = books
-                .sales
-                .is_some_and(|sales| sales.get(held.unit_type).is_some());
+            let sells = books.sales.get(held.unit_type).is_some();
             let mut riders = held.riders.iter();
             for placed in places {
                 let does =
