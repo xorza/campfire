@@ -100,7 +100,7 @@ impl Routing {
                     let mut depth = depth.expect("a walker carries how deep its walk is");
                     AsideDepth::set(&mut depth, AsideDepth::default());
                     let mut hemmed = hemmed.expect("a walker carries whether it is hemmed in");
-                    Hemmed::set(&mut hemmed, false);
+                    Hemmed::free(&mut hemmed);
                     let from = match route.read().ahead() {
                         [.., before, _] => Some(*before),
                         [_] => Some(at.get()),

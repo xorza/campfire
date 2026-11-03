@@ -396,21 +396,27 @@ fn a_wide_walker_passes_wide_idle_friends_that_yield_to_free_room_and_stops_at_h
             .circle(one)
             .walks(Num::QUARTER, Some(goal))
             .place(&mut game);
+        let rate = *game.resource::<MatchRate>();
+        let hemmed_now = |game: &Match, friend| game.part::<Hemmed>(friend).holds(game.now(), rate);
         let mut done = None;
+        let mut hemmed = [false; 2];
         for tick in 1..=300 {
             game.step();
             if done.is_none() && game.part::<Destination>(walker).get().is_none() {
                 done = Some(tick);
+                hemmed = friends.map(|friend| hemmed_now(&game, friend));
             }
         }
-        let hemmed = friends.map(|friend| game.part::<Hemmed>(friend).get());
+        // A mark holds while a walker that met it may still ask routes, 5.15 s, 155 ticks at 30
+        // a second, so none holds 300 ticks on.
+        assert_eq!(friends.map(|friend| hemmed_now(&game, friend)), [false; 2]);
         let at = friends.map(|friend| game.part::<Position>(friend).get().to_bits());
         let short = *game.part::<ArrivedShort>(walker);
         let walker_at = game.part::<Position>(walker).get();
         // An order of its own makes the first friend walk, and frees it.
         *game.part_mut::<Destination>(friends[0]) = Destination::to(Some(Vec3::from((-10, 0, 0))));
         game.step();
-        let freed = !game.part::<Hemmed>(friends[0]).get();
+        let freed = *game.part::<Hemmed>(friends[0]) == Hemmed::default();
         (done, walker_at, short, hemmed, at, freed)
     };
     let quarters = |x: i64, z: i64| Vec3::new(Num::int(x) / 4, Num::ZERO, Num::int(z) / 4);

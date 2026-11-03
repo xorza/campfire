@@ -138,7 +138,7 @@ factory = [460, 650, 933]
 strategy_center = 1879
 shot = 947
 hit = 957
-fight = 2674
+fight = 2637
 
 [supply]
 built = [477, 418]
@@ -167,30 +167,30 @@ paladin = 458
 [combat]
 cannon = 33
 missiles = 4
-rockets = 20
-back = [133, 138]
-turret = 210
+rockets = 38
+back = [134, 139]
+turret = 209
 arrived = 576
 
 [transport]
-loaded = 989
+loaded = 972
 flown = 95
 landed = 81
-boarded = 866
-fired = 24
-fell = 89
+boarded = 846
+fired = 5
+fell = 128
 evacuated = 9
 
 [entry]
 out = 57
-crawler = 60
-helix = 456
-bunker = 975
+crawler = 1
+helix = 269
+bunker = 877
 
 [garrison]
 garrisoned = 946
-outranged = 1349
-left = 880
+outranged = 1289
+left = 940
 
 [defense]
 built = [477, 1009]
@@ -219,12 +219,12 @@ built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 517
 
 [base]
-ended = 10257
+ended = 10057
 standing = [0, 9]
 ranks = [2, 5]
 perks = [3, 8]
-think_ops = 19296
-stalls = 640
+think_ops = 20885
+stalls = 496
 
 [base.result]
 Won = 1
@@ -262,7 +262,7 @@ untaken = 0
 no_avatar = 0
 no_unit = 0
 no_slot = 0
-no_target = 5
+no_target = 2
 no_place = 0
 no_stack = 0
 
@@ -280,17 +280,17 @@ no_build = 0
 unusable = 0
 
 [base.sight]
-seen = [3169, 4746]
+seen = [4239, 4535]
 explored = [0, 0]
 words = 91
 
 [attack]
-ended = 14750
+ended = 13990
 standing = [4, 0]
 ranks = [1, 1]
 perks = [2, 2]
 think_ops = 9444
-stalls = 78
+stalls = 68
 
 [attack.result]
 Won = 0
@@ -346,6 +346,6 @@ no_build = 0
 unusable = 0
 
 [attack.sight]
-seen = [6299, 620]
+seen = [5933, 384]
 explored = [0, 0]
 words = 91

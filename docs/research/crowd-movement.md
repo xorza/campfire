@@ -401,8 +401,7 @@ From the released source, as [GeneralsX](https://github.com/fbraz3/GeneralsX) bu
 
 The check before and after a Zero Hour mover asks its route again once a unit it touches that
 stands holds it as it faces its waypoint, or once a unit holds it more than 2 s, a turn or a
-tick slower than its brake counting as its first (entries-and-blocking.md, A Zero Hour mover is
-stuck by its block); a mover whose route waits for the planner faces no waypoint, as
+tick slower than its brake counting as its first; a mover whose route waits for the planner faces no waypoint, as
 `needToRotate` holds it to rotate then.
 
 | Play | Before | After |
@@ -428,3 +427,21 @@ stuck by its block); a mover whose route waits for the planner faces no waypoint
   stuck count rising and starting again as it asked its route, by Jarmen Kell, who stood idle
   24 m ahead on its way to the building: each tick the Rebel touches him, its limit falls by a
   twentieth of 0 and grows no more (measured 2026-11-03).
+
+## The Zero Hour check with the block rule and a stuck count at a speed of 0, measured, 2026-11-03
+
+With a tick that comes no nearer at all counted toward stuck at any step, a mover braked to a
+speed of 0 among them, and riders that walk out of their container's body, the check with the
+rule of a Zero Hour mover stuck by its block and with the rule turned off:
+
+| Play | Rule kept | Rule off |
+| --- | --- | --- |
+| Bases: end, stalls | tick 15,731, 1,058 | tick 10,057, 496 |
+| Attack: end, stalls | tick 14,101, 68 | tick 13,990, 68 |
+
+- **Every other play passes either way.** Team 1 wins the bases play in both, with 9 units
+  standing.
+- **The rule misses a mover that must turn.** Before the stuck count at a speed of 0, an entry
+  play's Red Guard braked behind a firm rider stood from tick 402 to the play's limit with its
+  destination: its brake let it 0.00026 m, its drive's speed was 0, and each tick it had to turn
+  counted as the first of its block.

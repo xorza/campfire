@@ -1,6 +1,5 @@
 use std::num::NonZeroI64;
 
-use campfire_sim::MatchRate;
 use campfire_units::internals::Spawn;
 use campfire_units::{CellSplit, Ground, HeightGrid, MapSpace, MoveStep, StatusTags, UnitTypeCore};
 use campfire_values::TypeScope;

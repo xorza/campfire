@@ -11,7 +11,9 @@ use campfire_math::{Num, Vec3};
 use campfire_navigation::internals::PlannedRoute;
 use campfire_navigation::*;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Capability, Position, SimSystems, SimTick, SimWorld, StableId, Unpredicted};
+use campfire_sim::{
+    Capability, MatchRate, Position, SimSystems, SimTick, SimWorld, StableId, Unpredicted,
+};
 use campfire_units::{
     ArrivedShort, AtWork, Body, BodyForm, BodyShape, Dead, Destination, Facing, Layer, MapBook,
     TurnStep, Units, WalkGoal, Wall,

@@ -24,20 +24,15 @@ fn unit(id: StableId, (x, z): (Num, Num), way: Option<[i128; 2]>, pace: Num) -> 
     }
 }
 
-/// The brake of a walker at the origin, going along +x a step of 2 m, past `others`.
-fn brake_past(walker: Blocker, others: &[Blocker]) -> Brake {
+/// The step a walker at the origin, going along +x a step of 2 m, may take past `others`.
+fn step_past(walker: Blocker, others: &[Blocker]) -> Option<Num> {
     let mut blocking = Blocking::default();
     blocking.read([walker].into_iter().chain(others.iter().copied()));
     let way = Going {
         way: Direction::of([1, 0]).unwrap(),
         leg: None,
     };
-    blocking.brake(walker.id, &way, Num::int(2))
-}
-
-/// The step a walker at the origin, going along +x a step of 2 m, may take past `others`.
-fn step_past(walker: Blocker, others: &[Blocker]) -> Option<Num> {
-    brake_past(walker, others).step
+    blocking.brake(walker.id, &way, Num::int(2)).step
 }
 
 #[test]
@@ -134,21 +129,6 @@ fn a_unit_walked_into_passed_through_or_of_another_layer_blocks_nothing() {
         Num::ZERO,
     );
     assert_eq!(step_past(walker, &[ahead]), Some(Num::QUARTER));
-    // 1.5 m ahead, a quarter meter short of touching, it touches the walker not; at the reach,
-    // 1.25 m, it does, as a unit that stands, and one that walks there touches it as one that
-    // walks.
-    assert_eq!(brake_past(walker, &[ahead]).touch, None);
-    let touching = Blocker {
-        position: Vec3::new(Num::ONE + Num::QUARTER, Num::ZERO, Num::ZERO),
-        ..ahead
-    };
-    let touch = |unit| brake_past(walker, &[unit]).touch;
-    assert_eq!(touch(touching), Some(Touch { stands: true }));
-    let walking = Blocker {
-        way: Direction::of([1, 0]),
-        ..touching
-    };
-    assert_eq!(touch(walking), Some(Touch { stands: false }));
     let into = Blocker {
         into: Some(ahead.id),
         ..walker
@@ -244,7 +224,6 @@ fn of_two_head_on_the_lighter_then_the_higher_id_steps_aside_by_the_two_radii() 
     let stop = |aside| Brake {
         step: Some(Num::ZERO),
         aside,
-        touch: Some(Touch { stands: false }),
     };
     assert_eq!(brakes([1, 1]), [stop(None), stop(Some(reach))]);
     assert_eq!(brakes([1, 2]), [stop(Some(reach)), stop(None)]);
@@ -256,12 +235,5 @@ fn of_two_head_on_the_lighter_then_the_higher_id_steps_aside_by_the_two_radii() 
         leg: None,
     };
     let brake = blocking.brake(low, &way, Num::int(2));
-    let touches_one_that_stands = Some(Touch { stands: true });
-    assert_eq!(
-        brake,
-        Brake {
-            touch: touches_one_that_stands,
-            ..stop(None)
-        }
-    );
+    assert_eq!(brake, stop(None));
 }

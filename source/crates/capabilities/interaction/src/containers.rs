@@ -15,8 +15,9 @@ use campfire_sim::{
 };
 use campfire_stats::{Held, HeldModifiers};
 use campfire_units::{
-    Dead, Facing, FiringRider, FlightGoal, Leaving, Life, OpenCellAsk, OpenCellRun, OrderKind,
-    Owner, RiderFate, RidersCalledOut, SeeingRider, SpawnAt, StatusTags, TagBook, UnitOrdered,
+    Body, Dead, Facing, FiringRider, FlightGoal, Leaving, Life, MapBook, OpenCellAsk, OpenCellRun,
+    OrderKind, Owner, RiderFate, RidersCalledOut, SeeingRider, SpawnAt, StatusTags, TagBook,
+    UnitOrdered, Walk,
 };
 use campfire_values::{Rank, TagSet, Team, UnitTags, UnitType};
 
@@ -245,7 +246,12 @@ impl Containers {
                 .get_mut::<Riders>(entity)
                 .and_then(|mut riders| riders.leave(now, exit))
             {
-                Self::put_out(world, entity, rider);
+                let inside = world
+                    .get::<Riders>(entity)
+                    .expect("a container")
+                    .iter()
+                    .len();
+                Self::put_out(world, entity, LeftRider { id: rider, inside });
             }
             Self::emptied(world, entity);
             UnitDues::<Riders>::with(world, id, entity, |world, dues| {
@@ -279,8 +285,13 @@ impl Containers {
                 .get_mut::<Riders>(container)
                 .expect("a container holds riders")
                 .empty();
-            for rider in riders {
-                let Some(entity) = Self::put_out(world, container, rider.id) else {
+            let count = riders.len();
+            for (at, rider) in riders.into_iter().enumerate() {
+                let left = LeftRider {
+                    id: rider.id,
+                    inside: count - 1 - at,
+                };
+                let Some(entity) = Self::put_out(world, container, left) else {
                     continue;
                 };
                 if let Some(mut life) = world.get_mut::<Life>(entity) {
@@ -546,27 +557,32 @@ impl Containers {
         Self::holding(world, entity, true);
     }
 
-    /// Puts `rider`, which left the container of `entity`, out at the center of the free cell
-    /// nearest the container that its walker may stand in, else where the container stands,
-    /// leaving through its team's units, with no walk; its entity, of a rider the match holds.
-    fn put_out(world: &mut World, entity: Entity, rider: StableId) -> Option<Entity> {
+    /// Puts `left`, a rider that left the container of `entity`, out at the center of the free
+    /// cell nearest the container that its walker may stand in, else where the container stands,
+    /// leaving through its team's units, and walking out of the container's body to its place of
+    /// the container's `ExitBlock`, where it comes out in the body; its entity, of a rider the
+    /// match holds.
+    fn put_out(world: &mut World, entity: Entity, left: LeftRider) -> Option<Entity> {
+        let LeftRider { id: rider, inside } = left;
         let at = world
             .get::<Position>(entity)
             .expect("a container stands")
             .get();
         let unit = world.resource::<EntityIndex>().get(rider)?;
         let unit_type = *world.get::<UnitType>(unit).expect("a rider has a type");
-        let position = world
-            .get_resource::<OpenCellRun>()
-            .copied()
-            .and_then(|OpenCellRun(run)| {
-                let ask = OpenCellAsk {
-                    unit_type,
-                    near: at,
-                };
-                world.run_system_with(run, ask).expect("the search runs")
-            })
-            .unwrap_or(at);
+        let position = Self::open_cell(world, unit_type, at).unwrap_or(at);
+        let bound = world.get::<Body>(unit).map(|body| body.shape().bound());
+        let way_out = bound
+            .zip(ExitBlock::of(world, entity))
+            .and_then(|(bound, block)| {
+                let place = block.place(position, bound, inside)?;
+                Some(
+                    world
+                        .resource::<MapBook>()
+                        .bounds
+                        .ground_point(place, block.stands),
+                )
+            });
         let mut out = world.entity_mut(unit);
         out.remove::<(Riding, FiringRider, SeeingRider)>();
         *out.get_mut::<Position>().expect("a rider stands") = Position::from(position);
@@ -578,7 +594,18 @@ impl Containers {
         if let Some(mut leaving) = out.get_mut::<Leaving>() {
             Leaving::set(&mut leaving, true);
         }
+        if let Some(to) = way_out {
+            Walk::go_to(world, unit, Some(to));
+        }
         Some(unit)
+    }
+
+    /// The center of the cell nearest `near` that a walker of `unit_type` may stand in, as a
+    /// teleport finds its cell; none in a match of no such search, or with no such cell.
+    fn open_cell(world: &mut World, unit_type: UnitType, near: Vec3) -> Option<Vec3> {
+        let &OpenCellRun(run) = world.get_resource::<OpenCellRun>()?;
+        let ask = OpenCellAsk { unit_type, near };
+        world.run_system_with(run, ask).expect("the search runs")
     }
 
     /// Takes the `holding` tag from the container of `entity` once its riders left, and gives a
@@ -683,5 +710,72 @@ impl Containers {
         world
             .resource::<ById<UnitType, EnterSpec>>()
             .get(*unit_type)
+    }
+}
+
+/// A rider that left its container, by its id, and the count of riders still inside as it left.
+#[derive(Debug, Clone, Copy)]
+struct LeftRider {
+    id: StableId,
+    inside: usize,
+}
+
+/// The places behind a container that its riders walk out to from where they come out in its
+/// body, as a vehicle's riders come out under it: as many columns wide as the square root of its
+/// capacity, rounded up, the places a rider's width apart, the first row touching its bound, so
+/// each rider walks to a place of its own, as Zero Hour's `OpenContain::exitObjectViaDoor` walks
+/// each rider to its own free place by its container's `ExitEnd`
+/// (04-capabilities/interaction.md, A rider walks out of its container's body).
+#[derive(Debug, Clone, Copy)]
+struct ExitBlock {
+    body: Body,
+    stands: Vec3,
+    way: [Num; 2],
+    columns: u32,
+}
+
+impl ExitBlock {
+    /// The block of the container of `entity`, by its body, its place, its facing and its spec's
+    /// capacity; none for a container of no body.
+    fn of(world: &World, entity: Entity) -> Option<Self> {
+        let container = world.entity(entity);
+        let body = *container.get::<Body>()?;
+        let stands = (container.get::<Position>())
+            .expect("a container stands")
+            .get();
+        let facing = (container.get::<Facing>().copied()).unwrap_or(Facing::of(Num::ZERO));
+        let capacity = Containers::spec(world, entity).map_or(1, |spec| spec.capacity.max(1));
+        let root = capacity.isqrt();
+        let columns = if root * root < capacity {
+            root + 1
+        } else {
+            root
+        };
+        Some(Self {
+            body,
+            stands,
+            way: facing.way(),
+            columns,
+        })
+    }
+
+    /// The place, `[x, z]`, of a rider of the bound `rider` that came out at `at` with `inside`
+    /// riders still in its container: the place of that count, by rows from the nearest, each row
+    /// from its middle out to either side by turns, so the first to leave walks farthest and none
+    /// walks through one that stands; none for a rider clear of the container's body there.
+    fn place(self, at: Vec3, rider: Num, inside: usize) -> Option<[Num; 2]> {
+        let shape = self.body.shape();
+        shape.push_out(self.stands, at, rider)?;
+        let place = u32::try_from(inside).expect("riders within a container's capacity");
+        let (row, column) = (place / self.columns, place % self.columns);
+        let side = i64::from(column.div_ceil(2)) * if column % 2 == 1 { 1 } else { -1 };
+        let width = rider * Num::int(2);
+        let back = shape.bound() + rider + width * i64::from(row);
+        let across = width * side;
+        let [x, z] = self.way;
+        Some([
+            self.stands.x - x * back - z * across,
+            self.stands.z - z * back + x * across,
+        ])
     }
 }

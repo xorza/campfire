@@ -698,6 +698,8 @@ fn riders_leave_each_exit_time_apart_at_the_free_cell_nearest_their_container() 
     );
     let cell = Some((-1, -1));
     assert_eq!(outside(&game, &units), [None, cell, None]);
+    // A humvee of no body holds no rider in it, so the second stands where it came out.
+    assert_eq!(game.part::<Destination>(units[1]).get(), None);
     order(&mut game, 0, humvee, OrdersDirective::Evacuate);
     assert_eq!(outside(&game, &units), [None, cell, None]);
     game.step();
@@ -725,6 +727,50 @@ fn riders_leave_each_exit_time_apart_at_the_free_cell_nearest_their_container() 
         OrdersDirective::Exit { rider: units[0] },
     );
     assert!(game.try_part::<Dead>(units[2]).is_some());
+    assert_eq!(failed(&mut game), []);
+}
+
+#[test]
+fn riders_that_come_out_in_their_containers_body_walk_each_to_its_place_behind_it() {
+    // A humvee of a body of 2 m, facing +x, of a capacity of 3, so a block 2 columns wide, and
+    // riders of half a meter. Each comes out at the free cell nearest the humvee, (−0.5, −0.5), in
+    // its body, and walks to its place behind it, its first row 2 + 0.5 m behind: the first out,
+    // with one still inside, to the row's second place, a rider's width, 1 m, to its side,
+    // (−2.5, 1); the last, with none inside, to its middle, (−2.5, 0).
+    let (mut game, rides) = Rides::load();
+    grid(&mut game, rides);
+    let circle = |radius| BodyForm::new(BodyShape::circle(radius).unwrap(), Layer::FIRST);
+    Units::give_type(&mut game, rides.humvee, circle(Num::int(2)));
+    let walking = Units::type_named(&game, "walking caster").unwrap();
+    Units::give_type(&mut game, walking, circle(Num::HALF));
+    let humvee = container(&mut game, rides.humvee, 0, 0, Some(0));
+    let units = [3, -3].map(|x| rider(&mut game, "walking caster", x, 0, 0));
+    for unit in units {
+        enter(&mut game, 0, unit, humvee);
+    }
+    assert_eq!(riders(&game, humvee), units);
+    order(&mut game, 0, humvee, OrdersDirective::Evacuate);
+    game.step();
+    assert_eq!(riders(&game, humvee), [units[1]]);
+    let place = |z| Some(Vec3::new(-Num::int(5) / 2, Num::ZERO, z));
+    assert_eq!(game.part::<Destination>(units[0]).get(), place(Num::ONE));
+    assert!(game.part::<Leaving>(units[0]).get());
+    game.step();
+    game.step();
+    assert_eq!(game.part::<Destination>(units[1]).get(), place(Num::ZERO));
+    // Each walks through the humvee, which stands where it stood, and stands out of it: the last
+    // at its place, and the first by its own, which it steps aside from as the last passes it
+    // (04-capabilities/navigation.md, A new unit leaves its exit); no two bodies overlap.
+    let now = game.now().get();
+    game.run_until(now + 30);
+    let at = |unit| game.part::<Position>(unit).get();
+    assert_eq!(at(humvee), Vec3::ZERO);
+    assert_eq!(Some(at(units[1])), place(Num::ZERO));
+    assert!(!at(units[0]).within(Vec3::ZERO, Num::int(5) / 2));
+    assert!(!at(units[0]).within(at(units[1]), Num::ONE - Num::from_bits(1)));
+    for unit in units {
+        assert!(!game.part::<Leaving>(unit).get());
+    }
     assert_eq!(failed(&mut game), []);
 }
 

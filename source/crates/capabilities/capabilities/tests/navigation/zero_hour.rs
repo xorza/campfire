@@ -1,6 +1,5 @@
 use std::num::NonZeroI64;
 
-use campfire_sim::MatchRate;
 use campfire_units::internals::Spawn;
 use campfire_units::{AccelStep, MoveStep, UnitTypeCore};
 use campfire_values::TypeScope;
@@ -105,11 +104,9 @@ fn a_mover_that_gathers_speed_slowly_is_not_stuck() {
     // first ticks, far less than half its step of 3 m, but never less than half its speed: it is
     // never stuck, as a walker of its step would be after `Progress::stuck_after` ticks. An enemy
     // of 9 m that stands across the ground's whole width on its way then brakes it to a stop,
-    // touching it, 9.5 m from its center; held so by a unit that stands as it faces its waypoint,
-    // it is stuck by its block at once, and the enemy crowds its goal, so the next tick its walk
-    // ends there (entries-and-blocking.md, A walker brakes behind a unit that blocks it;
-    // entries-and-blocking.md, A Zero Hour mover is stuck by its block;
-    // 04-capabilities/navigation.md, A walker stuck by a crowded goal has arrived).
+    // touching it, 9.5 m from its center, and from then on it is stuck by its whole step, so it
+    // counts a stuck tick each tick (entries-and-blocking.md, A walker brakes behind a unit that
+    // blocks it).
     let mut game = walk_match();
     Navigation::load_open_pathing(&mut game, Num::ONE, [-8, -8], [28, 8], [ground(Num::HALF)]);
     let slow = Num::from_bits(1 << 20);
@@ -149,7 +146,7 @@ fn a_mover_that_gathers_speed_slowly_is_not_stuck() {
         .ground_offset(ahead)
         .length();
     assert_eq!(touching, Num::int(19) / 2);
-    assert!(game.part::<Route>(id).goal().is_some());
+    let stuck = game.part::<Progress>(id).stuck_ticks();
     game.step();
-    assert_eq!(game.part::<Route>(id).goal(), None);
+    assert_eq!(game.part::<Progress>(id).stuck_ticks(), stuck + 1);
 }

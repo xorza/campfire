@@ -8,32 +8,15 @@ use campfire_units::UnitEntity;
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
-use crate::blocking::Touch;
-
 /// How a walker has been getting on: the waypoint it walks toward and the nearest it came to it,
-/// for how many ticks in a row it came no half a step nearer it than ever, how many routes to its
-/// goal it asked as it was stuck since it last passed a waypoint, and how a Zero Hour mover's
-/// brake holds it against the units it touches. Apart from its route, as it changes every tick a
-/// unit walks.
+/// for how many ticks in a row it came no half a step nearer it than ever, and how many routes to
+/// its goal it asked as it was stuck since it last passed a waypoint. Apart from its route, as it
+/// changes every tick a unit walks.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Progress {
     toward: Option<Nearest>,
     stuck: u32,
     stuck_asks: u8,
-    blocked: Blocked,
-}
-
-/// How a Zero Hour mover's brake held it against a unit it touches, as `m_blockedFrames` and
-/// `m_isBlockedAndStuck` count it: free; held the ticks in a row it was, one while it must turn
-/// to its waypoint or drives slower than its brake; or stuck, held by a unit that stands as it
-/// faced its waypoint, until it asks its route again (entries-and-blocking.md, A Zero Hour mover
-/// is stuck by its block).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-enum Blocked {
-    #[default]
-    Free,
-    Held(u32),
-    Stuck,
 }
 
 /// A waypoint a walker walks toward, and the nearest it came to it on the ground.
@@ -53,10 +36,6 @@ impl Progress {
     /// creeps held a 3v3 hero below its level, and as 0 A.D.'s `UnitMotion` asks a long path only
     /// after its short paths fail three times.
     const STUCK_ASK_MS: u64 = 1000;
-
-    /// How long a Zero Hour mover's brake holds it against a unit that moves before it asks its
-    /// route again, `2 × LOGICFRAMES_PER_SECOND` frames (`AIInternalMoveToState::update`).
-    const BLOCKED_MS: u64 = 2000;
 
     /// The routes a walker asks as it is stuck, with no waypoint passed between, before it stops:
     /// a route each `STUCK_ASK_MS`, about 5 s stuck, as 0 A.D.'s `UnitMotion` stops after 35
@@ -80,6 +59,14 @@ impl Progress {
         Self::ticks_in(rate, Self::STUCK_ASK_MS)
     }
 
+    /// The ticks, at `rate`, within which a walker stuck from their first asks every route it may
+    /// as it is stuck: stuck after `STUCK_MS`, then an ask each `STUCK_ASK_MS`, `MOST_STUCK_ASKS`
+    /// of them.
+    pub(crate) fn asks_within(rate: MatchRate) -> u32 {
+        let ms = Self::STUCK_MS + u64::from(Self::MOST_STUCK_ASKS) * Self::STUCK_ASK_MS;
+        Self::ticks_in(rate, ms)
+    }
+
     /// The ticks, at `rate`, of `ms`, one of its fixed times.
     fn ticks_in(rate: MatchRate, ms: u64) -> u32 {
         let ticks = rate.ticks(ms).expect("a fixed time fits").get();
@@ -88,16 +75,17 @@ impl Progress {
 
     /// Notes that the walker stands at `position` as this tick steers, bound for `waypoint`, with
     /// a step of `step`; the ticks in a row it came no half a step nearer its waypoint than ever,
-    /// which only coming so near starts again, or passing a waypoint, not a detour nor a new route
-    /// to a waypoint of their own in place of one not passed, whose first tick counts on; a
-    /// waypoint taken fresh, as the walk starts or past a waypoint, counts nothing
+    /// and at least a bit nearer, so a mover whose speed fell to 0 is stuck, which only coming so
+    /// near starts again, or passing a waypoint, not a detour nor a new route to a waypoint of
+    /// their own in place of one not passed, whose first tick counts on; a waypoint taken fresh,
+    /// as the walk starts or past a waypoint, counts nothing
     /// (04-capabilities/navigation.md, A walker progresses only when it comes nearer its waypoint).
     pub(crate) fn track(&mut self, position: Vec3, waypoint: Vec3, step: Num) -> u32 {
         let distance = position.ground_offset(waypoint).length();
         let fresh = Nearest { waypoint, distance };
         match &mut self.toward {
             Some(nearest) if nearest.waypoint == waypoint => {
-                if distance + step / 2 <= nearest.distance {
+                if distance + (step / 2).max(Num::from_bits(1)) <= nearest.distance {
                     *nearest = fresh;
                     self.stuck = 0;
                 } else {
@@ -149,7 +137,6 @@ impl Progress {
             toward: None,
             stuck: 0,
             stuck_asks: 0,
-            blocked: Blocked::Free,
         };
     }
 
@@ -160,34 +147,7 @@ impl Progress {
             toward: None,
             stuck: 0,
             stuck_asks: self.stuck_asks.saturating_add(1),
-            blocked: Blocked::Free,
         };
-    }
-
-    /// Notes how a Zero Hour mover's brake held it this tick, as `processCollision` and
-    /// `doLocomotor` count its block: free of a unit it `touch`es; held one tick where it must
-    /// turn, not `facing` its waypoint within `PI / 30`, or, `held` false, drove slower than its
-    /// brake; stuck where a unit it touches stands as it faces its waypoint; else held one more
-    /// tick. Stuck it stays until it asks its route again.
-    pub(crate) const fn block(&mut self, touch: Option<Touch>, facing: bool, held: bool) {
-        self.blocked = match (self.blocked, touch) {
-            (Blocked::Stuck, _) => Blocked::Stuck,
-            (_, None) => Blocked::Free,
-            (_, Some(_)) if !facing => Blocked::Held(1),
-            (_, Some(Touch { stands: true })) => Blocked::Stuck,
-            (Blocked::Held(ticks), Some(_)) if held => Blocked::Held(ticks.saturating_add(1)),
-            (_, Some(_)) => Blocked::Held(1),
-        };
-    }
-
-    /// Whether its block, at `rate`, makes it ask its route again: stuck, or held past
-    /// `BLOCKED_MS`.
-    pub(crate) fn blocked_out(&self, rate: MatchRate) -> bool {
-        match self.blocked {
-            Blocked::Free => false,
-            Blocked::Held(ticks) => ticks > Self::ticks_in(rate, Self::BLOCKED_MS),
-            Blocked::Stuck => true,
-        }
     }
 }
 
@@ -245,6 +205,16 @@ mod tests {
         ] {
             assert_eq!(progress.track(at(x), waypoint, step), stuck, "{x:?}");
         }
+        // A step of 0, as of a mover its brake slowed to a stop, makes standing count, and only
+        // coming a bit nearer is progress.
+        let still = Progress {
+            stuck: 3,
+            ..progress
+        };
+        for (x, stuck) in [(nearest, 4), (nearest + Num::from_bits(1), 0)] {
+            let mut still = still;
+            assert_eq!(still.track(at(x), waypoint, Num::ZERO), stuck, "{x:?}");
+        }
         // A new waypoint, as a detour's, counts on; coming half a step nearer it starts again.
         let detour = Vec3::from((5, 0, 5));
         let here = at(nearest);
@@ -283,48 +253,11 @@ mod tests {
             }),
             stuck: 0,
             stuck_asks: 0,
-            blocked: Blocked::Free,
         };
         restored.goal_moved(farther, moved);
         assert_eq!(
             restored.toward.map(|nearest| nearest.distance),
             Some(Num::MAX)
         );
-    }
-
-    #[test]
-    fn a_zero_hour_movers_block_holds_it_stuck_by_one_that_stands_or_past_two_seconds() {
-        // At 30 ticks a second, 2 s is 60 ticks: held 60 ticks by one that walks it asks not,
-        // the 61st it does; a turn, or a tick slower than its brake, holds it one tick again, and
-        // a tick free none. Held by one that stands as it faces its waypoint, it is stuck at once,
-        // and stays so, free or not, until it asks its route again.
-        let rate = MatchRate::new(std::num::NonZeroU32::new(30).unwrap());
-        let walks = Some(Touch { stands: false });
-        let stands = Some(Touch { stands: true });
-        let mut progress = Progress::default();
-        for _ in 0..60 {
-            progress.block(walks, true, true);
-        }
-        assert!(!progress.blocked_out(rate));
-        progress.block(walks, true, true);
-        assert!(progress.blocked_out(rate));
-        for (touch, facing, held) in [
-            (walks, false, true),
-            (walks, true, false),
-            (None, true, true),
-        ] {
-            let mut turned = progress;
-            turned.block(touch, facing, held);
-            let expected = touch.map_or(Blocked::Free, |_| Blocked::Held(1));
-            assert_eq!(turned.blocked, expected, "{touch:?} {facing} {held}");
-        }
-        let mut stuck = Progress::default();
-        stuck.block(stands, false, true);
-        assert!(!stuck.blocked_out(rate));
-        stuck.block(stands, true, true);
-        stuck.block(None, true, true);
-        assert!(stuck.blocked_out(rate));
-        stuck.restart_stuck();
-        assert!(!stuck.blocked_out(rate));
     }
 }
