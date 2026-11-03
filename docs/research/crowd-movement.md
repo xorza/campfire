@@ -421,3 +421,10 @@ stuck by its block); a mover whose route waits for the planner faces no waypoint
   bump limit on a touch over this rule, the combat
   play's first attack and the garrison never came within the plays' limits, and the bases play
   ended in tick 14,533 with 613 stalls.
+- **A touch holds the bump limit at 0.** With the bump limit on a touch over this rule, a mover's
+  route waiting facing no waypoint, the combat play's first attack and the garrison never came
+  within the plays' limits, and the bases play ended in tick 16,905. Probed each 500 ms, the
+  garrison play's Rebel 194 stood at (1,138.1, −2,003.5) from tick 6,975 to the play's limit, its
+  stuck count rising and starting again as it asked its route, by Jarmen Kell, who stood idle
+  24 m ahead on its way to the building: each tick the Rebel touches him, its limit falls by a
+  twentieth of 0 and grows no more (measured 2026-11-03).
