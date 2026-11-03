@@ -58,6 +58,10 @@ fn fat_test_modules(text: &str) -> Vec<FatModule> {
     if !text.contains("mod tests") {
         return Vec::new();
     }
+    // A file of no gated module declares none, and its parse is skipped.
+    if !text.contains("#[cfg(test)]") || !text.contains("mod ") {
+        return Vec::new();
+    }
     let parsed = syn::parse_file(text).expect("a workspace source parses");
     let mut modules = Modules {
         file: text.lines().count(),

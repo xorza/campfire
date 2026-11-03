@@ -213,8 +213,9 @@ fn an_unmapped_confirm_or_message_counts_a_fault() {
 /// The mutations arrive in any order, and the map keeps the newest window by tick. Replicon
 /// ticks 1..=255 arrive, then 0 late, which fills the map; 256 then evicts 0, the oldest tick,
 /// and not 1, the oldest arrival. A confirmation at 0 is then older than every retained
-/// confirmed tick and resolves to the oldest retained tick, 10. Once the map is full, a late 0 is
-/// not kept, and a late tick inside the window takes the place of the oldest one.
+/// confirmed tick and resolves to the oldest retained tick, 10. Once the map is full, a late 0
+/// stays apart as the late one, and a late tick inside the window takes the place of the oldest
+/// one.
 #[test]
 fn a_late_confirmed_tick_takes_its_place_in_tick_order() {
     let mut map = ConfirmedTickMap::default();
@@ -234,14 +235,20 @@ fn a_late_confirmed_tick_takes_its_place_in_tick_order() {
     assert_eq!(confirmed(&map, 0), Some(NetTick(10)));
     assert_eq!(confirmed(&map, max + 5), None);
 
+    // A tick older than every retained one of a full map, as a mutation Replicon buffered past the
+    // window gives it as it applies, stays apart as the late one, which its writes then find.
     map.record(RepliconTick::new(0), NetTick(0));
-    assert_eq!(map.get(RepliconTick::new(0)), None);
+    assert_eq!(map.get(RepliconTick::new(0)), Some(NetTick(0)));
 
     map.record(RepliconTick::new(max + 5), NetTick((max + 5) * 10));
     assert_eq!(map.get(RepliconTick::new(1)), None);
     assert_eq!(map.get(RepliconTick::new(2)), Some(NetTick(20)));
     assert_eq!(confirmed(&map, max + 5), Some(NetTick((max + 5) * 10)));
     assert_eq!(confirmed(&map, 1), Some(NetTick(20)));
+    // The next late tick takes the late one's place.
+    map.record(RepliconTick::new(1), NetTick(10));
+    assert_eq!(map.get(RepliconTick::new(1)), Some(NetTick(10)));
+    assert_eq!(map.get(RepliconTick::new(0)), None);
 }
 
 /// Replicon ticks wrap, and the window stays in send order across the wrap: `u32::MAX` is older

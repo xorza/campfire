@@ -1,6 +1,7 @@
 use bevy_replicon::client::server_mutate_ticks::ServerMutateTicks;
 use campfire_net_connection::NetworkTarget;
 use campfire_net_core::NetTick;
+use campfire_net_link::Unlinked;
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
 
@@ -391,4 +392,26 @@ fn a_link_that_comes_back_at_once_starts_its_replication_afresh() {
     let replicon = world.resource::<ServerMutateTicks>().last_confirmed_tick();
     let mapped = world.resource::<ConfirmedTickMap>().last_confirmed();
     assert_eq!(mapped.map(|confirmed| confirmed.replicon_tick), replicon);
+}
+
+/// A confirmed tick's userdata that is no tick, which no honest server sends, unlinks the server
+/// as the frame ends its receive; a connected client before it stays linked.
+#[test]
+fn a_server_whose_userdata_breaks_the_protocol_is_unlinked() {
+    let mut stepper = Stepper::new(ReplicationStack, StepperSetup::with_plain_clients(1));
+    stepper.frame_step(PROPAGATION_FRAMES);
+    let client = stepper.client_entity(0);
+    let linked = |stepper: &Stepper<ReplicationStack>| {
+        !stepper
+            .client_world(0)
+            .entity(client)
+            .contains::<Unlinked>()
+    };
+    assert!(linked(&stepper));
+    stepper
+        .client_world_mut(0)
+        .resource_mut::<ConfirmedTickMap>()
+        .count_invalid_userdata();
+    stepper.frame_step(1);
+    assert!(!linked(&stepper));
 }

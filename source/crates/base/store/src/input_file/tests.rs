@@ -32,14 +32,15 @@ fn a_read_gives_a_files_bytes_within_its_bound_and_says_why_it_refuses() {
     // A file that grows past the bound after the stream opened, to 8 bytes over a bound of 6,
     // fails the read that crosses the bound, as a read of the whole does.
     let mut growing = InputFile::stream(&five, 6).unwrap();
-    let mut appended = OpenOptions::new().append(true).open(&five).unwrap();
-    appended.write_all(b"678").unwrap();
+    test_dir.append("five", b"678");
     let mut streamed = Vec::new();
     let error = growing.read_to_end(&mut streamed).unwrap_err();
     assert!(matches!(
         ReadError::of_stream(error),
         ReadError::TooLarge { max: 6 }
     ));
+    // Windows renames no file over one a handle holds open, as the write's durable rename does.
+    drop(growing);
     test_dir.write("five", b"12345");
 
     let none = test_dir.path("none");

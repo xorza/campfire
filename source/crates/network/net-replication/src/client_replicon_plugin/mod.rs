@@ -7,7 +7,9 @@ use bevy_state::prelude::*;
 use campfire_net_connection::Client;
 use campfire_net_connection::Connected;
 use campfire_net_despawns::DespawnReplicated;
+use campfire_net_link::Unlink;
 use campfire_net_messages::MessageSystems;
+use campfire_net_payload::UnlinkReason;
 use campfire_net_transport::Transport;
 use campfire_net_transport::TransportSystems;
 use tracing::debug;
@@ -50,6 +52,12 @@ impl Plugin for ClientRepliconPlugin {
                 .run_if(in_state(ClientState::Connected)),
         );
         app.add_systems(
+            PreUpdate,
+            Self::unlink_faulty_server
+                .after(ClientSystems::Receive)
+                .in_set(ReplicationSystems::Receive),
+        );
+        app.add_systems(
             PostUpdate,
             Self::send_client_packets.in_set(ClientSystems::SendPackets),
         );
@@ -89,6 +97,32 @@ impl ClientRepliconPlugin {
             if confirmed_ticks.record_last_confirmed_tick(tick).is_none() {
                 debug!(?tick, "missing confirmed tick for completed mutate tick");
             }
+        }
+    }
+
+    /// Unlinks the server whose replication broke the protocol this frame, as a message that does
+    /// not decode unlinks its peer: a confirmed tick's userdata that is no tick, or a message of a
+    /// tick no userdata named, which an honest server never sends.
+    fn unlink_faulty_server(
+        confirmed_ticks: Res<'_, ConfirmedTickMap>,
+        links: Query<'_, '_, Entity, (With<Client>, With<Connected>, With<ReplicationReceiver>)>,
+        mut seen: Local<'_, u64>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        let faults = confirmed_ticks.protocol_faults();
+        if faults == *seen {
+            return;
+        }
+        *seen = faults;
+        for entity in &links {
+            debug!(
+                ?entity,
+                faults, "unlinking a server whose replication broke the protocol"
+            );
+            commands.trigger(Unlink {
+                entity,
+                reason: UnlinkReason::ProtocolViolation,
+            });
         }
     }
 

@@ -26,22 +26,19 @@ const FRAMES: usize = 256;
 /// that each allocate nothing unless its fixture's budget allows it.
 const AUDIT: AllocAudit = AllocAudit::new(WARMUP).frames(FRAMES);
 
-/// What each frame of a connected link allocates.
+/// What each frame of a connected link allocates, each by bevy_replicon's file, as a stack names
+/// a function of a crate built with its line tables by its short name alone.
 const LINK: [Allowed; 3] = [
     Allowed {
-        site: CallSite::Function(
-            "<bevy_replicon::server::replication_messages::mutations::Mutations>::send",
-        ),
+        site: CallSite::File("bevy_replicon-0.45.2/src/server/replication_messages/mutations.rs"),
         why: "bevy_replicon's server mutation message",
     },
     Allowed {
-        site: CallSite::Function("bevy_replicon::client::receive_replication"),
+        site: CallSite::File("bevy_replicon-0.45.2/src/client.rs"),
         why: "the client's acknowledgement as a `Vec`",
     },
     Allowed {
-        site: CallSite::Function(
-            "<bevy_replicon::shared::backend::client_messages::ClientMessages>::send",
-        ),
+        site: CallSite::File("bevy_replicon-0.45.2/src/shared/backend/client_messages.rs"),
         why: "the client's acknowledgement as `Bytes`",
     },
 ];

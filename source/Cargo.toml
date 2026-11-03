@@ -355,6 +355,13 @@ lto = "off"
 opt-level = 3
 debug = false
 
+# Windows's `dbghelp` names a frame by the PDB's symbols alone, which hold no private function of
+# a crate built with no debug info, so a stack of `bevy_replicon` there took the nearest public
+# symbol's name and missed the allocation budgets (02-engine-core.md, Allocation audits). Its line
+# tables give each frame its source file, which the budgets name.
+[profile.dev.package.bevy_replicon]
+debug = "line-tables-only"
+
 [profile.release]
 lto = "fat"
 codegen-units = 1

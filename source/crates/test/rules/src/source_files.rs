@@ -4,6 +4,10 @@ use std::path::Path;
 use campfire_store::internals::TestDir;
 use campfire_store::{DirEntries, EntryKind, InputFile};
 use campfire_threads::Parallel;
+use proc_macro2::TokenStream;
+use syn::parse::discouraged::Speculative;
+use syn::parse::{ParseStream, Parser};
+use syn::{Attribute, Item};
 
 use crate::source_file::{Gate, SourceFile};
 use crate::workspace::Workspace;
@@ -99,18 +103,28 @@ fn import_group(item: &syn::ItemUse) -> u8 {
 /// Whether the imports at the top of `code`, those no attribute gates, go the standard
 /// library's first, then other crates', then this crate's own.
 fn imports_in_order(code: &str) -> bool {
-    let Ok(file) = syn::parse_file(code) else {
-        return true;
+    // Only the items up to the first that is no import are parsed, as the rest of the file is
+    // none of the rule's.
+    let head = |input: ParseStream<'_>| {
+        input.call(Attribute::parse_inner)?;
+        let mut groups = Vec::new();
+        // Each item is parsed on a fork, so the first item that is no import, or does not parse,
+        // ends the head with the imports read before it.
+        loop {
+            let fork = input.fork();
+            let Ok(Item::Use(item)) = fork.parse::<Item>() else {
+                break;
+            };
+            input.advance_to(&fork);
+            if item.attrs.is_empty() {
+                groups.push(import_group(&item));
+            }
+        }
+        input.parse::<TokenStream>()?;
+        Ok(groups)
     };
-    let groups = file.items.iter().map_while(|item| match item {
-        syn::Item::Use(item) => Some(item),
-        _ => None,
-    });
-    let groups: Vec<u8> = groups
-        .filter(|item| item.attrs.is_empty())
-        .map(import_group)
-        .collect();
-    groups.is_sorted()
+    head.parse_str(code)
+        .map_or(true, |groups: Vec<u8>| groups.is_sorted())
 }
 
 pub(crate) fn a_files_imports_go_std_then_other_crates_then_its_own(workspace: &Workspace) {
@@ -134,6 +148,10 @@ fn a_files_imports_are_read_in_their_three_groups() {
     // A gated import, and one past the first item, are none of the rule's.
     assert!(imports_in_order(
         "use crate::a;\n#[cfg(test)]\nuse std::fs;\nfn f() {}\nuse std::mem;\n"
+    ));
+    // An item past the imports that does not parse leaves the imports before it read.
+    assert!(!imports_in_order(
+        "use crate::a;\nuse std::fs;\nfn f() -> {}\n"
     ));
 }
 

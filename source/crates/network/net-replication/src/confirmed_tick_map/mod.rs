@@ -39,6 +39,10 @@ pub struct ConfirmedTickMap {
     /// Each retained confirmed tick and its authoritative tick, sorted by Replicon tick, oldest
     /// first: the mutations arrive in any order, and only the newest window is kept.
     entries: VecDeque<(RepliconTick, NetTick)>,
+    /// The confirmed tick older than every retained one that came last: a mutation Replicon
+    /// buffered past the window gives its userdata only as it applies, so its writes, which
+    /// follow at once, find their tick here.
+    late: Option<(RepliconTick, NetTick)>,
     last_confirmed: Option<ConfirmedTick>,
     faults: ConfirmedTickFaults,
     /// [`ConfirmedTickFaults::unmapped_messages`], counted by a receive that reads the map shared,
@@ -50,6 +54,7 @@ impl Default for ConfirmedTickMap {
     fn default() -> Self {
         Self {
             entries: VecDeque::with_capacity(MAX_CONFIRMED_TICKS),
+            late: None,
             last_confirmed: None,
             faults: ConfirmedTickFaults::default(),
             unmapped_messages: AtomicU64::new(0),
@@ -75,8 +80,9 @@ impl ConfirmedTickMap {
     /// Multiple Replicon ticks may legitimately map to the same authoritative [`NetTick`]. That
     /// happens when several replication sends are produced for the same simulation step.
     ///
-    /// A confirmed tick older than every retained one, once the map is full, is not kept: the
-    /// window holds the newest confirmed ticks.
+    /// A confirmed tick older than every retained one, once the map is full, stays apart as the
+    /// late one, until the next such tick: the window holds the newest confirmed ticks, and the
+    /// late one the mutation that applies past them.
     pub(crate) fn record(&mut self, replicon_tick: RepliconTick, authoritative_tick: NetTick) {
         let mut index = match self.search(replicon_tick) {
             Ok(index) => {
@@ -87,6 +93,7 @@ impl ConfirmedTickMap {
         };
         if self.entries.len() == MAX_CONFIRMED_TICKS {
             if index == 0 {
+                self.late = Some((replicon_tick, authoritative_tick));
                 return;
             }
             self.entries.pop_front();
@@ -98,9 +105,12 @@ impl ConfirmedTickMap {
 
     /// The authoritative tick a retained confirmed tick maps to.
     pub(crate) fn get(&self, replicon_tick: RepliconTick) -> Option<NetTick> {
-        self.search(replicon_tick)
-            .ok()
-            .map(|index| self.entries[index].1)
+        match self.search(replicon_tick) {
+            Ok(index) => Some(self.entries[index].1),
+            Err(_) => (self.late)
+                .filter(|&(late, _)| late == replicon_tick)
+                .map(|(_, tick)| tick),
+        }
     }
 
     /// The authoritative tick of a received message's confirmed tick: the tick to record its values
@@ -243,7 +253,14 @@ impl ConfirmedTickMap {
     /// Forgets the link's confirmed ticks; the fault counts last.
     pub(crate) fn clear(&mut self) {
         self.entries.clear();
+        self.late = None;
         self.last_confirmed = None;
+    }
+
+    /// The faults that no honest server gives: userdata that is no tick, and a message of a tick
+    /// no userdata named.
+    pub(crate) fn protocol_faults(&self) -> u64 {
+        self.faults.invalid_userdata + self.unmapped_messages.load(Ordering::Relaxed)
     }
 
     pub fn faults(&self) -> ConfirmedTickFaults {

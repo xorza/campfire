@@ -13,6 +13,7 @@ internals = [
     "dep:campfire-measure",
     "dep:criterion",
     "campfire-net-messages/internals",
+    "campfire-net-payload/internals",
     "dep:campfire-net-stepper",
     "campfire-codec/internals",
     "campfire-log/internals",
@@ -36,6 +37,8 @@ campfire-net-connection.workspace = true
 campfire-net-stepper = { workspace = true, optional = true }
 campfire-net-transport.workspace = true
 campfire-net-messages.workspace = true
+campfire-net-link.workspace = true
+campfire-net-payload.workspace = true
 
 bytes = { workspace = true, features = ["std"] }
 campfire-measure = { workspace = true, optional = true }
@@ -53,7 +56,6 @@ bevy_state.workspace = true
 bevy_time = { workspace = true, features = ["bevy_reflect"] }
 
 [dev-dependencies]
-campfire-net-link.workspace = true
 campfire-net-replication = { workspace = true, features = ["internals"] }
 
 

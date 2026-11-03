@@ -3212,6 +3212,7 @@ dependencies = [
  "campfire-net-despawns",
  "campfire-net-link",
  "campfire-net-messages",
+ "campfire-net-payload",
  "campfire-net-replication",
  "campfire-net-stepper",
  "campfire-net-timeline",

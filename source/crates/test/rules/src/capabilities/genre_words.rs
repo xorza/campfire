@@ -87,6 +87,14 @@ const GAME_NAMED: [&str; 7] = [
 
 /// Whether the identifiers of `code` name a game of `GAMES`, its words in a row.
 fn names_a_game(code: &str) -> bool {
+    // A code that holds no game's every word, in any case, names none, and its lexing is skipped.
+    let lower = code.to_ascii_lowercase();
+    if !GAMES
+        .iter()
+        .any(|game| game.iter().all(|word| lower.contains(word)))
+    {
+        return false;
+    }
     identifiers(code).iter().any(|identifier| {
         let words = words(identifier);
         GAMES

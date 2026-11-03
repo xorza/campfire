@@ -485,18 +485,23 @@ fn internals_read_off(manifests: &[Crate], name: &str, on: &[String], text: &str
     if !text.contains("internals") {
         return Vec::new();
     }
-    let paths = NamedPath::of(text);
+    // The crates each path names the `internals` of, by its first two segments, looked up by
+    // the crate's name in its paths' spelling.
+    let mut named = BTreeSet::new();
+    for path in NamedPath::of(text) {
+        let mut segments = path.text.split("::");
+        if let (Some(root), Some("internals")) = (segments.next(), segments.next()) {
+            named.insert(root.to_owned());
+        }
+    }
+    if named.is_empty() {
+        return Vec::new();
+    }
     manifests
         .iter()
         .map(|krate| &krate.name)
         .filter(|other| *other != name && !on.contains(other))
-        .filter(|other| {
-            let internals = format!("{}::internals", other.replace('-', "_"));
-            paths.iter().any(|path| {
-                (path.text.strip_prefix(&internals))
-                    .is_some_and(|rest| rest.is_empty() || rest.starts_with("::"))
-            })
-        })
+        .filter(|other| named.contains(&other.replace('-', "_")))
         .cloned()
         .collect()
 }
