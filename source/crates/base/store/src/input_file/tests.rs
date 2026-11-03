@@ -40,6 +40,7 @@ fn a_read_gives_a_files_bytes_within_its_bound_and_says_why_it_refuses() {
         ReadError::TooLarge { max: 6 }
     ));
     // Windows renames no file over one a handle holds open, as the write's durable rename does.
+    drop(stream);
     drop(growing);
     test_dir.write("five", b"12345");
 
