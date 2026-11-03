@@ -8,6 +8,8 @@ use syn::{
 };
 
 use crate::allowlist::Allowlist;
+use crate::parsed_code::ParsedCode;
+use crate::source_file::SourceFile;
 use crate::workspace::Workspace;
 
 /// Each trait whose implementers take a suffix: the trait, the suffix, and what the rule calls a
@@ -23,20 +25,15 @@ const SUFFIXED_TRAITS: [(&str, &str, &str); 4] = [
 /// value for each id.
 const SUFFIX_EXCEPTIONS: [&str; 1] = ["ById"];
 
-/// The names of `text` that break their suffix, `exceptions` passing: a system set not named
-/// `*Systems`; an implementer of a trait of `SUFFIXED_TRAITS` not named by its suffix; a
-/// `*Manager`; a `*_hook` function whose signature names no script hook, a `Hook*` type; and a
-/// `*Kind` that wraps a `TypeId`, which is a `*TypeId` (02-engine-core.md, A system set is
+/// The names of `text` that break their suffix: a system set not named `*Systems`; an
+/// implementer of a trait of `SUFFIXED_TRAITS` not named by its suffix, which an exception may
+/// pass; a `*Manager`; a `*_hook` function whose signature names no script hook, a `Hook*` type;
+/// and a `*Kind` that wraps a `TypeId`, which is a `*TypeId` (02-engine-core.md, A system set is
 /// `*Systems`; 02-engine-core.md, A Bevy plugin is a `*Plugin`, a group `*Plugins`;
 /// 02-engine-core.md, A hook is a script's). With them, the `*Book` types it declares and the
 /// types it implements `Book` for, which the workspace's walk matches.
-fn misnamed<'a>(text: &str, exceptions: &'a Allowlist<&'static str>) -> Names<'a> {
-    let mut names = Names {
-        exceptions,
-        misnamed: Vec::new(),
-        books: Vec::new(),
-        book_impls: Vec::new(),
-    };
+pub(crate) fn misnamed(text: &ParsedCode<'_>) -> SuffixNames {
+    let mut names = SuffixNames::default();
     // A file that names none of the words a misnamed declaration holds declares none, and its
     // parse is skipped.
     let words = [
@@ -48,24 +45,32 @@ fn misnamed<'a>(text: &str, exceptions: &'a Allowlist<&'static str>) -> Names<'a
         "Book",
         "DataSection",
     ];
-    if words.iter().any(|word| text.contains(word)) {
-        let file = syn::parse_file(text).expect("a workspace source parses");
-        names.visit_file(&file);
+    if words.iter().any(|word| text.code.contains(word)) {
+        names.visit_file(text.file());
     }
     names
 }
 
-/// What a walk of one file found: the names misnamed, the `*Book` types declared and the types
-/// `Book` is implemented for.
-#[derive(Debug)]
-struct Names<'a> {
-    exceptions: &'a Allowlist<&'static str>,
+/// What a walk of one file found: the names misnamed, the implementers misnamed, each with what
+/// the rule calls its holder, which an exception may pass, the `*Book` types declared and the
+/// types `Book` is implemented for.
+#[derive(Debug, Default)]
+pub(crate) struct SuffixNames {
     misnamed: Vec<String>,
+    implementers: Vec<(&'static str, String)>,
     books: Vec<String>,
     book_impls: Vec<String>,
 }
 
-impl Names<'_> {
+impl SuffixNames {
+    /// The names misnamed, the implementers that `exceptions` passes left out.
+    fn broken(&self, exceptions: &Allowlist<&'static str>) -> Vec<String> {
+        let implementers = (self.implementers.iter())
+            .filter(|(_, name)| !exceptions.allows(|listed| listed == name))
+            .map(|(holder, name)| format!("the {holder} {name}"));
+        self.misnamed.iter().cloned().chain(implementers).collect()
+    }
+
     /// Takes the type `name`, which `attributes` derive for: a system set's or any type's.
     fn take_type(&mut self, name: &str, attributes: &[Attribute]) {
         if derives(attributes, "SystemSet") && !name.ends_with("Systems") {
@@ -87,7 +92,7 @@ impl Names<'_> {
     }
 }
 
-impl<'ast> Visit<'ast> for Names<'_> {
+impl<'ast> Visit<'ast> for SuffixNames {
     fn visit_item_struct(&mut self, item: &'ast ItemStruct) {
         let name = item.ident.to_string();
         self.take_type(&name, &item.attrs);
@@ -137,8 +142,8 @@ impl<'ast> Visit<'ast> for Names<'_> {
             if implemented_trait == "Book" {
                 self.book_impls.push(name.clone());
             }
-            if !name.ends_with(suffix) && !self.exceptions.allows(|listed| *listed == name) {
-                self.misnamed.push(format!("the {holder} {name}"));
+            if !name.ends_with(suffix) {
+                self.implementers.push((holder, name));
             }
         }
         visit::visit_item_impl(self, item);
@@ -198,20 +203,20 @@ pub(crate) fn a_declared_name_keeps_its_suffix(workspace: &Workspace) {
     let mut files = 0;
     for file in workspace.sources() {
         files += 1;
-        let names = misnamed(&file.text, &exceptions);
-        for name in names.misnamed {
+        let names = &file.findings().suffix_names;
+        for name in names.broken(&exceptions) {
             found.push(format!("{}: {name}", file.path));
         }
         // A capability's `*Book` is its specs by id, a book; the client's are its own.
         if file.path.starts_with("crates/capabilities/") {
-            let declared = names.books.into_iter();
+            let declared = names.books.iter();
             books.extend(declared.map(|book| (file.path.clone(), book)));
         }
-        book_impls.extend(names.book_impls);
+        book_impls.extend(&names.book_impls);
     }
     // Every capability's `*Book` is a book.
     for (path, book) in books {
-        if !book_impls.contains(&book) {
+        if !book_impls.contains(book) {
             found.push(format!("{path}: the type {book}, no book"));
         }
     }
@@ -262,17 +267,15 @@ fn each_misnamed_declaration_is_found() {
         ("impl DataSection for Combat {}", 1),
         ("impl campfire_script::DataSection for CombatData {}", 0),
     ];
+    let misnamed = |code: &str| misnamed(&ParsedCode::new("a.rs", code));
     for (code, count) in samples {
         let exceptions = Allowlist::new(&SUFFIX_EXCEPTIONS);
-        assert_eq!(misnamed(code, &exceptions).misnamed.len(), count, "{code}");
+        assert_eq!(misnamed(code).broken(&exceptions).len(), count, "{code}");
     }
     // The `*Book` types a file declares and the types it implements `Book` for, a struct of
     // another suffix not among them.
-    let exceptions = Allowlist::new(&SUFFIX_EXCEPTIONS);
-    let names = misnamed(
-        "pub(crate) struct ModeBooks;\nstruct StatBook(u8);\nimpl Book for TagBook {}",
-        &exceptions,
-    );
+    let names =
+        misnamed("pub(crate) struct ModeBooks;\nstruct StatBook(u8);\nimpl Book for TagBook {}");
     assert_eq!(names.books, ["StatBook"]);
     assert_eq!(names.book_impls, ["TagBook"]);
 }
@@ -281,10 +284,11 @@ fn each_misnamed_declaration_is_found() {
 /// resolved section, a `*Setup` what a thing starts from).
 const DATA_SUFFIXES: [&str; 4] = ["Data", "File", "Patch", "Manifest"];
 
-/// The structs of `code`, out of its test modules, that read a package's data, by a name of `DATA_SUFFIXES`, and refuse no
-/// field they do not hold: a struct that derives `Deserialize` with neither
-/// `#[serde(deny_unknown_fields)]` nor `#[serde(transparent)]`, which takes its one field's.
-fn open_data(code: &str) -> Vec<String> {
+/// The structs of `text`, the source `file`'s, out of its test modules, that read a package's
+/// data, by a name of `DATA_SUFFIXES`, and refuse no field they do not hold: a struct that derives
+/// `Deserialize` with neither `#[serde(deny_unknown_fields)]` nor `#[serde(transparent)]`, which
+/// takes its one field's; none of a file of no production code.
+pub(crate) fn open_data(file: &SourceFile, text: &ParsedCode<'_>) -> Vec<String> {
     struct Open(Vec<String>);
     impl<'ast> Visit<'ast> for Open {
         fn visit_item_struct(&mut self, item: &'ast ItemStruct) {
@@ -330,9 +334,11 @@ fn open_data(code: &str) -> Vec<String> {
             }
         }
     }
-    let file = syn::parse_file(code).expect("a workspace source parses");
+    if !text.code.contains("Deserialize") || file.production().is_none() {
+        return Vec::new();
+    }
     let mut open = Open(Vec::new());
-    open.visit_file(&file);
+    open.visit_file(text.file());
     open.0
 }
 
@@ -340,11 +346,8 @@ pub(crate) fn a_package_data_struct_refuses_a_field_it_does_not_hold(workspace: 
     let found: Vec<String> = workspace
         .sources()
         .iter()
-        .filter(|file| file.text.contains("Deserialize") && file.production().is_some())
         .flat_map(|file| {
-            open_data(&file.text)
-                .into_iter()
-                .map(move |name| format!("{}: {name}", file.path))
+            (file.findings().open_data.iter()).map(move |name| format!("{}: {name}", file.path))
         })
         .collect();
     assert_eq!(found, Vec::<String>::new());
@@ -361,5 +364,11 @@ fn an_open_data_struct_is_found() {
         "#[derive(Deserialize)]\nstruct Fields { d: u8 }\n",
         "#[cfg(test)]\nmod tests {\n    #[derive(Deserialize)]\n    struct File { e: u8 }\n}\n",
     );
-    assert_eq!(open_data(code), ["CFile"]);
+    assert_eq!(
+        open_data(
+            &SourceFile::new("crates/x/src/a.rs", code),
+            &ParsedCode::new("a.rs", code)
+        ),
+        ["CFile"]
+    );
 }

@@ -6,7 +6,9 @@ use proc_macro2::{LineColumn, Span, TokenStream, TokenTree};
 use syn::visit::Visit;
 use syn::{Attribute, Expr, ExprLit, Lit, Meta};
 
+use crate::file_findings::FileFindings;
 use crate::gated_items::GatedItems;
+use crate::parsed_code::ParsedCode;
 
 /// A gate of code that only tests and their helpers build.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,7 +26,7 @@ impl Gate {
     }
 
     /// The gate an attribute whose content is `meta` writes, if it writes one alone.
-    fn of_meta(meta: &Meta) -> Option<Self> {
+    pub(crate) fn of_meta(meta: &Meta) -> Option<Self> {
         let Meta::List(list) = meta else {
             return None;
         };
@@ -47,7 +49,7 @@ impl Gate {
 
 /// A Rust source file a test read: its path from the directory it walked, its names joined by
 /// `/` on every OS, and its text.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct SourceFile {
     pub(crate) path: String,
     pub(crate) text: String,
@@ -59,6 +61,8 @@ pub(crate) struct SourceFile {
     /// Its production and its library code, once a rule asks for each.
     production: OnceLock<Option<String>>,
     library: OnceLock<Option<String>>,
+    /// What each rule finds in it, once the workspace's pass reads it.
+    findings: OnceLock<FileFindings>,
 }
 
 /// What a file's text is as Rust reads it: its code with each comment blanked, and the bytes of
@@ -79,6 +83,7 @@ impl SourceFile {
             analysis: OnceLock::new(),
             production: OnceLock::new(),
             library: OnceLock::new(),
+            findings: OnceLock::new(),
         }
     }
 
@@ -176,61 +181,9 @@ impl SourceFile {
         modules
     }
 
-    /// Each gate at this file's top the rules cannot read, by its line: a `cfg` of `all` that
-    /// names `test` or `internals` on a module's declaration, an inner `#![cfg]` of either, or a
-    /// `#[path]` on a module, each of which would leave gated code read as production code
-    /// (02-engine-core.md, Structural rules).
-    pub(crate) fn gate_breaches(&self) -> Vec<usize> {
-        if !self.text.contains('#') {
-            return Vec::new();
-        }
-        let Ok(tokens) = TokenStream::from_str(&self.text) else {
-            return Vec::new();
-        };
-        let tokens: Vec<TokenTree> = tokens.into_iter().collect();
-        let names_gate = |meta: &Meta| {
-            let text = quote_text(meta);
-            meta.path().is_ident("cfg") && (text.contains("test") || text.contains("internals"))
-        };
-        // A gate of `all` holds its module from production code as a bare gate does, but the
-        // rules do not read it; one of `any` or `not` keeps it in some production build, as the
-        // rules read it.
-        let narrows = |meta: &Meta| {
-            names_gate(meta) && Gate::of_meta(meta).is_none() && quote_text(meta).starts_with("all")
-        };
-        let mut breaches = Vec::new();
-        let mut at = 0;
-        while at < tokens.len() {
-            let mut odd = Vec::new();
-            while let [TokenTree::Punct(pound), rest @ ..] = &tokens[at..]
-                && pound.as_char() == '#'
-            {
-                let inner = matches!(rest, [TokenTree::Punct(bang), ..] if bang.as_char() == '!');
-                let skip = usize::from(inner);
-                let Some(TokenTree::Group(group)) = rest.get(skip) else {
-                    break;
-                };
-                let line = pound.span().start().line;
-                if let Ok(meta) = syn::parse2::<Meta>(group.stream()) {
-                    if inner && names_gate(&meta) {
-                        breaches.push(line);
-                    } else if !inner && (narrows(&meta) || meta.path().is_ident("path")) {
-                        odd.push(line);
-                    }
-                }
-                at += 2 + skip;
-            }
-            if Self::declared_module(&tokens[at..]).is_some() {
-                breaches.extend(odd);
-            }
-            at += 1;
-        }
-        breaches
-    }
-
     /// The module that `tokens` declare at their start, `mod name;` past its visibility, with the
     /// count of tokens the declaration takes.
-    fn declared_module(tokens: &[TokenTree]) -> Option<(String, usize)> {
+    pub(crate) fn declared_module(tokens: &[TokenTree]) -> Option<(String, usize)> {
         let mut at = 0;
         if matches!(&tokens[at..], [TokenTree::Ident(word), ..] if word == "pub") {
             at += 1;
@@ -270,14 +223,19 @@ impl SourceFile {
         (name, names)
     }
 
-    /// Lexes and parses its text now, as a rule would at its first read of its code.
-    pub(crate) fn analyze(&self) {
-        self.analysis();
+    /// What each rule finds in it, read in one pass that lexes and parses each view of its code
+    /// once, its analysis among them (02-engine-core.md, The rules are one test).
+    pub(crate) fn findings(&self) -> &FileFindings {
+        self.findings.get_or_init(|| {
+            let text = ParsedCode::new(&self.path, &self.text);
+            self.analysis.get_or_init(|| Analysis::of(&text));
+            FileFindings::of(self, &text)
+        })
     }
 
     fn analysis(&self) -> &Analysis {
         self.analysis
-            .get_or_init(|| Analysis::of(&self.path, &self.text))
+            .get_or_init(|| Analysis::of(&ParsedCode::new(&self.path, &self.text)))
     }
 
     /// `view`, its text or its code, with each item one of `gates` holds blanked.
@@ -296,14 +254,13 @@ impl SourceFile {
 }
 
 impl Analysis {
-    /// `text`, of the file at `path`, lexed once, and parsed from its tokens where a gate may
-    /// stand in it.
-    fn of(path: &str, text: &str) -> Self {
-        let tokens = TokenStream::from_str(text).unwrap_or_else(|error| panic!("{path}: {error}"));
+    /// `text`, a file's, from its tokens, and from its parse where a gate may stand in it.
+    fn of(parsed: &ParsedCode<'_>) -> Self {
+        let text = parsed.code;
         let lines = Lines::of(text);
         let mut code = text.as_bytes().to_vec();
         blank(&mut code);
-        lines.keep(tokens.clone(), &mut code);
+        lines.keep(parsed.tokens().clone(), &mut code);
         let code = String::from_utf8(code).expect("a token is whole characters");
         if !text.contains("#[cfg(") {
             return Self {
@@ -311,9 +268,8 @@ impl Analysis {
                 gated: Vec::new(),
             };
         }
-        let file: syn::File = syn::parse2(tokens).unwrap_or_else(|error| panic!("{path}: {error}"));
         let mut items = GatedItems::default();
-        items.visit_file(&file);
+        items.visit_file(parsed.file());
         // A gated field, argument or element takes the comma after it, so the code left parses.
         let gated = (items.found().into_iter())
             .map(|(gate, span)| {
@@ -559,7 +515,7 @@ fn production_code_holds_no_comment_and_the_view_with_comments_keeps_them() {
 }
 
 /// The tokens of `meta` as text, to find the names a `cfg` holds.
-fn quote_text(meta: &Meta) -> String {
+pub(crate) fn quote_text(meta: &Meta) -> String {
     match meta {
         Meta::List(list) => list.tokens.to_string(),
         Meta::Path(path) => path

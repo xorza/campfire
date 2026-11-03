@@ -4,6 +4,7 @@ use syn::visit::Visit;
 use syn::{Field, Lit, Meta, Variant};
 
 use crate::allowlist::Allowlist;
+use crate::parsed_code::ParsedCode;
 use crate::source_file::SourceFile;
 use crate::workspace::Workspace;
 
@@ -17,11 +18,11 @@ const ALONE: [&str; 3] = [
     "write!(self.text, \"{error}\").expect(\"text writes into a string\");",
 ];
 
-/// The lines of `code`, the production code of the source `text`, that write an error with its
-/// message alone, the workspace binding each error it writes as `error`: as a log's `%` field, by
-/// `to_string`, or in a format string; and the `#[error]` messages of `text` that write a field
-/// their error gives as its source, parsed from `text`, as a blanked test leaves no Rust.
-fn unreported(code: &str, text: &str, alone: &Allowlist<&str>) -> Vec<String> {
+/// The lines of `code`, a source's production code, that write an error with its message alone,
+/// the workspace binding each error it writes as `error`: as a log's `%` field, by `to_string`,
+/// or in a format string; and of `sources`, the lines of the source's `#[error]` messages that
+/// write their error's source, those of its production code.
+fn unreported(code: &str, sources: &[usize], alone: &Allowlist<&str>) -> Vec<String> {
     let lines: Vec<&str> = code.lines().collect();
     let mut found: Vec<String> = lines
         .iter()
@@ -30,21 +31,25 @@ fn unreported(code: &str, text: &str, alone: &Allowlist<&str>) -> Vec<String> {
         .filter(|line| writes_alone(line) && !alone.allows(|listed| listed == line))
         .map(str::to_owned)
         .collect();
-    if code.contains("#[error(") {
-        let file = syn::parse_file(text).expect("a workspace source parses");
-        let mut messages = SourceMessages { found: Vec::new() };
-        messages.visit_file(&file);
-        let production = messages
-            .found
-            .into_iter()
-            .map(|line| lines[line - 1].trim());
-        found.extend(
-            production
-                .filter(|line| !line.is_empty())
-                .map(str::to_owned),
-        );
-    }
+    let production = sources.iter().map(|&line| lines[line - 1].trim());
+    found.extend(
+        production
+            .filter(|line| !line.is_empty())
+            .map(str::to_owned),
+    );
     found
+}
+
+/// The lines of the `#[error]` messages of `text`, the source `file`'s, that write a field their
+/// error gives as its source, parsed from its text, as a blanked test leaves no Rust; none of a
+/// file of no production code that holds one.
+pub(crate) fn source_messages(file: &SourceFile, text: &ParsedCode<'_>) -> Vec<usize> {
+    if !production(file).is_some_and(|code| code.contains("#[error(")) {
+        return Vec::new();
+    }
+    let mut messages = SourceMessages { found: Vec::new() };
+    messages.visit_file(text.file());
+    messages.found
 }
 
 /// The lines of the `#[error]` attributes that write a field of their variant that is the
@@ -154,7 +159,7 @@ pub(crate) fn every_error_the_workspace_writes_goes_through_its_report(workspace
             continue;
         };
         files += 1;
-        for line in unreported(code, &file.text, &alone) {
+        for line in unreported(code, &file.findings().error_sources, &alone) {
             found.push(format!("{}: {line}", file.path));
         }
     }
@@ -214,8 +219,12 @@ fn each_way_to_write_an_error_alone_is_found() {
         ),
     ];
     for (code, count) in samples {
+        let sources = source_messages(
+            &SourceFile::new("crates/x/src/a.rs", code),
+            &ParsedCode::new("a.rs", code),
+        );
         assert_eq!(
-            unreported(code, code, &Allowlist::new(&ALONE)).len(),
+            unreported(code, &sources, &Allowlist::new(&ALONE)).len(),
             count,
             "{code}"
         );

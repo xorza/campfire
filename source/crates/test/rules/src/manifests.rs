@@ -4,7 +4,7 @@ use std::panic;
 use crate::bans::{PROXIES, foreign_names};
 use crate::cfg_condition::CfgCondition;
 use crate::manifest::{CargoManifest, CrateKind, WorkspaceManifest};
-use crate::named_path::NamedPath;
+use crate::parsed_code::ParsedCode;
 use crate::source_file::{SourceFile, names_crate};
 use crate::workspace::{
     Crate, DevEdges, Workspace, holder, read, required_closure, sim_closure, source, test_build,
@@ -478,22 +478,33 @@ fn internals_on(manifests: &[Crate], name: &str) -> Vec<String> {
     on
 }
 
-/// The crates of `manifests` but `name` whose `internals` `text`, code of `name`, reads, and its
-/// tests' build leaves off, as `on`, the crates whose `internals` it turns on, says: such code
-/// compiles only where another crate of the build turns it on.
-fn internals_read_off(manifests: &[Crate], name: &str, on: &[String], text: &str) -> Vec<String> {
-    if !text.contains("internals") {
-        return Vec::new();
-    }
-    // The crates each path names the `internals` of, by its first two segments, looked up by
-    // the crate's name in its paths' spelling.
+/// The first segment of each path of `text`, a file's, through an `internals` second: the crates
+/// whose `internals` it reads, in their paths' spelling; none of a file that names no
+/// `internals`, whose lexing is skipped.
+pub(crate) fn internals_roots(text: &ParsedCode<'_>) -> BTreeSet<String> {
     let mut named = BTreeSet::new();
-    for path in NamedPath::of(text) {
+    if !text.code.contains("internals") {
+        return named;
+    }
+    for path in text.paths() {
         let mut segments = path.text.split("::");
         if let (Some(root), Some("internals")) = (segments.next(), segments.next()) {
             named.insert(root.to_owned());
         }
     }
+    named
+}
+
+/// The crates of `manifests` but `name` whose `internals` code of `name` reads, `named` the roots
+/// `internals_roots` gives of it, and its tests' build leaves off, as `on`, the crates whose
+/// `internals` it turns on, says: such code compiles only where another crate of the build turns
+/// it on.
+fn internals_read_off(
+    manifests: &[Crate],
+    name: &str,
+    on: &[String],
+    named: &BTreeSet<String>,
+) -> Vec<String> {
     if named.is_empty() {
         return Vec::new();
     }
@@ -506,15 +517,19 @@ fn internals_read_off(manifests: &[Crate], name: &str, on: &[String], text: &str
         .collect()
 }
 
-/// The lines of `text` that gate code on a test build or the `internals` feature, where the
-/// feature alone gates it.
-fn test_or_internals(text: &str) -> Vec<usize> {
-    // A condition of both names a test and `internals`, so a file of either alone holds none,
-    // and its parse is skipped.
-    if !text.contains("test") || !text.contains("internals") {
+/// The conditions of `text`, a file's, where it names `internals`: none of a file that does not,
+/// which tests no such feature, and its parse is skipped.
+pub(crate) fn internals_conditions(text: &ParsedCode<'_>) -> Vec<CfgCondition> {
+    if !text.code.contains("internals") {
         return Vec::new();
     }
-    CfgCondition::of(text)
+    CfgCondition::of(text.file())
+}
+
+/// The lines of `conditions`, a file's `internals_conditions`, that gate code on a test build or
+/// the `internals` feature, where the feature alone gates it.
+fn test_or_internals(conditions: &[CfgCondition]) -> Vec<usize> {
+    conditions
         .iter()
         .filter(|condition| condition.test_or_internals)
         .map(|condition| condition.line)
@@ -533,7 +548,12 @@ pub(crate) fn a_test_build_turns_internals_on_and_code_has_one_gate_for_it(works
         let on = on_by_crate
             .entry(&holder.name)
             .or_insert_with(|| internals_on(manifests, &holder.name));
-        let off = internals_read_off(manifests, &holder.name, on, &file.text);
+        let off = internals_read_off(
+            manifests,
+            &holder.name,
+            on,
+            &file.findings().internals_roots,
+        );
         if !off.is_empty() {
             read_off.push(format!("{}: {}", file.path, off.join(", ")));
         }
@@ -543,7 +563,7 @@ pub(crate) fn a_test_build_turns_internals_on_and_code_has_one_gate_for_it(works
         .sources()
         .iter()
         .flat_map(|file| {
-            test_or_internals(&file.text)
+            test_or_internals(&file.findings().internals_conditions)
                 .into_iter()
                 .map(|line| format!("{}:{line}", file.path))
         })
@@ -602,13 +622,14 @@ fn the_internals_rule_names_each_crate_that_breaks_it() {
     let reads = "x::internals::X; a::internals::A; use b::{\n    internals::B,\n}; data::internals::D; \
                  /// c::internals::C\nfn f() {}";
     let weak = "c::internals::C;";
-    let off = |name: &str| internals_read_off(&crates, name, &internals_on(&crates, name), reads);
+    let [reads, weak] = [reads, weak].map(|code| internals_roots(&ParsedCode::new("a.rs", code)));
+    let off = |name: &str| internals_read_off(&crates, name, &internals_on(&crates, name), &reads);
     assert_eq!(off("a"), ["b"]);
     assert_eq!(off("b"), ["a"]);
     assert_eq!(off("c"), ["a"]);
     assert_eq!(off("d"), Vec::<String>::new());
     let on = internals_on(&crates, "d");
-    assert_eq!(internals_read_off(&crates, "d", &on, weak), ["c"]);
+    assert_eq!(internals_read_off(&crates, "d", &on, &weak), ["c"]);
     assert_eq!(
         internals_on(&crates, "d"),
         ["b", "campfire-store", "d", "a"]
@@ -625,7 +646,10 @@ fn the_internals_rule_names_each_crate_that_breaks_it() {
         ]
     );
     let text = "#[cfg(feature = \"internals\")]\nmod a;\n#[cfg(any(test, feature = \"internals\"))]\nmod b;\n";
-    assert_eq!(test_or_internals(text), [3]);
+    assert_eq!(
+        test_or_internals(&internals_conditions(&ParsedCode::new("a.rs", text))),
+        [3]
+    );
 }
 
 /// The required dependencies of `manifest` that `production`, its crate's production code, names
@@ -767,10 +791,7 @@ fn gating_internals<'a>(crates: &'a [Crate], sources: &[SourceFile]) -> BTreeSet
         .map(|krate| krate.name.as_str())
         .collect();
     let gates = |file: &&SourceFile| {
-        file.text.contains("internals")
-            && CfgCondition::of(&file.text)
-                .iter()
-                .any(|condition| condition.tests_internals)
+        (file.findings().internals_conditions.iter()).any(|condition| condition.tests_internals)
     };
     for file in sources.iter().filter(gates) {
         if let Some(at) = holder(crates, &file.path) {
@@ -863,6 +884,7 @@ pub(crate) fn an_optional_dependency_is_named_by_library_code(workspace: &Worksp
 
 #[test]
 fn the_name_checks_fail_on_what_breaks_them() {
+    let foreign_names = |proxy, text: &str| foreign_names(proxy, &ParsedCode::new("a.rs", text));
     // A proxy's source that names another proxy's call or one of no proxy's, a wrapped `use`
     // too, but not its own, nor a name a comment or a string holds.
     let [store, platform, _, _, codec, _, _] = &PROXIES;

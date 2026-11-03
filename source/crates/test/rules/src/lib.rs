@@ -22,6 +22,8 @@ mod errors;
 #[cfg(test)]
 mod every_rule;
 #[cfg(test)]
+mod file_findings;
+#[cfg(test)]
 mod gated_items;
 #[cfg(test)]
 mod layers;
@@ -33,6 +35,8 @@ mod manifests;
 mod named_path;
 #[cfg(test)]
 mod nextest_filters;
+#[cfg(test)]
+mod parsed_code;
 #[cfg(test)]
 mod platform;
 #[cfg(test)]

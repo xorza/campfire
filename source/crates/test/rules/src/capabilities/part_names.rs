@@ -2,8 +2,9 @@
 
 use syn::{ImplItem, Item, Lit};
 
-use crate::capabilities::{Naming, capability};
-use crate::source_file::Gate;
+use crate::capabilities::{Naming, capability, in_capability};
+use crate::parsed_code::ParsedCode;
+use crate::source_file::{Gate, SourceFile};
 use crate::workspace::Workspace;
 
 /// The crate whose part impls the orphan rule puts in a lower crate: `values` implements `units`'
@@ -21,11 +22,7 @@ pub(crate) fn a_parts_name_takes_its_declaring_modules_prefix(workspace: &Worksp
             .find(|&&(lower, _)| lower == module)
             .map_or(module.as_str(), |&(_, declaring)| declaring);
         for source in workspace.sources_of(krate) {
-            if source.production().is_none() {
-                continue;
-            }
-            let file = syn::parse_file(&source.text).expect("a workspace source parses");
-            for name in part_names(&file.items) {
+            for name in &source.findings().part_names {
                 if name.split_once('.').map(|(prefix, _)| prefix) != Some(declaring) {
                     wrong.push(format!("{}: {name}", source.path));
                 }
@@ -33,6 +30,15 @@ pub(crate) fn a_parts_name_takes_its_declaring_modules_prefix(workspace: &Worksp
         }
     }
     assert_eq!(wrong, Vec::<String>::new());
+}
+
+/// The `NAME` of each `SimComponent` and `SimResource` impl of `text`, the source `file`'s, a
+/// capability crate's file of production code; none of another file.
+pub(crate) fn declared_parts(file: &SourceFile, text: &ParsedCode<'_>) -> Vec<String> {
+    if !in_capability(&file.path) || file.production().is_none() {
+        return Vec::new();
+    }
+    part_names(&text.file().items)
 }
 
 /// The `NAME` of each `SimComponent` and `SimResource` impl of `items` and of their modules.

@@ -4,12 +4,13 @@ use std::path::Path;
 use campfire_store::internals::TestDir;
 use campfire_store::{DirEntries, EntryKind, InputFile};
 use campfire_threads::Parallel;
-use proc_macro2::TokenStream;
+use proc_macro2::{TokenStream, TokenTree};
 use syn::parse::discouraged::Speculative;
 use syn::parse::{ParseStream, Parser};
-use syn::{Attribute, Item};
+use syn::{Attribute, Item, Meta};
 
-use crate::source_file::{Gate, SourceFile};
+use crate::parsed_code::ParsedCode;
+use crate::source_file::{Gate, SourceFile, quote_text};
 use crate::workspace::Workspace;
 
 /// The most bytes a test reads of a source file: far past any the workspace holds.
@@ -73,12 +74,61 @@ impl SourceFiles {
     }
 }
 
+/// Each gate at the top of `text`, a file's, the rules cannot read, by its line: a `cfg` of `all` that
+/// names `test` or `internals` on a module's declaration, an inner `#![cfg]` of either, or a
+/// `#[path]` on a module, each of which would leave gated code read as production code
+/// (02-engine-core.md, Structural rules).
+pub(crate) fn gate_breaches(text: &ParsedCode<'_>) -> Vec<usize> {
+    if !text.code.contains('#') {
+        return Vec::new();
+    }
+    let tokens: Vec<TokenTree> = text.tokens().clone().into_iter().collect();
+    let names_gate = |meta: &Meta| {
+        let text = quote_text(meta);
+        meta.path().is_ident("cfg") && (text.contains("test") || text.contains("internals"))
+    };
+    // A gate of `all` holds its module from production code as a bare gate does, but the
+    // rules do not read it; one of `any` or `not` keeps it in some production build, as the
+    // rules read it.
+    let narrows = |meta: &Meta| {
+        names_gate(meta) && Gate::of_meta(meta).is_none() && quote_text(meta).starts_with("all")
+    };
+    let mut breaches = Vec::new();
+    let mut at = 0;
+    while at < tokens.len() {
+        let mut odd = Vec::new();
+        while let [TokenTree::Punct(pound), rest @ ..] = &tokens[at..]
+            && pound.as_char() == '#'
+        {
+            let inner = matches!(rest, [TokenTree::Punct(bang), ..] if bang.as_char() == '!');
+            let skip = usize::from(inner);
+            let Some(TokenTree::Group(group)) = rest.get(skip) else {
+                break;
+            };
+            let line = pound.span().start().line;
+            if let Ok(meta) = syn::parse2::<Meta>(group.stream()) {
+                if inner && names_gate(&meta) {
+                    breaches.push(line);
+                } else if !inner && (narrows(&meta) || meta.path().is_ident("path")) {
+                    odd.push(line);
+                }
+            }
+            at += 2 + skip;
+        }
+        if SourceFile::declared_module(&tokens[at..]).is_some() {
+            breaches.extend(odd);
+        }
+        at += 1;
+    }
+    breaches
+}
+
 pub(crate) fn a_module_is_gated_by_a_bare_cfg_of_test_or_internals(workspace: &Workspace) {
     let found: Vec<String> = workspace
         .sources()
         .iter()
         .flat_map(|file| {
-            (file.gate_breaches().into_iter()).map(move |line| format!("{}:{line}", file.path))
+            (file.findings().gate_breaches.iter()).map(move |line| format!("{}:{line}", file.path))
         })
         .collect();
     assert_eq!(found, Vec::<String>::new());
@@ -100,9 +150,9 @@ fn import_group(item: &syn::ItemUse) -> u8 {
     }
 }
 
-/// Whether the imports at the top of `code`, those no attribute gates, go the standard
+/// Whether the imports at the top of `text`, those no attribute gates, go the standard
 /// library's first, then other crates', then this crate's own.
-fn imports_in_order(code: &str) -> bool {
+pub(crate) fn imports_in_order(text: &ParsedCode<'_>) -> bool {
     // Only the items up to the first that is no import are parsed, as the rest of the file is
     // none of the rule's.
     let head = |input: ParseStream<'_>| {
@@ -123,7 +173,7 @@ fn imports_in_order(code: &str) -> bool {
         input.parse::<TokenStream>()?;
         Ok(groups)
     };
-    head.parse_str(code)
+    head.parse2(text.tokens().clone())
         .map_or(true, |groups: Vec<u8>| groups.is_sorted())
 }
 
@@ -131,7 +181,7 @@ pub(crate) fn a_files_imports_go_std_then_other_crates_then_its_own(workspace: &
     let unordered: Vec<&str> = workspace
         .sources()
         .iter()
-        .filter(|file| !imports_in_order(&file.text))
+        .filter(|file| !file.findings().imports_in_order)
         .map(|file| file.path.as_str())
         .collect();
     assert_eq!(unordered, Vec::<&str>::new());
@@ -139,6 +189,7 @@ pub(crate) fn a_files_imports_go_std_then_other_crates_then_its_own(workspace: &
 
 #[test]
 fn a_files_imports_are_read_in_their_three_groups() {
+    let imports_in_order = |code: &str| imports_in_order(&ParsedCode::new("sample.rs", code));
     assert!(imports_in_order(
         "use std::fs;\n\nuse bevy::App;\n\nuse crate::a;\nfn f() {}\n"
     ));
@@ -161,8 +212,7 @@ fn a_gate_the_rules_cannot_read_is_a_breach() {
     // `not` keeps the module in a production build, as the rules read it; one of `all`, or a
     // `#[path]`, is a breach, and an inner `#![cfg(test)]` too; a `cfg` of neither name, and a
     // gate on an item, are none of the rules' concern.
-    let breaches =
-        |text: &str| SourceFile::new("src/lib.rs".to_owned(), text.to_owned()).gate_breaches();
+    let breaches = |text: &str| gate_breaches(&ParsedCode::new("src/lib.rs", text));
     assert_eq!(
         breaches("#[cfg(test)]\nmod a;\n#[cfg(feature = \"internals\")]\nmod b;\n"),
         Vec::<usize>::new()

@@ -4,24 +4,28 @@ use proc_macro2::{TokenStream, TokenTree};
 use syn::visit::{self, Visit};
 use syn::{Ident, ImplItemFn, ItemImpl, ItemUse, Macro, ReturnType, Type};
 
-use crate::capabilities::{NamedCode, capability_sources};
+use crate::capabilities::{NamedFile, capability_sources, in_capability};
+use crate::parsed_code::ParsedCode;
 use crate::workspace::Workspace;
 
 /// What a file names of the sets: the sets it implements `ModuleSystems` for, the identifiers
 /// it names outside its imports and its sets' places, a macro's among them, and whether it holds
 /// a place, where a module names the steps of the modules it builds on.
 #[derive(Debug, Default)]
-struct SetNames {
+pub(crate) struct SetNames {
     sets: Vec<String>,
     words: BTreeSet<String>,
     places: bool,
 }
 
 impl SetNames {
-    fn of(code: &str) -> Self {
-        let file = syn::parse_file(code).expect("a workspace source parses");
+    /// What `production`, the production code of the file at `path`, a capability crate's, names
+    /// of the sets; nothing of another file.
+    pub(crate) fn of(path: &str, production: &ParsedCode<'_>) -> Self {
         let mut found = Self::default();
-        found.visit_file(&file);
+        if in_capability(path) {
+            found.visit_file(production.file());
+        }
         found
     }
 
@@ -82,9 +86,9 @@ pub(crate) fn a_module_names_another_modules_sets_only_where_its_sets_run(worksp
     // through its set's place (02-engine-core.md, Sets order against the steps of the modules
     // they build on).
     let module_of = |path: &str| path.split('/').next().unwrap_or_default().to_owned();
-    let files: Vec<(String, SetNames)> = capability_sources(workspace)
+    let files: Vec<(String, &SetNames)> = capability_sources(workspace)
         .into_iter()
-        .map(|NamedCode { path, code }| (path, SetNames::of(&code)))
+        .map(|NamedFile { path, file }| (path, &file.findings().set_names))
         .collect();
     let sets: Vec<(String, &String)> = files
         .iter()
@@ -121,8 +125,12 @@ fn a_set_named_outside_its_place_and_imports_is_found() {
     // A set's place and an import name no set the file's words hold; a statement, a macro's
     // arguments and a type do.
     let names = SetNames::of(
-        "use crate::{A, B};\nimpl ModuleSystems for CombatSystems {\n    fn place(self) -> SetPlace \
+        "crates/capabilities/x/src/a.rs",
+        &ParsedCode::new(
+            "a.rs",
+            "use crate::{A, B};\nimpl ModuleSystems for CombatSystems {\n    fn place(self) -> SetPlace \
          {\n        SetPlace::at(C)\n    }\n}\nfn f(_: D) { g(E); assert!(F); }\n",
+        ),
     );
     assert_eq!(names.sets, ["CombatSystems"]);
     assert!(names.places);

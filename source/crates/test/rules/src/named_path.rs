@@ -1,6 +1,6 @@
-use std::str::FromStr;
-
 use proc_macro2::{Delimiter, Spacing, TokenStream, TokenTree};
+
+use crate::parsed_code::ParsedCode;
 
 /// A path the code of a source names: its segments joined by `::`, each group of a `use` given
 /// whole, so `use std::{fs, io}` names `std::fs` and `std::io`; with the line of its first
@@ -14,11 +14,10 @@ pub(crate) struct NamedPath {
 }
 
 impl NamedPath {
-    /// The paths `code` names, in its order.
-    pub(crate) fn of(code: &str) -> Vec<Self> {
-        let tokens = TokenStream::from_str(code).expect("a workspace source lexes");
+    /// The paths `tokens`, a source's, name, in their order.
+    pub(crate) fn of(tokens: &TokenStream) -> Vec<Self> {
         let mut found = Vec::new();
-        walk(tokens, "", None, &mut found);
+        walk(tokens.clone(), "", None, &mut found);
         found
     }
 
@@ -93,12 +92,8 @@ fn separator(tokens: &[TokenTree]) -> bool {
 
 #[test]
 fn a_path_reads_whole_through_groups_and_never_from_a_comment() {
-    let text = |code: &str| -> Vec<String> {
-        NamedPath::of(code)
-            .into_iter()
-            .map(|path| path.text)
-            .collect()
-    };
+    let of = |code: &str| NamedPath::of(ParsedCode::new("sample.rs", code).tokens());
+    let text = |code: &str| -> Vec<String> { of(code).into_iter().map(|path| path.text).collect() };
     // A wrapped group gives each of its paths whole, a nested one too, and `self` its own.
     assert_eq!(
         text("use std::{\n    fs,\n    io::{self, Read},\n};"),
@@ -113,7 +108,7 @@ fn a_path_reads_whole_through_groups_and_never_from_a_comment() {
         ["doc", "fn", "f", "x", "par_iter", "Vec", "HashMap", "new"]
     );
     // A condition's paths carry its line; a `cfg!` too; others none.
-    let paths = NamedPath::of("#[cfg(all(\n    unix,\n    test))]\nfn f() { cfg!(windows) }");
+    let paths = of("#[cfg(all(\n    unix,\n    test))]\nfn f() { cfg!(windows) }");
     let conditions: Vec<(&str, usize, Option<usize>)> = (paths.iter())
         .map(|path| (path.text.as_str(), path.line, path.cfg))
         .collect();

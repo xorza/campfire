@@ -1,4 +1,4 @@
-use crate::named_path::NamedPath;
+use crate::parsed_code::ParsedCode;
 use crate::workspace::Workspace;
 
 /// The one crate whose code may differ by OS (02-engine-core.md, Platform).
@@ -23,15 +23,15 @@ const OS_MODULES: [&str; 6] = ["unix", "windows", "fd", "linux", "macos", "wasi"
 /// word of `OS_WORDS`, at the condition's line, or a path through std's or core's `os` module, or
 /// through `os` and one of its `OS_MODULES`. A module of the workspace that is named `os` is no
 /// OS's.
-fn os_names(text: &str) -> Vec<usize> {
+pub(crate) fn os_names(text: &ParsedCode<'_>) -> Vec<usize> {
     // A file of no path through `os` and of no word of an OS names none, and its parse is
     // skipped.
-    let os = text.contains("os::") || text.contains("::os");
-    if !os && !OS_WORDS.iter().any(|word| text.contains(word)) {
+    let code = text.code;
+    let os = code.contains("os::") || code.contains("::os");
+    if !os && !OS_WORDS.iter().any(|word| code.contains(word)) {
         return Vec::new();
     }
-    let mut lines: Vec<usize> = NamedPath::of(text)
-        .into_iter()
+    let mut lines: Vec<usize> = (text.paths().iter())
         .filter_map(|path| {
             if let Some(cfg) = path.cfg {
                 return OS_WORDS.contains(&path.text.as_str()).then_some(cfg);
@@ -56,16 +56,14 @@ pub(crate) fn only_the_platform_module_names_an_os(workspace: &Workspace) {
         .iter()
         .filter(|file| !file.path.starts_with(PLATFORM))
         .flat_map(|file| {
-            os_names(&file.text)
-                .into_iter()
-                .map(move |line| format!("{}:{line}", file.path))
+            (file.findings().os_names.iter()).map(move |line| format!("{}:{line}", file.path))
         })
         .collect();
     assert_eq!(named, Vec::<String>::new());
     // The crate names one, so the walk reaches it and the check sees what it holds.
     let mut platform = sources
         .iter()
-        .filter(|file| file.path.starts_with(PLATFORM) && !os_names(&file.text).is_empty())
+        .filter(|file| file.path.starts_with(PLATFORM) && !file.findings().os_names.is_empty())
         .map(|file| file.path.as_str());
     assert!(platform.any(|path| path == "crates/base/platform/src/lib.rs"));
 }
@@ -106,6 +104,6 @@ fn the_platform_rule_check_finds_each_way_to_name_an_os() {
             vec![],
         ),
     ] {
-        assert_eq!(os_names(&text), lines, "{text}");
+        assert_eq!(os_names(&ParsedCode::new("a.rs", &text)), lines, "{text}");
     }
 }

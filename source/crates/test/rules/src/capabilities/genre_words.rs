@@ -1,12 +1,11 @@
 //! No genre word in production code: a mode names its heroes, lanes and resources in its data,
 //! and the engine's words are the model's (`source/crates/capabilities/capabilities/AGENTS.md`).
 
-use std::str::FromStr;
-
 use proc_macro2::{TokenStream, TokenTree};
 
 use crate::allowlist::Allowlist;
-use crate::capabilities::{NamedCode, capability_sources};
+use crate::capabilities::{NamedFile, capability_sources, in_capability};
+use crate::parsed_code::ParsedCode;
 use crate::workspace::Workspace;
 
 /// The words no identifier of a capability's production code holds, each as a whole word; test
@@ -18,7 +17,7 @@ const GENRE_WORDS: [&str; 15] = [
 
 /// The identifiers of `code`, as Rust's lexer reads them, so no comment, string or character
 /// holds one.
-fn identifiers(code: &str) -> Vec<String> {
+fn identifiers(code: &ParsedCode<'_>) -> Vec<String> {
     fn collect(tokens: TokenStream, found: &mut Vec<String>) {
         for token in tokens {
             match token {
@@ -29,10 +28,7 @@ fn identifiers(code: &str) -> Vec<String> {
         }
     }
     let mut found = Vec::new();
-    collect(
-        TokenStream::from_str(code).expect("a source of the workspace lexes"),
-        &mut found,
-    );
+    collect(code.tokens().clone(), &mut found);
     found
 }
 
@@ -56,9 +52,13 @@ fn words(identifier: &str) -> Vec<String> {
     found
 }
 
-/// The genre words the identifiers of `code` hold.
-fn genre_words(code: &str) -> Vec<String> {
-    identifiers(code)
+/// The genre words the identifiers of `production`, the production code of the file at `path`,
+/// a capability crate's, hold; none of another file.
+pub(crate) fn genre_words(path: &str, production: &ParsedCode<'_>) -> Vec<String> {
+    if !in_capability(path) {
+        return Vec::new();
+    }
+    identifiers(production)
         .iter()
         .flat_map(|identifier| words(identifier))
         .filter(|word| GENRE_WORDS.contains(&word.as_str()))
@@ -86,9 +86,9 @@ const GAME_NAMED: [&str; 7] = [
 ];
 
 /// Whether the identifiers of `code` name a game of `GAMES`, its words in a row.
-fn names_a_game(code: &str) -> bool {
+pub(crate) fn names_a_game(code: &ParsedCode<'_>) -> bool {
     // A code that holds no game's every word, in any case, names none, and its lexing is skipped.
-    let lower = code.to_ascii_lowercase();
+    let lower = code.code.to_ascii_lowercase();
     if !GAMES
         .iter()
         .any(|game| game.iter().all(|word| lower.contains(word)))
@@ -119,11 +119,10 @@ pub(crate) fn no_crate_names_a_game_outside_its_module(workspace: &Workspace) {
     let allowed = Allowlist::new(&GAME_NAMED);
     let mut named = Vec::new();
     for file in workspace.sources() {
-        let Some(code) = file.production() else {
-            continue;
-        };
         let path = file.path.as_str();
-        if names_a_game(code) && !in_game_module(path) && !allowed.allows(|&listed| listed == path)
+        if file.findings().names_a_game
+            && !in_game_module(path)
+            && !allowed.allows(|&listed| listed == path)
         {
             named.push(file.path.clone());
         }
@@ -134,6 +133,7 @@ pub(crate) fn no_crate_names_a_game_outside_its_module(workspace: &Workspace) {
 
 #[test]
 fn a_game_is_named_by_its_words_in_a_row_and_its_module_holds_it() {
+    let names_a_game = |code: &str| names_a_game(&ParsedCode::new("a.rs", code));
     assert!(names_a_game("struct ZeroHourDrive;") && names_a_game("mod zero_hour;"));
     assert!(!names_a_game("let zero = hour;") && !names_a_game("// ZeroHour"));
     assert!(in_game_module("navigation/zero_hour/mod.rs") && in_game_module("a/zero_hour.rs"));
@@ -143,8 +143,8 @@ fn a_game_is_named_by_its_words_in_a_row_and_its_module_holds_it() {
 
 pub(crate) fn no_capability_names_a_genres_words(workspace: &Workspace) {
     let mut named = Vec::new();
-    for NamedCode { path, code } in capability_sources(workspace) {
-        for word in genre_words(&code) {
+    for NamedFile { path, file } in capability_sources(workspace) {
+        for word in &file.findings().genre_words {
             named.push(format!("{path}: {word}"));
         }
     }
@@ -164,7 +164,10 @@ fn a_genre_word_is_found_as_an_identifiers_whole_word() {
         "fn f<'a>(jungle: &'a str) {}\n",
     );
     assert_eq!(
-        genre_words(code),
+        genre_words(
+            "crates/capabilities/x/src/a.rs",
+            &ParsedCode::new("a.rs", code)
+        ),
         ["tower", "tower", "hero", "jungle"].map(str::to_owned)
     );
 }

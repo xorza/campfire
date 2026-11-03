@@ -4,22 +4,24 @@ use proc_macro2::Ident;
 use syn::visit::{self, Visit};
 use syn::{Attribute, FnArg, ImplItem, ItemFn, ItemImpl, ItemMod, Signature, Type, Visibility};
 
+use crate::parsed_code::ParsedCode;
 use crate::source_file::{Gate, SourceFile};
 use crate::workspace::Workspace;
 
 /// A function whose first parameter is a world: its line, its name with its owner's, as
 /// `Owner::name`, or alone for a free function, and whether code past its module may call it.
 #[derive(Debug, PartialEq, Eq)]
-struct WorldFirst {
+pub(crate) struct WorldFirst {
     line: usize,
     name: String,
     visible: bool,
 }
 
-/// Each function of `text` whose first parameter is a world, a reference to a `World`: a free
-/// function at any depth, or a method of an inherent `impl`, not of a trait's; none of an item
-/// that a gate holds, which only tests and their helpers build.
-fn world_first(text: &str) -> Vec<WorldFirst> {
+/// Each function of `text`, the source `file`'s, whose first parameter is a world, a reference
+/// to a `World`: a free function at any depth, or a method of an inherent `impl`, not of a
+/// trait's; none of an item that a gate holds, which only tests and their helpers build, nor of a
+/// file of no production code.
+pub(crate) fn world_first(file: &SourceFile, text: &ParsedCode<'_>) -> Vec<WorldFirst> {
     struct Functions(Vec<WorldFirst>);
     impl Functions {
         fn take(&mut self, owner: Option<&Ident>, visibility: &Visibility, signature: &Signature) {
@@ -87,12 +89,11 @@ fn world_first(text: &str) -> Vec<WorldFirst> {
         }
     }
     // A file that names no world takes none first, and its parse is skipped.
-    if !text.contains("World") {
+    if file.production().is_none() || !text.code.contains("World") {
         return Vec::new();
     }
-    let file = syn::parse_file(text).expect("a workspace source parses");
     let mut functions = Functions(Vec::new());
-    functions.visit_file(&file);
+    functions.visit_file(text.file());
     functions.0
 }
 
@@ -125,9 +126,8 @@ pub(crate) fn a_free_function_that_takes_a_world_first_is_a_system(workspace: &W
         .collect();
     let mut found = Vec::new();
     for (file, _) in &production {
-        let free = world_first(&file.text)
-            .into_iter()
-            .filter(|f| f.visible && !f.name.contains("::"));
+        let free =
+            (file.findings().world_first.iter()).filter(|f| f.visible && !f.name.contains("::"));
         for function in free {
             let valued = production
                 .iter()
@@ -330,7 +330,10 @@ fn the_world_rule_finds_each_function_that_takes_a_world_first() {
         \x20   pub(super) fn c(world: &mut World, x: u8) {}\n    fn d(x: u8, world: &World) {}\n}\n\
         impl Trait for Owner {\n    fn e(world: &World) {}\n}\n\
         fn f(world: World) {}\nfn g(world: &'a World) {}\n#[cfg(test)]\nfn h(world: &World) {}\n";
-    let found = world_first(text);
+    let found = world_first(
+        &SourceFile::new("crates/x/src/a.rs", text),
+        &ParsedCode::new("a.rs", text),
+    );
     let expected = [
         (1, "a", true),
         (3, "Owner::b", true),

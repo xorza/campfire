@@ -1,20 +1,23 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use campfire_threads::Parallel;
 use syn::visit::{self, Visit};
 use syn::{
     Attribute, Ident, ItemEnum, ItemMod, ItemStruct, ItemTrait, ItemType, ItemUnion, Visibility,
 };
 
+use crate::parsed_code::ParsedCode;
 use crate::source_file::Gate;
 use crate::workspace::Workspace;
 
-/// The names of the types, traits and aliases `text` declares visible past their module, but in a
-/// module only its crate's tests build: a private item is its module's word alone.
-fn declared(text: &str) -> BTreeSet<String> {
-    let file = syn::parse_file(text).expect("a workspace source parses");
+/// The names of the types, traits and aliases `text`, the file at `path`, declares visible past
+/// their module, but in a module only its crate's tests build: a private item is its module's word
+/// alone; none of a test's or a bench's file.
+pub(crate) fn declared(path: &str, text: &ParsedCode<'_>) -> BTreeSet<String> {
+    if tests_file(path) {
+        return BTreeSet::new();
+    }
     let mut names = Declared::default();
-    names.visit_file(&file);
+    names.visit_file(text.file());
     names.0
 }
 
@@ -89,18 +92,18 @@ fn tests_file(path: &str) -> bool {
     path.contains("/tests/") || path.contains("/benches/") || path.ends_with("/tests.rs")
 }
 
-/// Each name that two crates or more of `files` declare, each a crate's name and a source's text,
-/// with the crates that declare it.
+/// Each name that two crates or more of `files` declare, each a crate's name and the names a
+/// source of it declares, with the crates that declare it.
 fn shared<'a>(
-    files: impl IntoIterator<Item = (&'a str, &'a str)>,
+    files: impl IntoIterator<Item = (&'a str, &'a BTreeSet<String>)>,
 ) -> BTreeMap<String, BTreeSet<String>> {
-    let files: Vec<(&str, &str)> = files.into_iter().collect();
-    // Each file's parse on every core, as it reads every file of the workspace.
-    let declared = Parallel::map(files.len(), |at| declared(files[at].1));
     let mut by_name: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    for (&(holder, _), names) in files.iter().zip(declared) {
+    for (holder, names) in files {
         for name in names {
-            by_name.entry(name).or_default().insert(holder.to_owned());
+            by_name
+                .entry(name.clone())
+                .or_default()
+                .insert(holder.to_owned());
         }
     }
     by_name.retain(|_, holders| holders.len() > 1);
@@ -125,16 +128,12 @@ fn broken(shared: &BTreeMap<String, BTreeSet<String>>, one_meaning: &[&str]) -> 
 /// lists, or the narrower use takes a qualified name (02-engine-core.md, A type name that both
 /// sides declare keeps one meaning).
 pub(crate) fn a_type_name_keeps_one_meaning(workspace: &Workspace) {
-    let sources = workspace.sources();
-    let files = sources
-        .iter()
-        .filter(|file| !tests_file(&file.path))
-        .map(|file| {
-            let holder = workspace
-                .holder(&file.path)
-                .expect("each source is a crate's");
-            (holder.name.as_str(), file.text.as_str())
-        });
+    let files = workspace.sources().iter().map(|file| {
+        let holder = workspace
+            .holder(&file.path)
+            .expect("each source is a crate's");
+        (holder.name.as_str(), &file.findings().declared)
+    });
     assert_eq!(broken(&shared(files), &ONE_MEANING), Vec::<String>::new());
 }
 
@@ -189,7 +188,8 @@ fn a_name_two_crates_declare_is_found() {
              pub(crate) struct Iter;\n";
     let b = "pub(crate) enum Clock { Tick }\nstruct Entry;\n#[cfg(test)]\nmod tests { pub struct Probe; }\n\
              pub struct Iter;\n";
-    let found = shared([("a", a), ("b", b)]);
+    let [a, b] = [a, b].map(|text| declared("crates/x/src/a.rs", &ParsedCode::new("a.rs", text)));
+    let found = shared([("a", &a), ("b", &b)]);
     assert_eq!(found.keys().collect::<Vec<_>>(), ["Clock", "Iter"]);
     assert_eq!(
         broken(&found, &["Iter", "Sealed"]),

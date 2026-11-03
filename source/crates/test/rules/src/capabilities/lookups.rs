@@ -3,8 +3,12 @@ use syn::punctuated::Punctuated;
 use syn::visit::{self, Visit};
 use syn::{Expr, ExprCall, ExprMethodCall, ExprPath, Macro, Token};
 
-use crate::capabilities::{NamedCode, Naming, capability, named_code};
+use crate::capabilities::{NamedFile, Naming, capability, in_capability, named_files};
+use crate::parsed_code::ParsedCode;
 use crate::workspace::Workspace;
+
+/// The bots' crate, whose scripts name unit types, beside the capability crates.
+const BOTS: &str = "crates/session/bots";
 
 /// Every lookup by name that the production code of the capability crates and the bots' crate
 /// calls, by file: a method or function whose last segment ends in `named`, with its generic
@@ -134,21 +138,13 @@ const LOOKUPS: [(&str, &str); 109] = [
 
 pub(crate) fn a_name_is_looked_up_only_by_a_script_call_or_the_load(workspace: &Workspace) {
     // The capability crates, and the bots' crate, whose scripts name unit types.
-    let sources = named_code(workspace, |krate| {
-        let bots = krate.path == "crates/session/bots";
+    let sources = named_files(workspace, |krate| {
+        let bots = krate.path == BOTS;
         capability(krate).or_else(|| bots.then(|| Naming::Under("bots".to_owned())))
     });
     let mut found = Vec::new();
-    for NamedCode { path, code } in sources {
-        // A file that names no lookup calls none, and its parse is skipped.
-        if !code.contains("named") {
-            continue;
-        }
-        found.extend(
-            lookups(&code)
-                .into_iter()
-                .map(|lookup| (path.clone(), lookup)),
-        );
+    for NamedFile { path, file } in sources {
+        found.extend((file.findings().lookups.iter()).map(|lookup| (path.clone(), lookup.clone())));
     }
     found.sort();
     found.dedup();
@@ -160,12 +156,19 @@ pub(crate) fn a_name_is_looked_up_only_by_a_script_call_or_the_load(workspace: &
     assert_eq!(found, known, "lookups by name");
 }
 
-/// The lookups `code` calls: each method and each function whose last segment ends in `named`,
-/// with its generic arguments or none, as `syn` parses the calls.
-fn lookups(code: &str) -> Vec<String> {
-    let file = syn::parse_file(code).expect("a workspace source parses");
+/// The lookups `production`, the production code of the file at `path`, a capability crate's or
+/// the bots' crate's, calls: each method and each function whose last segment ends in `named`,
+/// with its generic arguments or none, as `syn` parses the calls; none of another file.
+pub(crate) fn lookups(path: &str, production: &ParsedCode<'_>) -> Vec<String> {
+    let bots = path
+        .strip_prefix(BOTS)
+        .is_some_and(|rest| rest.starts_with('/'));
+    // A file that names no lookup calls none, and its parse is skipped.
+    if !(in_capability(path) || bots) || !production.code.contains("named") {
+        return Vec::new();
+    }
     let mut calls = Lookups::default();
-    calls.visit_file(&file);
+    calls.visit_file(production.file());
     calls.0
 }
 
@@ -221,7 +224,10 @@ mod tests {
         let code = "fn named(x: u8) { a.named(\"x\"); b.named::<T>(\"y\"); Names::type_named(c); \
                     d.unit_type(e); f(named); arg!(Id, |ctx, name| ctx.param_named(name)); }";
         assert_eq!(
-            lookups(code),
+            lookups(
+                "crates/session/bots/src/a.rs",
+                &ParsedCode::new("a.rs", code)
+            ),
             ["named", "named", "type_named", "param_named"]
         );
     }

@@ -1,6 +1,7 @@
 //! The rules of the capability crates' code: where their sets are named, their roles' and books'
 //! names, their lookups by name, and the words of a genre they leave to data.
 
+use crate::source_file::SourceFile;
 use crate::workspace::{Crate, Workspace};
 
 pub(crate) mod genre_words;
@@ -9,17 +10,17 @@ pub(crate) mod part_names;
 pub(crate) mod roles;
 pub(crate) mod sets;
 
-/// The capability crates' group under `source/`.
+/// The capability crates' group under `source/`, which holds each capability crate.
 const GROUP: &str = "crates/capabilities/";
 
 /// The top crate of the group, whose files go by their paths from its `src`.
 const TOP: &str = "crates/capabilities/capabilities";
 
-/// A source file's production code, by its path as these rules name it.
+/// A source file of production code, by its path as these rules name it.
 #[derive(Debug)]
-struct NamedCode {
+struct NamedFile<'a> {
     path: String,
-    code: String,
+    file: &'a SourceFile,
 }
 
 /// How the rules name a crate's files: by their paths from its `src`, or under a name.
@@ -35,18 +36,26 @@ fn capability(krate: &Crate) -> Option<Naming> {
     if krate.path == TOP {
         Some(Naming::FromSrc)
     } else {
-        (krate.path.starts_with(GROUP)).then(|| Naming::Under(krate.dir_name.replace('-', "_")))
+        in_capability(&krate.path).then(|| Naming::Under(krate.dir_name.replace('-', "_")))
     }
 }
 
-/// The production code of each capability crate's sources, of `workspace`.
-fn capability_sources(workspace: &Workspace) -> Vec<NamedCode> {
-    named_code(workspace, capability)
+/// Whether the file or the crate at `path`, under `source/`, is a capability crate's.
+fn in_capability(path: &str) -> bool {
+    path.starts_with(GROUP)
 }
 
-/// The production code of the sources of each crate of `workspace` that `naming` names, by the
-/// path it gives.
-fn named_code(workspace: &Workspace, naming: impl Fn(&Crate) -> Option<Naming>) -> Vec<NamedCode> {
+/// Each capability crate's source of production code, of `workspace`.
+fn capability_sources(workspace: &Workspace) -> Vec<NamedFile<'_>> {
+    named_files(workspace, capability)
+}
+
+/// The sources of production code of each crate of `workspace` that `naming` names, by the path
+/// it gives.
+fn named_files(
+    workspace: &Workspace,
+    naming: impl Fn(&Crate) -> Option<Naming>,
+) -> Vec<NamedFile<'_>> {
     let crates = workspace.crates();
     let mut found = Vec::new();
     for (krate, naming) in crates
@@ -57,17 +66,14 @@ fn named_code(workspace: &Workspace, naming: impl Fn(&Crate) -> Option<Naming>) 
             let Some(within) = file.path.strip_prefix(&format!("{}/src/", krate.path)) else {
                 continue;
             };
-            let Some(code) = file.production() else {
+            if file.production().is_none() {
                 continue;
-            };
+            }
             let path = match &naming {
                 Naming::FromSrc => within.to_owned(),
                 Naming::Under(name) => format!("{name}/{within}"),
             };
-            found.push(NamedCode {
-                path,
-                code: code.to_owned(),
-            });
+            found.push(NamedFile { path, file });
         }
     }
     found

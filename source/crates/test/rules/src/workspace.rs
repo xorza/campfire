@@ -341,8 +341,10 @@ impl Workspace {
                     read.push(file);
                 }
             }
-            // Each file on every core, so the rules that share them wait for none.
-            Parallel::map(read.len(), |at| read[at].analyze());
+            // Each file's pass on every core, so the rules that read its findings wait for none.
+            Parallel::map(read.len(), |at| {
+                read[at].findings();
+            });
             read
         })
     }

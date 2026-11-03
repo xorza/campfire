@@ -15,11 +15,10 @@ pub(crate) struct CfgCondition {
 }
 
 impl CfgCondition {
-    /// The conditions of `code`, in its order.
-    pub(crate) fn of(code: &str) -> Vec<Self> {
-        let file = syn::parse_file(code).expect("a workspace source parses");
+    /// The conditions of `file`, a source's parse, in its order.
+    pub(crate) fn of(file: &syn::File) -> Vec<Self> {
         let mut conditions = CfgConditions(Vec::new());
-        conditions.visit_file(&file);
+        conditions.visit_file(file);
         conditions.0
     }
 
@@ -102,7 +101,7 @@ fn a_condition_is_read_from_each_cfg_and_never_from_a_comment() {
         #[cfg_attr(\n    any(feature = \"internals\", test),\n    derive(Debug)\n)]\nstruct B;\n\
         #[cfg(all(unix, not(feature = \"internals\")))]\nfn c() { cfg!(feature = \"other\"); }\n\
         #[cfg(any(test, feature = \"internals\", unix))]\nmod d;\n";
-    let conditions: Vec<(usize, bool, bool)> = CfgCondition::of(code)
+    let conditions: Vec<(usize, bool, bool)> = CfgCondition::of(&syn::parse_file(code).unwrap())
         .iter()
         .map(|condition| {
             let line = condition.line;

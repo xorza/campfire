@@ -3,6 +3,7 @@ use syn::ItemMod;
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 
+use crate::parsed_code::ParsedCode;
 use crate::source_file::Gate;
 use crate::workspace::Workspace;
 
@@ -14,7 +15,7 @@ const MOST_PERCENT: usize = 40;
 
 /// An inline test module past its bound: its lines, and its file's.
 #[derive(Debug, PartialEq, Eq)]
-struct FatModule {
+pub(crate) struct FatModule {
     lines: usize,
     file: usize,
 }
@@ -22,7 +23,7 @@ struct FatModule {
 /// Each inline test module of `text`, a `mod tests { … }` that `#[cfg(test)]` gates, at any
 /// depth, that holds more than `MOST_LINES` lines or more than `MOST_PERCENT` of the file's: its
 /// lines from its first attribute, a doc among them, to its closing brace.
-fn fat_test_modules(text: &str) -> Vec<FatModule> {
+pub(crate) fn fat_test_modules(text: &ParsedCode<'_>) -> Vec<FatModule> {
     struct Modules {
         file: usize,
         fat: Vec<FatModule>,
@@ -54,20 +55,15 @@ fn fat_test_modules(text: &str) -> Vec<FatModule> {
             visit::visit_item_mod(self, item);
         }
     }
-    // A file that declares no module of the name holds none, and its parse is skipped.
-    if !text.contains("mod tests") {
+    // A file that declares no gated module of the name holds none, and its parse is skipped.
+    if !text.code.contains("mod tests") || !text.code.contains("#[cfg(test)]") {
         return Vec::new();
     }
-    // A file of no gated module declares none, and its parse is skipped.
-    if !text.contains("#[cfg(test)]") || !text.contains("mod ") {
-        return Vec::new();
-    }
-    let parsed = syn::parse_file(text).expect("a workspace source parses");
     let mut modules = Modules {
-        file: text.lines().count(),
+        file: text.code.lines().count(),
         fat: Vec::new(),
     };
-    modules.visit_file(&parsed);
+    modules.visit_file(text.file());
     modules.fat
 }
 
@@ -78,7 +74,7 @@ pub(crate) fn an_inline_test_module_holds_at_most_150_lines_and_40_percent_of_it
         .sources()
         .iter()
         .flat_map(|file| {
-            let modules = fat_test_modules(&file.text).into_iter();
+            let modules = file.findings().fat_test_modules.iter();
             modules
                 .map(|module| format!("{}: {} of {} lines", file.path, module.lines, module.file))
         })
@@ -89,7 +85,7 @@ pub(crate) fn an_inline_test_module_holds_at_most_150_lines_and_40_percent_of_it
 /// The lines of each module of `text` named `internals` that `#[cfg(test)]` gates: `internals`
 /// is the gate of what other crates' tests and benches reach, and a crate's own tests' reach-ins
 /// are its `reach_in` or its `samples`.
-fn test_gated_internals(text: &str) -> Vec<usize> {
+pub(crate) fn test_gated_internals(text: &ParsedCode<'_>) -> Vec<usize> {
     struct Found(Vec<usize>);
     impl<'ast> Visit<'ast> for Found {
         fn visit_item_mod(&mut self, item: &'ast ItemMod) {
@@ -103,12 +99,11 @@ fn test_gated_internals(text: &str) -> Vec<usize> {
             visit::visit_item_mod(self, item);
         }
     }
-    if !text.contains("mod internals") {
+    if !text.code.contains("mod internals") {
         return Vec::new();
     }
-    let parsed = syn::parse_file(text).expect("a workspace source parses");
     let mut found = Found(Vec::new());
-    found.visit_file(&parsed);
+    found.visit_file(text.file());
     found.0
 }
 
@@ -117,7 +112,7 @@ pub(crate) fn no_test_gate_holds_a_module_named_internals(workspace: &Workspace)
         .sources()
         .iter()
         .flat_map(|file| {
-            (test_gated_internals(&file.text).into_iter())
+            (file.findings().test_gated_internals.iter())
                 .map(|line| format!("{}:{line}", file.path))
         })
         .collect();
@@ -128,11 +123,12 @@ pub(crate) fn no_test_gate_holds_a_module_named_internals(workspace: &Workspace)
 fn a_test_gated_internals_is_found_and_a_feature_gated_one_is_not() {
     let text = "#[cfg(test)]\nmod internals {}\n#[cfg(feature = \"internals\")]\npub(crate) mod internals \
                 {}\n#[cfg(test)]\nmod reach_in {}\n";
-    assert_eq!(test_gated_internals(text), [2]);
+    assert_eq!(test_gated_internals(&ParsedCode::new("a.rs", text)), [2]);
 }
 
 #[test]
 fn the_check_measures_each_gated_inline_test_module_against_its_file() {
+    let fat_test_modules = |text: &str| fat_test_modules(&ParsedCode::new("a.rs", text));
     let file = |code: usize, tests: usize| {
         let mut text = "fn f() {}\n".repeat(code);
         text.push_str("\n#[cfg(test)]\nmod tests {\n");

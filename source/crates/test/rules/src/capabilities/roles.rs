@@ -2,7 +2,8 @@ use syn::visit::{self, Visit};
 use syn::{ImplItemFn, ItemImpl, ItemStruct, Type};
 
 use crate::allowlist::Allowlist;
-use crate::capabilities::{NamedCode, capability_sources};
+use crate::capabilities::{NamedFile, capability_sources, in_capability};
+use crate::parsed_code::ParsedCode;
 use crate::workspace::Workspace;
 
 /// Each role a module's type may hold, by the trait it implements or, for a script API, by
@@ -23,7 +24,7 @@ const ROLE_EXCEPTIONS: [&str; 1] = ["CoreApi"];
 
 /// A type that holds a role: its name, the suffix of its role, and its file's.
 #[derive(Debug)]
-struct RoleHolder {
+pub(crate) struct RoleHolder {
     name: String,
     suffix: &'static str,
     file_suffix: &'static str,
@@ -32,18 +33,21 @@ struct RoleHolder {
 /// The types of one file that hold a role: the implementers of the traits of `ROLES`, and the
 /// `*Api` structs of a file that registers members.
 #[derive(Debug, Default)]
-struct RoleHolders {
+pub(crate) struct RoleHolders {
     holders: Vec<RoleHolder>,
     api_structs: Vec<String>,
     registers: bool,
 }
 
 impl RoleHolders {
-    /// The role holders of `code`.
-    fn of(code: &str) -> Vec<RoleHolder> {
-        let file = syn::parse_file(code).expect("a workspace source parses");
+    /// The role holders of `production`, the production code of the file at `path`, a
+    /// capability crate's; none of another file.
+    pub(crate) fn of(path: &str, production: &ParsedCode<'_>) -> Vec<RoleHolder> {
+        if !in_capability(path) {
+            return Vec::new();
+        }
         let mut found = Self::default();
-        found.visit_file(&file);
+        found.visit_file(production.file());
         let (suffix, file_suffix) = API_ROLE;
         if found.registers {
             found
@@ -141,18 +145,18 @@ pub(crate) fn each_role_of_a_module_takes_the_modules_name(workspace: &Workspace
     let exceptions = Allowlist::new(&ROLE_EXCEPTIONS);
     let mut misnamed = Vec::new();
     let mut held = [0; ROLES.len() + 1];
-    for NamedCode { path, code } in capability_sources(workspace) {
+    for NamedFile { path, file } in capability_sources(workspace) {
         let parts: Vec<&str> = path.split('/').collect();
         let [module, .., last] = parts[..] else {
             continue;
         };
-        let file = match last.strip_suffix(".rs").expect("a source ends in .rs") {
+        let name = match last.strip_suffix(".rs").expect("a source ends in .rs") {
             "mod" => parts[parts.len() - 2],
             "lib" => module,
             stem => stem,
         };
-        let holders = RoleHolders::of(&code);
-        misnamed.extend(misnamed_roles(module, file, &holders, &exceptions));
+        let holders = &file.findings().role_holders;
+        misnamed.extend(misnamed_roles(module, name, holders, &exceptions));
         let suffixes = ROLES.iter().map(|&(_, suffix, _)| suffix);
         for (held, suffix) in held.iter_mut().zip(suffixes.chain([API_ROLE.0])) {
             *held += holders
@@ -245,7 +249,15 @@ fn each_misnamed_role_is_found() {
             .collect();
         let exceptions = Allowlist::new(&ROLE_EXCEPTIONS);
         assert_eq!(
-            misnamed_roles(module, file, &RoleHolders::of(&code), &exceptions),
+            misnamed_roles(
+                module,
+                file,
+                &RoleHolders::of(
+                    "crates/capabilities/x/src/a.rs",
+                    &ParsedCode::new("a.rs", &code)
+                ),
+                &exceptions
+            ),
             expected,
             "{code}"
         );

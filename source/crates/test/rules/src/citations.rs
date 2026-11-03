@@ -138,7 +138,7 @@ fn titles(text: &str) -> Titles {
 
 /// Each citation of `files`, by the file that holds it, that names no document `documents` holds,
 /// or a title its document lacks; and each mention of a design by its number, the old form.
-fn broken(files: &[SourceFile], documents: &BTreeMap<String, Option<Titles>>) -> Vec<String> {
+fn broken(files: &[&SourceFile], documents: &BTreeMap<String, Option<Titles>>) -> Vec<String> {
     let mut found = Vec::new();
     for (document, titles) in documents {
         for lead in titles.iter().flat_map(|titles| &titles.unclosed) {
@@ -249,21 +249,20 @@ fn document(document: &str) -> Option<Titles> {
 
 pub(crate) fn a_citation_names_a_decision_its_document_holds(workspace: &Workspace) {
     // This file's own samples break the rule on purpose.
-    let mut files: Vec<SourceFile> = workspace
-        .sources()
-        .iter()
-        .filter(|file| file.path != "crates/test/rules/src/citations.rs")
-        .cloned()
-        .collect();
     // Every other text file of the repository cites the design too, its documents, its notes and
     // its manifests among them; the walk reads them, so a moved tree fails.
     let texts = repository_texts();
+    let mut files: Vec<&SourceFile> = workspace
+        .sources()
+        .iter()
+        .filter(|file| file.path != "crates/test/rules/src/citations.rs")
+        .collect();
     let design = texts
         .iter()
         .filter(|file| file.path.starts_with("docs/design/"))
         .count();
     assert!(design > 20, "{design} documents");
-    files.extend(texts);
+    files.extend(&texts);
     let mut documents = BTreeMap::new();
     for file in &files {
         for Citation {
@@ -375,7 +374,7 @@ fn each_broken_citation_is_found() {
         ("b.md".to_owned(), None),
     ]);
     assert_eq!(
-        broken(&[SourceFile::new("s.rs", sample)], &documents),
+        broken(&[&SourceFile::new("s.rs", sample)], &documents),
         [
             "a.md: a bold lead that never closes: \"Never closed. Text.\"",
             "a.md: a title no citation names: \"One; two\"",

@@ -13,6 +13,7 @@ use campfire_store::internals::PinnedFile;
 
 use crate::allowlist::Allowlist;
 use crate::named_path::NamedPath;
+use crate::parsed_code::ParsedCode;
 use crate::source_file::SourceFile;
 use crate::workspace::{Workspace, read, sim_closure, source};
 
@@ -543,7 +544,7 @@ impl ClippyBans {
 /// schema through `serde_json::to_value`; the proxy's under a `cfg_attr` too, as the platform's
 /// calls differ by OS; never `allow`, a group that holds the lint, or an attribute on an item or
 /// a statement, so a stale one fails where it applies and none hides.
-fn misplaced_exemptions(path: &str, text: &str) -> Vec<usize> {
+pub(crate) fn misplaced_exemptions(path: &str, text: &ParsedCode<'_>) -> Vec<usize> {
     struct Exemptions<'a> {
         path: &'a str,
         thread_module: bool,
@@ -601,26 +602,25 @@ fn misplaced_exemptions(path: &str, text: &str) -> Vec<usize> {
     }
     // Each lint and group it reads is clippy's, so a file that names no lint of clippy's holds
     // none, and its parse is skipped.
-    if !text.contains("clippy") {
+    if !text.code.contains("clippy") {
         return Vec::new();
     }
-    let paths = NamedPath::of(text);
-    let thread_module = NamedPath::holds(&paths, "thread_local")
+    let paths = text.paths();
+    let thread_module = NamedPath::holds(paths, "thread_local")
         && !TYPE_NAMES
             .iter()
-            .any(|banned| NamedPath::holds(&paths, banned));
-    let schema_module = NamedPath::holds(&paths, "JsonSchema")
+            .any(|banned| NamedPath::holds(paths, banned));
+    let schema_module = NamedPath::holds(paths, "JsonSchema")
         && !(PROXIES.iter().flat_map(|proxy| proxy.names))
             .chain(&UNOWNED_NAMES)
-            .any(|banned| NamedPath::holds(&paths, banned));
-    let file = syn::parse_file(text).expect("a workspace source parses");
+            .any(|banned| NamedPath::holds(paths, banned));
     let mut exemptions = Exemptions {
         path,
         thread_module,
         schema_module,
         found: Vec::new(),
     };
-    exemptions.visit_file(&file);
+    exemptions.visit_file(text.file());
     exemptions.found.sort_unstable();
     exemptions.found
 }
@@ -647,10 +647,22 @@ fn lint_paths(tokens: &TokenStream) -> Vec<Path> {
         .collect()
 }
 
+/// What of another group's names `text`, the file at `path`, holds, for each proxy whose crate
+/// holds it, as `foreign_names` says.
+pub(crate) fn proxy_foreign_names(path: &str, text: &ParsedCode<'_>) -> Vec<&'static str> {
+    let mut found = Vec::new();
+    for proxy in &PROXIES {
+        if path.starts_with(&format!("crates/{}/", proxy.dir)) {
+            found.extend(foreign_names(proxy, text));
+        }
+    }
+    found
+}
+
 /// What of another group's names, another proxy's that `proxy` does not list too, or no proxy's,
 /// `text`, a source of `proxy`'s, holds.
-pub(crate) fn foreign_names(proxy: &Proxy, text: &str) -> Vec<&'static str> {
-    let paths = NamedPath::of(text);
+pub(crate) fn foreign_names(proxy: &Proxy, text: &ParsedCode<'_>) -> Vec<&'static str> {
+    let paths = text.paths();
     let mut found: Vec<&'static str> = Vec::new();
     let names = PROXIES
         .iter()
@@ -660,7 +672,7 @@ pub(crate) fn foreign_names(proxy: &Proxy, text: &str) -> Vec<&'static str> {
         .chain(&UNOWNED_NAMES)
         .copied();
     for name in names {
-        if NamedPath::holds(&paths, name) && !found.contains(&name) {
+        if NamedPath::holds(paths, name) && !found.contains(&name) {
             found.push(name);
         }
     }
@@ -693,8 +705,7 @@ pub(crate) fn each_banned_call_goes_through_its_proxy_alone(workspace: &Workspac
             .iter()
             .filter(|file| file.path.starts_with(&own))
             .flat_map(|file| {
-                foreign_names(proxy, &file.text)
-                    .into_iter()
+                (file.findings().foreign_names.iter())
                     .map(move |name| format!("{}: {name}", file.path))
             })
             .collect();
@@ -738,8 +749,7 @@ pub(crate) fn each_banned_call_goes_through_its_proxy_alone(workspace: &Workspac
     let misplaced: Vec<String> = sources
         .iter()
         .flat_map(|file| {
-            misplaced_exemptions(&file.path, &file.text)
-                .into_iter()
+            (file.findings().misplaced_exemptions.iter())
                 .map(move |line| format!("{}:{line}", file.path))
         })
         .collect();
@@ -990,7 +1000,11 @@ fn the_ban_checks_fail_on_what_breaks_them() {
         ),
     ];
     for (path, text, lines) in cases {
-        assert_eq!(misplaced_exemptions(path, &text), lines, "{text}");
+        assert_eq!(
+            misplaced_exemptions(path, &ParsedCode::new(path, &text)),
+            lines,
+            "{text}"
+        );
     }
 }
 
@@ -1086,11 +1100,11 @@ const WALL_CLOCK: [&str; 5] = [
 const WALL_CLOCK_READERS: [&str; 1] = ["crates/sim/sim/src/sim_update/stage_clock/"];
 
 /// The wall clock reads `code` names, of `WALL_CLOCK`, each a path or a path's last segments.
-fn wall_clock_reads(code: &str) -> Vec<&'static str> {
-    if !WALL_CLOCK.iter().any(|read| code.contains(read)) {
+pub(crate) fn wall_clock_reads(code: &ParsedCode<'_>) -> Vec<&'static str> {
+    if !WALL_CLOCK.iter().any(|read| code.code.contains(read)) {
         return Vec::new();
     }
-    let paths = NamedPath::of(code);
+    let paths = code.paths();
     let names = |read: &&&str| {
         let tail = format!("::{read}");
         paths
@@ -1111,10 +1125,7 @@ pub(crate) fn no_crate_a_match_runs_on_reads_the_wall_clock(workspace: &Workspac
             .sources_of(krate)
             .filter(|file| !measured(&file.path))
         {
-            let Some(code) = file.library() else {
-                continue;
-            };
-            let reads = wall_clock_reads(code);
+            let reads = &file.findings().wall_clock_reads;
             if !reads.is_empty() && !readers.allows(|dir| file.path.starts_with(dir)) {
                 found.push(format!("{}: {}", file.path, reads.join(", ")));
             }
@@ -1126,6 +1137,7 @@ pub(crate) fn no_crate_a_match_runs_on_reads_the_wall_clock(workspace: &Workspac
 
 #[test]
 fn a_wall_clock_read_is_found_by_the_paths_code_names() {
+    let wall_clock_reads = |code: &str| wall_clock_reads(&ParsedCode::new("a.rs", code));
     // A read of the OS's time, by a call or by Bevy's real time, is found; a clock of the match's
     // own is not, nor a string's mention.
     assert_eq!(

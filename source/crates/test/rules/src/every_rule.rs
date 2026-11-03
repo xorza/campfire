@@ -97,6 +97,9 @@ fn message(panic: &(dyn Any + Send)) -> &str {
 #[test]
 fn the_workspace_keeps_every_rule() {
     let workspace = Workspace::read();
+    // The pass over each file, which every rule's check reads, runs before the checks, so a file
+    // that does not parse fails once.
+    workspace.sources();
     let broken: Vec<String> = Parallel::map(RULES.len(), |at| {
         let Rule { name, check } = RULES[at];
         let ran = panic::catch_unwind(AssertUnwindSafe(|| check(&workspace)));

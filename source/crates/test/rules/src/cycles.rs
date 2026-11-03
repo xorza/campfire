@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::str::FromStr;
 
 use proc_macro2::{TokenStream, TokenTree};
 
+use crate::parsed_code::ParsedCode;
 use crate::source_file::SourceFile;
 use crate::workspace::Workspace;
 
@@ -150,6 +150,12 @@ fn sibling_imports(
     parents
 }
 
+/// Whether a path of `production`, a file's production code, starts at `super::`, a
+/// `pub(super)` visibility none.
+pub(crate) fn starts_at_super(production: &ParsedCode<'_>) -> bool {
+    production.code.contains("super") && super_paths(production.tokens().clone()) > 0
+}
+
 /// How many paths of `tokens` start at `super::`, a `pub(super)` visibility none.
 fn super_paths(tokens: TokenStream) -> usize {
     let tokens: Vec<TokenTree> = tokens.into_iter().collect();
@@ -172,14 +178,8 @@ pub(crate) fn no_production_path_starts_at_super(workspace: &Workspace) {
     // gated module's `use super::*;` reaches the module it tests.
     let mut found = Vec::new();
     for file in workspace.sources() {
-        let Some(code) = file.production() else {
-            continue;
-        };
-        if code.contains("super") {
-            let tokens = TokenStream::from_str(code).expect("a workspace source lexes");
-            if super_paths(tokens) > 0 {
-                found.push(file.path.clone());
-            }
+        if file.findings().starts_at_super {
+            found.push(file.path.clone());
         }
     }
     assert_eq!(found, Vec::<String>::new());
@@ -255,7 +255,7 @@ fn a_ring_of_imports_is_a_cycle_and_a_chain_is_none() {
 
 #[test]
 fn a_path_through_super_is_found_and_a_visibility_is_not() {
-    let count = |code: &str| super_paths(TokenStream::from_str(code).unwrap());
+    let count = |code: &str| super_paths(ParsedCode::new("a.rs", code).tokens().clone());
     assert_eq!(count("use super::a::B;\nfn f() { super::g(); }"), 2);
     assert_eq!(count("pub(super) fn f() {}\nuse crate::super_a::B;"), 0);
 }

@@ -2,6 +2,7 @@ use syn::visit::Visit;
 use syn::{ItemExternCrate, ItemMacro, ItemUse, UseTree, Visibility};
 
 use crate::manifests::COMMON_DERIVE;
+use crate::parsed_code::ParsedCode;
 use crate::workspace::Workspace;
 
 /// A `pub use` of any visibility, or a `pub extern crate`, of a file: its line, and the first
@@ -14,7 +15,7 @@ struct PubUse {
 
 /// The `pub use`s and `pub extern crate`s of `text`, at any depth of its modules, and the names
 /// of the `macro_rules!` it defines.
-fn pub_uses(text: &str) -> (Vec<PubUse>, Vec<String>) {
+fn pub_uses(text: &ParsedCode<'_>) -> (Vec<PubUse>, Vec<String>) {
     #[derive(Default)]
     struct Uses {
         uses: Vec<PubUse>,
@@ -59,12 +60,11 @@ fn pub_uses(text: &str) -> (Vec<PubUse>, Vec<String>) {
         }
     }
     // A file of no `pub use`, of any reach, holds none, and its parse is skipped.
-    if !text.contains("pub use") && !text.contains(") use ") {
+    if !text.code.contains("pub use") && !text.code.contains(") use ") {
         return (Vec::new(), Vec::new());
     }
-    let file = syn::parse_file(text).expect("a workspace source parses");
     let mut uses = Uses::default();
-    uses.visit_file(&file);
+    uses.visit_file(text.file());
     (uses.uses, uses.macros)
 }
 
@@ -75,7 +75,7 @@ const OWN_ROOTS: [&str; 3] = ["crate", "self", "super"];
 /// visibility, of a path that starts with a name other than `crate`, `self` or `super`, and a
 /// `pub extern crate`. A `use` of one name that a `macro_rules!` of `text` defines gives the macro
 /// a path, as a macro defined in a module takes one, and names no crate.
-fn foreign_re_exports(text: &str) -> Vec<usize> {
+pub(crate) fn foreign_re_exports(text: &ParsedCode<'_>) -> Vec<usize> {
     let (uses, macros) = pub_uses(text);
     let mut lines: Vec<usize> = uses
         .iter()
@@ -104,9 +104,8 @@ pub(crate) fn no_crate_re_exports_another_crate(workspace: &Workspace) {
         .iter()
         .flat_map(|file| {
             let lines: Vec<&str> = file.text.lines().collect();
-            foreign_re_exports(&file.text)
-                .into_iter()
-                .filter(move |&line| !derives_of_common(&file.path, lines[line - 1]))
+            (file.findings().foreign_re_exports.iter())
+                .filter(move |&&line| !derives_of_common(&file.path, lines[line - 1]))
                 .map(move |line| format!("{}:{line}", file.path))
         })
         .collect();
@@ -117,7 +116,7 @@ pub(crate) fn no_crate_re_exports_another_crate(workspace: &Workspace) {
 /// its root: a `pub use` of any visibility of a path from `crate`, `self` or `super` in a file
 /// other than a `lib.rs` or `main.rs`, as one canonical path holds each item and only the root's
 /// `pub use`s publish it (02-engine-core.md, Structural rules).
-fn inner_re_exports(path: &str, text: &str) -> Vec<usize> {
+pub(crate) fn inner_re_exports(path: &str, text: &ParsedCode<'_>) -> Vec<usize> {
     if path.ends_with("/lib.rs") || path.ends_with("/main.rs") {
         return Vec::new();
     }
@@ -133,8 +132,7 @@ pub(crate) fn no_module_re_exports_its_own_crates_item(workspace: &Workspace) {
         .sources()
         .iter()
         .flat_map(|file| {
-            inner_re_exports(&file.path, &file.text)
-                .into_iter()
+            (file.findings().inner_re_exports.iter())
                 .map(move |line| format!("{}:{line}", file.path))
         })
         .collect();
@@ -146,7 +144,10 @@ fn each_foreign_re_export_is_found() {
     // A whole crate, an item, a scoped one, an indented group and an extern crate are found; the
     // crate's own, a macro's own, a plain import and the path of a macro the file defines are not.
     let sample = "pub use rhai;\npub use crate::a::B;\npub(crate) use ::toml::de::Error as E;\nmod m {\n    pub use other::{A, B};\n}\npub use self::x;\nuse other::C;\npub use super::y;\npub extern crate rhai;\nmacro_rules! local {\n    () => { pub use $crate::Item; };\n}\npub(crate) use local;\npub(crate) use toml;";
-    assert_eq!(foreign_re_exports(sample), [1, 3, 5, 10, 15]);
+    assert_eq!(
+        foreign_re_exports(&ParsedCode::new("a.rs", sample)),
+        [1, 3, 5, 10, 15]
+    );
 }
 
 #[test]
@@ -154,6 +155,7 @@ fn each_inner_re_export_is_found() {
     // Each visibility of a re-export in a module is found, and a root's, a plain `use` and
     // another crate's path are not.
     let sample = "pub(crate) use crate::a::B;\npub use self::c::D;\n    pub(super) use super::E;\nuse crate::f::G;\npub use other::H;\n";
-    assert_eq!(inner_re_exports("crates/x/src/m.rs", sample), [1, 2, 3]);
-    assert!(inner_re_exports("crates/x/src/lib.rs", sample).is_empty());
+    let sample = ParsedCode::new("m.rs", sample);
+    assert_eq!(inner_re_exports("crates/x/src/m.rs", &sample), [1, 2, 3]);
+    assert!(inner_re_exports("crates/x/src/lib.rs", &sample).is_empty());
 }
