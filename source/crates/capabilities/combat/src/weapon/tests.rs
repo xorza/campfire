@@ -104,6 +104,9 @@ fn a_weapon_of_its_own_period_and_amount_reads_them_at_its_rank_and_no_stat() {
     };
     assert_eq!(clipped.clip(&stats, second), Some(clips[1]));
     assert_eq!(own([1, 1], [0, 0]).clip(&stats, Rank::FIRST), None);
+    // Its rules are each rank's, in order; none for a weapon of no clip.
+    assert_eq!(clipped.clip_rules(), Some(&clips[..]));
+    assert_eq!(own([1, 1], [0, 0]).clip_rules(), None);
 }
 
 #[test]

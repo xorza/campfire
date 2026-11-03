@@ -20,6 +20,7 @@ use campfire_sim::Capability;
 use crate::action_names::ActionNamesPlugin;
 use crate::build_preview::BuildPreviewPlugin;
 use crate::command_panel::CommandPanelPlugin;
+use crate::command_panel::upgrade_conflicts::UpgradeConflictsPlugin;
 use crate::gather_click::GatherClickPlugin;
 use crate::hud::HudPlugin;
 use crate::inventory_bar::InventoryBarPlugin;
@@ -38,15 +39,19 @@ use crate::view::ViewPlugin;
 use crate::view::area_view::AreaViewPlugin;
 use crate::view::client_data::ClientFilesPlugin;
 use crate::view::effects::EffectsPlugin;
+use crate::view::effects::death_keeps::DeathKeepsPlugin;
 use crate::view::fog::FogPlugin;
 use crate::view::look_states::LookStatesPlugin;
 use crate::view::minimap::MinimapPlugin;
 use crate::view::package_source::PackageAssets;
 use crate::view::player_camera::PlayerCameraPlugin;
+use crate::view::producer_doors::ProducerDoorsPlugin;
+use crate::view::shot_stand_ins::ShotStandInsPlugin;
 use crate::view::sounds::SoundsPlugin;
 use crate::view::terrain_view::TerrainViewPlugin;
 use crate::view::unit_models::UnitModelsPlugin;
 use crate::view::view_console::ViewConsolePlugin;
+use crate::view::weapon_clips::WeaponClipsPlugin;
 
 /// A part of a window's end, one entry of the client's one list: the matches it joins, the
 /// capabilities a mode holds for it, and the plugin it adds, so a client of any mode adds what the
@@ -62,15 +67,19 @@ pub(crate) enum ClientModule {
     Report,
     ClientFiles,
     View,
+    ShotStandIns,
     AreaView,
     PlayerCamera,
     UnitPicking,
     UnitModels,
     LookStates,
+    WeaponClips,
+    ProducerDoors,
     TerrainView,
     Fog,
     Minimap,
     Effects,
+    DeathKeeps,
     Sounds,
     Hud,
     Selecting,
@@ -85,6 +94,7 @@ pub(crate) enum ClientModule {
     InventoryBar,
     ActionNames,
     CommandPanel,
+    UpgradeConflicts,
     BuildPreview,
 }
 
@@ -136,9 +146,13 @@ impl ClientModule {
                 &[Capability::Production]
             }
             Self::UseClick => &[Capability::Interaction],
+            Self::DeathKeeps | Self::WeaponClips => &[Capability::Combat],
+            Self::ProducerDoors => &[Capability::Production],
+            Self::ShotStandIns => &[Capability::Combat, Capability::Projectiles],
             Self::Fog => &[Capability::Vision],
             Self::LearnKeys | Self::PerkPanel => &[Capability::Progression],
             Self::BuildPreview => &[Capability::Production, Capability::Navigation],
+            Self::UpgradeConflicts => &[Capability::Production, Capability::Stats],
             Self::Window
             | Self::LocalKeys
             | Self::Report
@@ -167,15 +181,19 @@ impl ClientModule {
             Self::Window
             | Self::ClientFiles
             | Self::View
+            | Self::ShotStandIns
             | Self::AreaView
             | Self::PlayerCamera
             | Self::UnitPicking
             | Self::UnitModels
             | Self::LookStates
+            | Self::WeaponClips
+            | Self::ProducerDoors
             | Self::TerrainView
             | Self::Fog
             | Self::Minimap
             | Self::Effects
+            | Self::DeathKeeps
             | Self::Sounds
             | Self::Hud
             | Self::Selecting
@@ -190,6 +208,7 @@ impl ClientModule {
             | Self::InventoryBar
             | Self::ActionNames
             | Self::CommandPanel
+            | Self::UpgradeConflicts
             | Self::BuildPreview => true,
         }
     }
@@ -298,6 +317,9 @@ impl ClientModule {
             Self::View => {
                 app.add_plugins(ViewPlugin);
             }
+            Self::ShotStandIns => {
+                app.add_plugins(ShotStandInsPlugin);
+            }
             Self::AreaView => {
                 app.add_plugins(AreaViewPlugin);
             }
@@ -319,6 +341,12 @@ impl ClientModule {
             Self::LookStates => {
                 app.add_plugins(LookStatesPlugin);
             }
+            Self::WeaponClips => {
+                app.add_plugins(WeaponClipsPlugin);
+            }
+            Self::ProducerDoors => {
+                app.add_plugins(ProducerDoorsPlugin);
+            }
             Self::TerrainView => {
                 app.add_plugins(TerrainViewPlugin);
             }
@@ -330,6 +358,9 @@ impl ClientModule {
             }
             Self::Effects => {
                 app.add_plugins(EffectsPlugin);
+            }
+            Self::DeathKeeps => {
+                app.add_plugins(DeathKeepsPlugin);
             }
             Self::Sounds => {
                 app.add_plugins(SoundsPlugin);
@@ -374,6 +405,9 @@ impl ClientModule {
             }
             Self::CommandPanel => {
                 app.add_plugins(CommandPanelPlugin);
+            }
+            Self::UpgradeConflicts => {
+                app.add_plugins(UpgradeConflictsPlugin);
             }
             Self::BuildPreview => {
                 app.add_plugins(BuildPreviewPlugin);
@@ -450,10 +484,11 @@ mod tests {
         ];
         assert_eq!(of(remote, &[]), core);
         // A local one adds its keys and the report chord, and a remote one that keeps a data
-        // directory the chord alone; production alone adds the gather and rally clicks, the
-        // panel and its names, and the preview only with navigation; items the shop, the
-        // inventory and their names; areas their discs; interaction the use click; progression
-        // the learn keys.
+        // directory the chord alone; production alone adds its doors' looks, the gather and
+        // rally clicks, the panel and its names, the preview only with navigation, and its
+        // upgrades' conflicts only with stats; combat its deaths' keeps and its weapons' clips,
+        // and the shots' stand-ins only with projectiles; items the shop, the inventory and their
+        // names; areas their discs; interaction the use click; progression the learn keys.
         let with = |extra: &[ClientModule], keeps: WindowKeeps| {
             let mut modules = core.to_vec();
             if keeps == WindowKeeps::Local {
@@ -470,6 +505,7 @@ mod tests {
         let kept = WindowKeeps::Remote;
         assert_eq!(of(kept, &[]), with(&[], kept));
         let panel = [
+            ClientModule::ProducerDoors,
             ClientModule::GatherClick,
             ClientModule::RallyClick,
             ClientModule::ActionNames,
@@ -479,6 +515,14 @@ mod tests {
         let built = [Capability::Production, Capability::Navigation];
         let preview = [&panel[..], &[ClientModule::BuildPreview]].concat();
         assert_eq!(of(remote, &built), with(&preview, remote));
+        let stats = [Capability::Production, Capability::Stats];
+        let conflicts = [&panel[..], &[ClientModule::UpgradeConflicts]].concat();
+        assert_eq!(of(remote, &stats), with(&conflicts, remote));
+        let combat = [ClientModule::WeaponClips, ClientModule::DeathKeeps];
+        assert_eq!(of(remote, &[Capability::Combat]), with(&combat, remote));
+        let shots = [Capability::Combat, Capability::Projectiles];
+        let stand_ins = [&combat[..], &[ClientModule::ShotStandIns]].concat();
+        assert_eq!(of(remote, &shots), with(&stand_ins, remote));
         let shop = [
             ClientModule::ItemNames,
             ClientModule::ShopPanel,

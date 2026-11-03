@@ -16,11 +16,10 @@ use bevy::time::{Fixed, Time};
 use bevy::transform::components::Transform;
 use campfire_actions::{ActionProgress, ActionSlots, SlotTimes};
 use campfire_client_files::{DoorStage, FireBarrel, SiteStage};
-use campfire_combat::{ClipShots, Weapon};
+use campfire_combat::ClipShots;
 use campfire_common::{Tick, Ticks};
-use campfire_declarations::ById;
 use campfire_math::Num;
-use campfire_production::{DoorPhase, DoorTimes, Doors, ProducerSpec, Site, SiteProgress, Sold};
+use campfire_production::{DoorPhase, DoorTimes, Doors, Site, SiteProgress, Sold};
 use campfire_sim::{Position, SimTick, Unpredicted};
 use campfire_units::{Dead, Destination, Life, Variation};
 use campfire_values::{ActionId, Team, UnitTags, UnitType};
@@ -32,11 +31,13 @@ use crate::view::look_clips::{ClipHidden, ClipPivot, ClipTiming, LookClips};
 use crate::view::look_states::draw_show::{ClipPose, ClipStep, DrawShow, Relacked, ShowCx};
 use crate::view::match_colors::Paint;
 use crate::view::model_scenes::ModelScenes;
+use crate::view::producer_doors::ProducerDoors;
 use crate::view::slot_shots::{AttackParts, ClipLack, SlotShots};
 use crate::view::unit_looks::{LookDraws, UnitFacts, UnitLooks};
 use crate::view::unit_models::DressSystems;
 use crate::view::unit_models::{Dressed, Replaces};
 use crate::view::view_dice::ViewDice;
+use crate::view::weapon_clips::WeaponClips;
 use crate::view::{DrawSystems, ViewSystems};
 
 pub(crate) mod draw_show;
@@ -150,19 +151,18 @@ type AttackQuery<'w, 's> = Query<
 >;
 
 /// What a pick reads beside the units: the app's time, the looks, the sim's tick, which an
-/// attack's phase and a door's stage read, and the book of weapons, none in a match of no combat.
+/// attack's phase and a door's stage read, and the weapons' clips.
 type PickReads<'w> = (
     Res<'w, Time>,
     Res<'w, UnitLooks>,
     Res<'w, SimTick>,
-    Option<Res<'w, ById<ActionId, Weapon>>>,
+    Res<'w, WeaponClips>,
 );
 
-/// What a producer's doors read: each producer's doors, and its type's door times, none in a match
-/// of no production.
+/// What a producer's doors read: each producer's doors, and its type's door times.
 type DoorReads<'w, 's> = (
     Query<'w, 's, (&'static Doors, &'static UnitType), Allow<Unpredicted>>,
-    Option<Res<'w, ById<UnitType, ProducerSpec>>>,
+    Res<'w, ProducerDoors>,
 );
 
 /// The players of the models' clips, each with its graph.
@@ -200,6 +200,8 @@ type ShowAssets<'w> = (
 impl Plugin for LookStatesPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LookClips>();
+        app.init_resource::<WeaponClips>();
+        app.init_resource::<ProducerDoors>();
         app.init_asset::<ClipTiming>();
         app.add_systems(
             Update,
@@ -302,10 +304,9 @@ impl LookStatesPlugin {
             let groups = looks.weapons(states.unit_type);
             let arms = armed.get(unit).ok();
             let attacking = arms.is_some_and(|(progress, ..)| progress.attack_target().is_some());
-            let attack = arms.zip(weapons.as_deref());
             lacks.clear();
-            let attacks = match attack {
-                Some(((progress, slots, times, clips), weapons)) if !groups.is_empty() => {
+            let attacks = match arms {
+                Some((progress, slots, times, clips)) if !groups.is_empty() => {
                     let at = tick.start();
                     if let Some(times) = times {
                         states.shots.see(times.iter().map(|time| time.ready_at), at);
@@ -315,7 +316,7 @@ impl LookStatesPlugin {
                         slots,
                         times,
                         clips,
-                        weapons,
+                        weapons: &weapons,
                         now: at,
                     };
                     Self::lacks(&parts, &states.shots, groups, &mut lacks);
@@ -335,10 +336,10 @@ impl LookStatesPlugin {
                 states.lacks.extend(rounds);
                 Relacked::Changed
             };
-            let door_times = doors.get(unit).ok().zip(producers.as_deref());
-            let door_times = door_times.and_then(|((doors, &unit_type), producers)| {
-                Some((doors, producers.get(unit_type)?.doors?))
-            });
+            let door_times = doors
+                .get(unit)
+                .ok()
+                .and_then(|(doors, &unit_type)| Some((doors, producers.of(unit_type)?)));
             let at = tick.start();
             let doors = door_times.map_or(0, |(doors, times)| Self::doors(doors, times, at));
             // A door's stage that time ends: its opening, its open time and its closing.

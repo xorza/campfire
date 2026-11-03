@@ -299,6 +299,11 @@ impl Weapon {
         self.clip.is_some()
     }
 
+    /// Its clip at each rank, by the rank's place, if it has one.
+    pub fn clip_rules(&self) -> Option<&[ClipRule]> {
+        self.clip.as_deref()
+    }
+
     /// The shots of its clip at `rank`, if it has one.
     pub fn clip_shots(&self, rank: Rank) -> Option<NonZeroU16> {
         Some(self.clip.as_ref()?[rank.index()].shots)

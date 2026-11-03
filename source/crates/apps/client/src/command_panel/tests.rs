@@ -14,7 +14,7 @@ use campfire_production::{
     BuildStart, NewBuild, Production, Queued, RallyTarget, SiteStart, Style,
 };
 use campfire_sim::{Capability, IdAllocator, UnitDues};
-use campfire_stats::TypeUpgrade;
+use campfire_stats::{TypeUpgrade, TypeUpgrades};
 use campfire_units::{BodyForm, BodyShape, GroundPoint, Layer, TypeOrigin};
 use campfire_values::{Names, PackageIndex, Rank, Share};
 
@@ -614,21 +614,34 @@ fn a_research_is_done_as_its_player_or_its_unit_from_itself_holds_it() {
     // player holds `drill`, the trigger of the upgrade it withholds; the player's `drill` and the
     // unit's, as the unit holds `walls`, which would withhold the upgrade `drill` buys; the
     // unit's `walls` is not, as the unit holds no `drill` from itself.
-    let upgrades = TypeUpgrades(Box::new([TypeUpgrade {
-        triggers: Box::new([drill]),
-        all: false,
-        conflicts: Box::new([walls]),
-        when: None,
-        below: None,
-        modifier: ModifierId::new(2),
-    }]));
+    let (tank, truck) = (UnitType::new(0), UnitType::new(1));
+    let mut book = ById::<UnitType, TypeUpgrades>::default().reopen();
+    book.set(
+        tank,
+        TypeUpgrades(Box::new([TypeUpgrade {
+            triggers: Box::new([drill]),
+            all: false,
+            conflicts: Box::new([walls]),
+            when: None,
+            below: None,
+            modifier: ModifierId::new(2),
+        }])),
+    );
+    let conflicts = UpgradeConflicts::of_book(&book.build());
     let held_back =
-        |making: Making| making.held_back(Some(&upgrades), |spec| done(Making::Research(spec)));
+        |making: Making| making.held_back(&conflicts, tank, |spec| done(Making::Research(spec)));
     assert!(held_back(research(walls, ResearchHolder::Player)));
     assert!(held_back(research(drill, ResearchHolder::Player)));
     assert!(held_back(research(drill, ResearchHolder::Producer)));
     assert!(!held_back(research(walls, ResearchHolder::Producer)));
     assert!(!held_back(Making::Train));
+    // A type of no upgrades holds back none, nor does a mode of no stats, of no conflicts.
+    let none = |conflicts: &UpgradeConflicts, unit_type| {
+        research(walls, ResearchHolder::Player)
+            .held_back(conflicts, unit_type, |spec| done(Making::Research(spec)))
+    };
+    assert!(!none(&conflicts, truck));
+    assert!(!none(&UpgradeConflicts::default(), tank));
 }
 
 #[test]

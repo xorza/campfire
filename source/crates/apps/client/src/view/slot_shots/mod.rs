@@ -2,10 +2,10 @@ use std::num::NonZeroU16;
 
 use campfire_actions::{ActionProgress, ActionSlots, InProgress, SlotTimes};
 use campfire_client_files::AttackPhase;
-use campfire_combat::{ClipShots, Weapon};
+use campfire_combat::ClipShots;
 use campfire_common::Tick;
-use campfire_declarations::ById;
-use campfire_values::ActionId;
+
+use crate::view::weapon_clips::WeaponClips;
 
 /// What a drawing keeps of its unit's slots between the frames that read them: each slot's ready
 /// tick as the client last saw it, and the tick the client saw it rise in, the tick of the slot's
@@ -18,14 +18,14 @@ pub(crate) struct SlotShots {
 }
 
 /// What an attack's phase reads of a unit at the tick `now`: its progress and its slots, its
-/// slots' times and its clips' shots where its client holds them, and the book of weapons.
+/// slots' times and its clips' shots where its client holds them, and the weapons' clips.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AttackParts<'a> {
     pub(crate) progress: &'a ActionProgress,
     pub(crate) slots: &'a ActionSlots,
     pub(crate) times: Option<&'a SlotTimes>,
     pub(crate) clips: Option<&'a ClipShots>,
-    pub(crate) weapons: &'a ById<ActionId, Weapon>,
+    pub(crate) weapons: &'a WeaponClips,
     pub(crate) now: Tick,
 }
 
@@ -83,15 +83,14 @@ impl AttackParts<'_> {
         let pre_attack = pre_attack.filter(|pre| pre.slot == slot && !pre.spent);
         let held = self.slots.slot(slot);
         let action = held.and_then(|held| held.action);
-        let weapon = action.and_then(|action| self.weapons.get(action));
-        let clipped = weapon.is_some_and(Weapon::has_clip);
+        let clipped = action.is_some_and(|action| self.weapons.has_clip(action));
         let full = action
             .zip(self.clips)
             .is_some_and(|(action, clips)| clips.is_full(action));
         let rank = held.and_then(|held| held.rank);
-        let clip_shots = weapon
+        let clip_shots = action
             .zip(rank)
-            .and_then(|(weapon, rank)| weapon.clip_shots(rank));
+            .and_then(|(action, rank)| self.weapons.shots(action, rank));
         let fired = action
             .zip(self.clips)
             .map_or(0, |(action, clips)| clips.fired(action));

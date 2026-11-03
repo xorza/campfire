@@ -126,6 +126,7 @@ fn a_type_plays_the_death_end_and_trail_its_look_names_of_those_the_book_holds()
         middle: Vec::new(),
         end: vec![blast],
         wrecks: [Vec::new(), Vec::new(), vec![vec![hulk]]],
+        kept: None,
     };
     assert_eq!(plays.deaths, BTreeMap::from([(bunker, bunker_death)]));
     assert_eq!(plays.ends, BTreeMap::from([(shell, blast)]));

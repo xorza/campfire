@@ -1,7 +1,6 @@
 use std::f32::consts::FRAC_PI_2;
 use std::num::NonZeroU32;
 
-use bevy::app::{App, FixedPostUpdate};
 use bevy::ecs::hierarchy::Children;
 use bevy::ecs::world::World;
 use bevy::math::Quat;
@@ -28,7 +27,7 @@ const SHELL: UnitType = UnitType::new(1);
 /// shooter's barrels at (1, 2, 0) and (2, 2, 0), each along `+x`; its weapon's id.
 fn view() -> (App, ActionId) {
     let mut app = test_app::view();
-    app.add_plugins(ViewPlugin);
+    app.add_plugins((ViewPlugin, ShotStandInsPlugin));
     app.init_resource::<MatchNames>();
     let fire = TestAction::new(
         ActionKind::Attack,
@@ -48,6 +47,8 @@ fn view() -> (App, ActionId) {
     let mut book = ByIdBuilder::default();
     book.set(SHOOTER, barrels);
     app.insert_resource(book.build());
+    // A shooter of no turret, as combat gives its book.
+    app.insert_resource(ById::<UnitType, Turret>::default());
     let rate = MatchRate::new(NonZeroU32::new(30).unwrap());
     let data = ProjectileData::flying(Num::int(30));
     let spec = ProjectileSpec::of(&data, &TagNames::default(), rate).unwrap();

@@ -22,8 +22,6 @@ use bevy::transform::components::Transform;
 use bevy::world_serialization::WorldAssetRoot;
 use campfire_actions::ActionProgress;
 use campfire_client_files::{TerrainFile, WreckGround};
-use campfire_combat::OnDeath;
-use campfire_declarations::ById;
 use campfire_host::ReceivedTick;
 use campfire_names::MatchNames;
 use campfire_projectiles::Projectile;
@@ -58,6 +56,7 @@ use crate::view::unit_models::DressSystems;
 use crate::view::{DrawSystems, ViewSystems};
 
 pub(crate) mod chassis_run;
+pub(crate) mod death_keeps;
 pub(crate) mod effect_book;
 pub(crate) mod effect_plays;
 pub(crate) mod fall_run;
@@ -114,13 +113,11 @@ struct Follower {
 }
 
 /// What a death's phases are played by: the drawn ground's heights, the app's clock, the match's
-/// rate, the time each type keeps its dead, which a match of no combat lacks, and the server's
-/// state the client holds.
+/// rate, and the server's state the client holds.
 type DeathTimes<'w> = (
     Option<Res<'w, GroundHeights>>,
     Res<'w, Time>,
     Res<'w, MatchRate>,
-    Option<Res<'w, ById<UnitType, OnDeath>>>,
     Res<'w, ReceivedTick>,
 );
 
@@ -450,7 +447,7 @@ impl MatchEffects {
     /// that stays, plays none again, and a unit that lives again plays no more of its death.
     fn play_deaths(
         effects: Option<ResMut<'_, Self>>,
-        (heights, time, rate, on_death, received): DeathTimes<'_>,
+        (heights, time, rate, received): DeathTimes<'_>,
         (mut deaths, mut revived): (ResMut<'_, SeenDeaths>, RemovedComponents<'_, '_, Dead>),
         (units, places): (
             Query<'_, '_, Has<Dead>, Allow<Unpredicted>>,
@@ -527,11 +524,7 @@ impl MatchEffects {
             if !later && plays.end.is_empty() && end_wrecks.is_empty() {
                 continue;
             }
-            let kept = on_death
-                .as_ref()
-                .and_then(|book| book.get(death.unit_type))
-                .and_then(|&on_death| on_death.kept(*rate));
-            let middle = kept.map(|ticks| {
+            let middle = plays.kept.map(|ticks| {
                 let ticks = u32::try_from(ticks.get()).expect("a keep's ticks fit a u32");
                 now + rate.length() * ticks / 2
             });

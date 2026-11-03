@@ -11,4 +11,3 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Ready
 
-- **Client.** Systems of client modules take combat's, projectiles', stats' and vision's parts as `Option`: the look states combat's weapons and production's producers (`view/look_states/mod.rs`), the shot stand-ins combat's barrels and turrets and projectiles' specs (`view/shot_stand_ins/mod.rs`), the effects combat's deaths (`view/effects/mod.rs`), the command panel stats' upgrades (`command_panel/mod.rs`), and the minimap and the ghosts the fog of vision's module (`view/minimap/mod.rs`, `view/ghost/mod.rs`), where 02-engine-core.md (A client module list) has each part a module of the capability it needs.

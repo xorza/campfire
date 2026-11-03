@@ -1,7 +1,9 @@
+use bevy::app::{App, FixedPostUpdate, Plugin, Update};
 use bevy::camera::visibility::Visibility;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::observer::On;
 use bevy::ecs::resource::Resource;
+use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Query, Res, ResMut};
 use bevy::math::Vec3;
 use bevy::transform::components::Transform;
@@ -21,7 +23,7 @@ use crate::view::float_num::FloatNum;
 use crate::view::glide::{Glide, Spot};
 use crate::view::map_metric::Lifts;
 use crate::view::shot_dress::ShotDress;
-use crate::view::{Heading, ground};
+use crate::view::{DrawSystems, Heading, ViewSystems, ground};
 
 /// The ticks a stand-in's tick and the tick of the state its server's projectile arrives with may
 /// lie apart: a frame may bring several states, whose newest the client takes for its
@@ -49,14 +51,31 @@ struct StandIn {
 }
 
 /// The books a stand-in's launch reads: the actions, and the barrels, turrets and projectiles of
-/// the unit types, which a match of no combat or no projectiles lacks.
+/// the unit types.
 type LaunchBooks<'w> = (
     Res<'w, ActionBook>,
-    Option<Res<'w, ById<UnitType, Barrels>>>,
-    Option<Res<'w, ById<UnitType, Turret>>>,
-    Option<Res<'w, ById<UnitType, ProjectileSpec>>>,
+    Res<'w, ById<UnitType, Barrels>>,
+    Res<'w, ById<UnitType, Turret>>,
+    Res<'w, ById<UnitType, ProjectileSpec>>,
     Res<'w, MapBook>,
 );
+
+/// Combat's and projectiles' part of the view: the stand-ins of the client's own units' shots,
+/// which the view's projectiles take the place of (02-engine-core.md, A predicted shot draws a
+/// stand-in; 02-engine-core.md, A client module list).
+#[derive(Debug)]
+pub(crate) struct ShotStandInsPlugin;
+
+impl Plugin for ShotStandInsPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(FixedPostUpdate, ShotStandIns::step);
+        app.add_systems(
+            Update,
+            ShotStandIns::expire.after(DrawSystems).in_set(ViewSystems),
+        );
+        app.add_observer(ShotStandIns::place);
+    }
+}
 
 /// The units the client predicts, which alone fire shots ahead of the server's, with what their
 /// shots' launches read.
@@ -80,7 +99,7 @@ impl ShotStandIns {
     /// along the barrel's way, which it flies at its type's launch speed. A unit the client only
     /// receives fires no shot ahead of the server's, and a shot of no projectile or no barrel
     /// draws none.
-    pub(crate) fn place(
+    fn place(
         seen: On<'_, '_, ShotSeen>,
         (actions, barrels, turrets, specs, map): LaunchBooks<'_>,
         lifts: Lifts<'_>,
@@ -104,11 +123,11 @@ impl ShotStandIns {
             .expect("a slot's action is in the book")
             .delivery
             .map(|delivery| delivery.unit_type);
-        let speed = projectile.zip(specs).and_then(|(projectile, specs)| {
+        let speed = projectile.and_then(|projectile| {
             let spec = specs.get(projectile)?;
             Some((projectile, spec.launch_speed()))
         });
-        let barrels = barrels.as_ref().and_then(|barrels| barrels.get(shooter));
+        let barrels = barrels.get(shooter);
         let (Some((projectile, speed)), Some(barrels)) = (speed, barrels) else {
             return;
         };
@@ -116,7 +135,7 @@ impl ShotStandIns {
             return;
         };
         let shot = ShotSource {
-            turret: turrets.as_ref().and_then(|turrets| turrets.get(shooter)),
+            turret: turrets.get(shooter),
             slots,
             aim: aim.copied(),
             facing: facing.copied(),
@@ -154,7 +173,7 @@ impl ShotStandIns {
 
     /// Moves each stand-in to its place after the tick, along its way by its steps since it
     /// left, in every tick the client runs, as a predicted unit's drawing steps.
-    pub(crate) fn step(
+    fn step(
         stand_ins: Res<'_, Self>,
         tick: Res<'_, SimTick>,
         mut roots: Query<'_, '_, &mut Glide>,
@@ -175,7 +194,7 @@ impl ShotStandIns {
     /// by more than `SLACK` arrived, and no projectile took its place; and every one while the
     /// client holds no state, as it left its match or loads it again, whose server sends no
     /// projectile of a shot before.
-    pub(crate) fn expire(
+    fn expire(
         mut stand_ins: ResMut<'_, Self>,
         received: Res<'_, ReceivedTick>,
         mut commands: Commands<'_, '_>,

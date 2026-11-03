@@ -76,6 +76,7 @@ pub(crate) mod node_mask;
 pub(crate) mod package_source;
 pub(crate) mod pixel_scale;
 pub(crate) mod player_camera;
+pub(crate) mod producer_doors;
 pub(crate) mod scene_lights;
 pub(crate) mod shot_dress;
 pub(crate) mod shot_frame;
@@ -89,6 +90,7 @@ pub(crate) mod unit_looks;
 pub(crate) mod unit_models;
 pub(crate) mod view_console;
 pub(crate) mod view_dice;
+pub(crate) mod weapon_clips;
 
 /// Draws the match: the map's lights, its ground as a plane over its bounds where no terrain draws
 /// it, a capsule for every unit the client holds, colored by team, a projectile's models turned
@@ -232,7 +234,7 @@ impl Plugin for ViewPlugin {
         app.init_resource::<ModelScenes>();
         app.init_resource::<ShotStandIns>();
         app.add_systems(Startup, Self::set_scene);
-        app.add_systems(FixedPostUpdate, (Self::step, ShotStandIns::step));
+        app.add_systems(FixedPostUpdate, Self::step);
         app.configure_sets(Update, DrawSystems.in_set(ViewSystems));
         app.add_systems(
             Update,
@@ -243,7 +245,6 @@ impl Plugin for ViewPlugin {
         app.add_systems(
             Update,
             (
-                ShotStandIns::expire,
                 Self::mourn,
                 Self::follow,
                 Self::head_shots,
@@ -257,7 +258,6 @@ impl Plugin for ViewPlugin {
         app.add_observer(Self::show_end);
         app.add_observer(Self::hide);
         app.add_observer(Self::unhide);
-        app.add_observer(ShotStandIns::place);
         app.add_observer(Ghost::leave);
         app.add_systems(Update, (Ghost::forget_dying, Ghost::clear));
     }

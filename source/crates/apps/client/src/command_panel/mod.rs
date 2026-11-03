@@ -49,12 +49,13 @@ use campfire_production::{
     SellSpec, Site, SiteProgress, TrainQueue, TrainSpec,
 };
 use campfire_sim::{EntityIndex, MatchRate, SimTick, StableId, Unpredicted};
-use campfire_stats::{Modifiers, TypeUpgrades};
+use campfire_stats::Modifiers;
 use campfire_units::{Dead, Owner, TypeOriginBook};
 use campfire_values::{ActionId, ModifierId, NameId, ResourceId, TagSet, UnitTags, UnitType};
 
 use crate::command_panel::aimed_command::AimedCommand;
 use crate::command_panel::panel_looks::{CellFace, LookSources, PanelLooks, PlacedButton};
+use crate::command_panel::upgrade_conflicts::UpgradeConflicts;
 use crate::engine_text::{EngineMessage, EngineText};
 use crate::input_map::{Act, InputMap};
 use crate::input_mode::InputMode;
@@ -73,6 +74,7 @@ use crate::view::unit_looks::UnitLooks;
 
 mod aimed_command;
 mod panel_looks;
+pub(crate) mod upgrade_conflicts;
 
 /// The command panel (02-engine-core.md, A command panel from the actions; 02-engine-core.md, A key
 /// presses a shown button; 02-engine-core.md, A tooltip tells what an icon hides;
@@ -246,7 +248,7 @@ type PanelNodes<'w, 's> = (
 );
 
 /// The books the panel reads: production's actions, builds, researches and sales, the actions'
-/// names, production's trains, and the unit types' upgrades, none in a mode of no stats.
+/// names, production's trains, and the conflicts of the unit types' upgrades.
 type PanelBooks<'w> = (
     Res<'w, ActionBook>,
     Res<'w, BuildBook>,
@@ -254,7 +256,7 @@ type PanelBooks<'w> = (
     Res<'w, ById<UnitType, SellSpec>>,
     Res<'w, NameTexts<ActionId>>,
     Res<'w, ById<ActionId, TrainSpec>>,
-    Option<Res<'w, ById<UnitType, TypeUpgrades>>>,
+    Res<'w, UpgradeConflicts>,
 );
 
 /// The units the panel may show: each one's player, type, slots, train queue, site and its
@@ -335,6 +337,7 @@ impl Plugin for CommandPanelPlugin {
         app.init_resource::<Shown>();
         app.init_resource::<Hovered>();
         app.init_resource::<Pressable>();
+        app.init_resource::<UpgradeConflicts>();
         app.add_systems(
             Startup,
             (Self::set_up, Self::load_looks, Self::spawn).chain(),
@@ -424,7 +427,7 @@ impl CommandPanelPlugin {
             PanelUnits<'_, '_>,
             RiderTypes<'_, '_>,
         ),
-        (book, builds, researches, sales, names, trains, upgrades): PanelBooks<'_>,
+        (book, builds, researches, sales, names, trains, conflicts): PanelBooks<'_>,
         (looks, hovered, mut pressable): (
             Res<'_, PanelLooks>,
             Res<'_, Hovered>,
@@ -498,9 +501,6 @@ impl CommandPanelPlugin {
         else {
             return;
         };
-        let upgrades = upgrades
-            .as_deref()
-            .and_then(|upgrades| upgrades.get(unit_type));
         let now = tick.start();
         line.clear();
         for (at, &resource) in setup.resources.iter().enumerate() {
@@ -556,7 +556,7 @@ impl CommandPanelPlugin {
             let Does::Action { making, .. } = button.does else {
                 return false;
             };
-            making.held_back(upgrades, |spec| {
+            making.held_back(&conflicts, unit_type, |spec| {
                 let queued = queue.is_some_and(|queue| {
                     let mut entries = queue.entries().iter();
                     entries.any(|entry| researches.get(entry.action) == Some(&spec))
@@ -1170,32 +1170,31 @@ impl Making {
         }
     }
 
-    /// Whether it is a research an upgrade's conflict holds back, by `upgrades`, its unit's type's,
-    /// as the server refuses it: an upgrade it withholds whose trigger `held` says its holder holds
-    /// or queues, or an upgrade it triggers whose conflict `held` says either holder holds or
-    /// queues, as the upgrade reads the player's modifiers and the unit's alike
+    /// Whether it is a research an upgrade's conflict holds back, by `conflicts`, of its unit's
+    /// type `unit_type`, as the server refuses it: an upgrade it withholds whose trigger `held`
+    /// says its holder holds or queues, or an upgrade it triggers whose conflict `held` says either
+    /// holder holds or queues, as the upgrade reads the player's modifiers and the unit's alike
     /// (riders-and-upgrades.md, A conflicting upgrade is refused).
     fn held_back(
         self,
-        upgrades: Option<&TypeUpgrades>,
+        conflicts: &UpgradeConflicts,
+        unit_type: UnitType,
         held: impl Fn(ResearchSpec) -> bool,
     ) -> bool {
         let Self::Research(spec) = self else {
             return false;
         };
-        let mut withheld = upgrades
-            .into_iter()
-            .flat_map(|upgrades| upgrades.withheld(spec.modifier));
-        let mut withholding = upgrades
-            .into_iter()
-            .flat_map(|upgrades| upgrades.withholding(spec.modifier));
+        let Some(conflict) = conflicts.of(unit_type, spec.modifier) else {
+            return false;
+        };
         let holders = [ResearchHolder::Player, ResearchHolder::Producer];
-        withheld.any(|modifier| held(ResearchSpec { modifier, ..spec }))
-            || withholding.any(|modifier| {
-                holders
-                    .into_iter()
-                    .any(|holder| held(ResearchSpec { modifier, holder }))
-            })
+        let withheld = |&modifier: &ModifierId| held(ResearchSpec { modifier, ..spec });
+        let withholding = |&modifier: &ModifierId| {
+            holders
+                .into_iter()
+                .any(|holder| held(ResearchSpec { modifier, holder }))
+        };
+        conflict.withheld.iter().any(withheld) || conflict.withholding.iter().any(withholding)
     }
 
     /// A cast's button, while its unit's `tags` pass its action's `when`; none, hidden, while

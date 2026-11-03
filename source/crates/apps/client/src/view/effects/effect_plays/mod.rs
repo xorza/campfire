@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_client_files::ClientUnits;
+use campfire_common::Ticks;
 use campfire_names::MatchNames;
 use campfire_units::TypeOriginBook;
 use campfire_values::{ActionId, PackageIndex, PackagePath, UnitType};
@@ -33,13 +34,15 @@ pub(crate) struct EffectPlays {
 /// The lists a type's death plays, of those the book holds: as its unit dies, at the middle of its
 /// keep, and as it goes (02-engine-core.md, A death plays its phases); and the wrecks each of those
 /// phases throws, of each one list drawn at random (02-engine-core.md, A death names its wrecks by
-/// phase).
+/// phase); and the ticks its type keeps its dead, none until combat's part of the client gives
+/// them, and in a mode of no combat.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct DeathPlays {
     pub(crate) start: Vec<ListId>,
     pub(crate) middle: Vec<ListId>,
     pub(crate) end: Vec<ListId>,
     pub(crate) wrecks: [Vec<Vec<WreckPlay>>; 3],
+    pub(crate) kept: Option<Ticks>,
 }
 
 /// What a type's treads play (02-engine-core.md, A tread throws dust while it drives;
@@ -99,6 +102,7 @@ impl EffectPlays {
                     throws(&wrecks.middle),
                     throws(&wrecks.end),
                 ],
+                kept: None,
             };
             if death != DeathPlays::default() {
                 plays.deaths.insert(unit_type, death);
