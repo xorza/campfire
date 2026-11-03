@@ -364,3 +364,60 @@ change tried alone.
 - **A mover that stands counted stuck stalls the bases play.** Counting a stuck tick for each
   tick a mover of a speed of 0 comes no nearer its waypoint, as one that turns where it stands
   does, the bases play stalled 953 times, from 188.
+
+## What Zero Hour counts stuck, read 3 November 2026
+
+From the released source, as [GeneralsX](https://github.com/fbraz3/GeneralsX) builds it.
+
+- **A mover is stuck by its block alone.** No move state of `AIStates.cpp` measures a mover's
+  progress toward its path: `AIInternalMoveToState::update` plans its path again only when its
+  AI is blocked and stuck, or blocked more than `2 × LOGICFRAMES_PER_SECOND` frames
+  (`AIStates.cpp:1834-1840`), and the approach, tighten and attack states only when it is
+  blocked and stuck (`AIStates.cpp:2182`, `2281`, `2435`, `2872`).
+- **Blocked and stuck is a block by a unit that stands, the mover facing its path.**
+  `processCollision` sets `m_isBlockedAndStuck` when a mover that `blockedBy` holds blocked needs
+  no rotation, `needToRotate` finding its path's point within `PI / 30` of its facing, and the
+  unit that blocks it does not move (`AIUpdate.cpp:1505-1516`, `needToRotate`).
+- **A turn keeps the block's count at one.** A blocked mover that needs to rotate sets
+  `m_blockedFrames` to 1, so it never counts the 2 s; a blocked mover facing its path counts on,
+  one frame each `doLocomotor` its collision held it blocked; a frame it drives free of its
+  brake, its locomotor clearing `blocked` as its speed is below the brake's, sets the count to 1,
+  and a frame no collision blocks it sets it to 0 (`AIUpdate.cpp:1541`, `2138-2149`, `2292-2295`).
+- **A new path ends the block.** A path planned for a blocked and stuck mover sets its count to 0
+  and clears its flags (`AIUpdate.cpp:509-513`, `1752-1766`).
+
+## Why the bump limit stalls this engine, 2026-11-03
+
+- **The stalls end once a mover that stands counts stuck.** With the bump limit alone, the entry
+  play's Helix was never boarded; with the limit and a mover of a speed of 0 counted stuck once
+  it comes no nearer, every play ended, the boarding in 918 ticks (2026-11-03). This engine
+  counts a Zero Hour mover stuck by its progress at its speed, so one the limit slows to 0 counts
+  no stuck tick, where Zero Hour counts it stuck by its block.
+- **Counting a mover of a speed of 0 stuck counts its turns too.** The run that counted such a
+  mover stuck, its bases play stalling 953 times, counted each turn where a mover stands, which
+  Zero Hour's `needToRotate` exempts.
+
+## The Zero Hour check with a mover stuck by its block, measured, 2026-11-03
+
+The check before and after a Zero Hour mover asks its route again once a unit it touches that
+stands holds it as it faces its waypoint, or once a unit holds it more than 2 s, a turn or a
+tick slower than its brake counting as its first (entries-and-blocking.md, A Zero Hour mover is
+stuck by its block); a mover whose route waits for the planner faces no waypoint, as
+`needToRotate` holds it to rotate then.
+
+| Play | Before | After |
+| --- | --- | --- |
+| Bases: end, stalls | tick 9,113, 188 | tick 10,257, 640 |
+| Attack: end, stalls | tick 14,103, 59 | tick 14,750, 78 |
+| Entry: Helix, bunker | 412, 789 | 456, 975 |
+
+- **Stuck samples.** Probed each second, the bases play holds 759 samples of a stuck unit, from
+  531, over its 10,257 ticks, from 9,113.
+- **Its asks count toward the walker's last.** Measured before a waiting route faced no
+  waypoint: with an ask of a block left out of the asks a
+  walker makes before it stops, as Zero Hour's mover never stops asking, the bases play stalled
+  9,257 times.
+- **The bump limit still stalls.** Measured before a waiting route faced no waypoint: with the
+  bump limit on a touch over this rule, the combat
+  play's first attack and the garrison never came within the plays' limits, and the bases play
+  ended in tick 14,533 with 613 stalls.

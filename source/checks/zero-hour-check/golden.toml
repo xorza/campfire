@@ -184,8 +184,8 @@ evacuated = 9
 [entry]
 out = 57
 crawler = 60
-helix = 412
-bunker = 789
+helix = 456
+bunker = 975
 
 [garrison]
 garrisoned = 946
@@ -219,12 +219,12 @@ built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 517
 
 [base]
-ended = 9113
+ended = 10257
 standing = [0, 9]
 ranks = [2, 5]
 perks = [3, 8]
-think_ops = 22969
-stalls = 188
+think_ops = 19296
+stalls = 640
 
 [base.result]
 Won = 1
@@ -280,17 +280,17 @@ no_build = 0
 unusable = 0
 
 [base.sight]
-seen = [3506, 3880]
+seen = [3169, 4746]
 explored = [0, 0]
 words = 91
 
 [attack]
-ended = 14103
+ended = 14750
 standing = [4, 0]
 ranks = [1, 1]
 perks = [2, 2]
 think_ops = 9444
-stalls = 59
+stalls = 78
 
 [attack.result]
 Won = 0
@@ -346,6 +346,6 @@ no_build = 0
 unusable = 0
 
 [attack.sight]
-seen = [5975, 421]
+seen = [6299, 620]
 explored = [0, 0]
 words = 91

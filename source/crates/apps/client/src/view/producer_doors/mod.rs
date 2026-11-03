@@ -46,37 +46,4 @@ impl ProducerDoorsPlugin {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::num::NonZeroU8;
-
-    use campfire_common::Ticks;
-
-    use super::*;
-
-    #[test]
-    fn a_producer_gives_its_door_times_and_one_of_no_doors_none() {
-        let doors = DoorTimes {
-            count: 2,
-            opening: Ticks::new(3),
-            open: Ticks::new(4),
-            closing: Ticks::new(5),
-        };
-        let producer = |doors| ProducerSpec {
-            queue: NonZeroU8::MIN,
-            exit: None,
-            rally: None,
-            gathers: false,
-            free: Box::new([]),
-            places: Box::new([]),
-            doors,
-        };
-        let (garage, barracks, tree) = (UnitType::new(0), UnitType::new(1), UnitType::new(2));
-        let mut book = ById::<UnitType, ProducerSpec>::default().reopen();
-        book.set(garage, producer(Some(doors)));
-        book.set(barracks, producer(None));
-        let found = ProducerDoors::of_producers(&book.build());
-        assert_eq!(found.of(garage), Some(doors));
-        assert_eq!(found.of(barracks), None);
-        assert_eq!(found.of(tree), None);
-    }
-}
+mod tests;

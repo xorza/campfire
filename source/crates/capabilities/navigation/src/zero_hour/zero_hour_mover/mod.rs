@@ -148,21 +148,21 @@ impl ZeroHourMover {
     /// else its appearance's mover turns it and gives its push along its facing, and a mover that
     /// braked as its last tick ended lands toward its goal. Then its velocity gains the push and
     /// loses its lateral friction, and moves it unless it brakes. A wheel's arc ahead lies on
-    /// cells `open` lets it stand in.
+    /// cells `open` lets it stand in. Whether its brake held it.
     pub(crate) fn drive(
         &self,
         steer: Steer,
         stance: &mut Stance,
         drive: &mut ZeroHourDrive,
         open: impl Fn(Vec3) -> bool,
-    ) {
+    ) -> bool {
         drive.donut = drive.donut.saturating_add(1).min(self.donut_past());
         if self.corrects
             && !open(stance.at)
             && let Some(correction) = Self::correction(stance.at, drive.velocity, &open)
         {
             self.integrate(stance, drive, correction);
-            return;
+            return false;
         }
         let stop_at_speed = (steer.top / self.braking) * steer.top / 2;
         if steer.on_path > CELL && steer.on_path > stop_at_speed {
@@ -171,7 +171,7 @@ impl ZeroHourMover {
         }
         if steer.speed < steer.top && drive.speed() >= steer.speed {
             self.hold(steer, stance, drive);
-            return;
+            return true;
         }
         let before = stance.at;
         let braked = drive.braked;
@@ -196,6 +196,7 @@ impl ZeroHourMover {
         }
         let [cos, minus_sin] = stance.facing.way();
         self.integrate(stance, drive, [push * cos, push * minus_sin]);
+        false
     }
 
     /// Holds a mover a brake holds below its top speed, as `locoUpdate_moveTowardsPosition` holds

@@ -26,13 +26,13 @@ impl ZeroHourDriver<'_> {
     /// waypoint, with the length left along the route as its distance to its goal, then past each
     /// waypoint but the last it comes within its step of. Within its close enough distance of the
     /// route's end, it has arrived, and stands on the end, where Zero Hour's stops where it stands.
-    /// With no waypoint, as its route waits for the planner, it stands.
+    /// With no waypoint, as its route waits for the planner, it stands. Whether its brake held it.
     pub(crate) fn follow(
         &mut self,
         route: &mut RouteMutItem<'_, '_>,
         progress: &mut Progress,
         open: impl Fn(Vec3) -> bool,
-    ) {
+    ) -> bool {
         let Self {
             mover,
             speed,
@@ -44,7 +44,7 @@ impl ZeroHourDriver<'_> {
         } = self;
         let ahead = route.read().ahead();
         let (Some(&next), Some(&end)) = (ahead.first(), ahead.last()) else {
-            return;
+            return false;
         };
         let on_path = ahead
             .windows(2)
@@ -57,7 +57,7 @@ impl ZeroHourDriver<'_> {
             }
             progress.restart();
             stance.at = Vec3::new(end.x, stance.at.y, end.z);
-            return;
+            return false;
         }
         let steer = Steer {
             speed: *speed,
@@ -69,12 +69,13 @@ impl ZeroHourDriver<'_> {
             goal: next,
             on_path,
         };
-        mover.drive(steer, stance, state, open);
+        let held = mover.drive(steer, stance, state, open);
         while let [waypoint, _, ..] = route.read().ahead()
             && stance.at.within_ground(*waypoint, *speed)
         {
             route.advance();
             progress.restart();
         }
+        held
     }
 }

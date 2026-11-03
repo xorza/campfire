@@ -122,6 +122,10 @@ type Steerers<'w, 's> = Query<
 pub struct Walking;
 
 impl Walking {
+    /// The turn in degrees within which a Zero Hour mover faces its waypoint, `PI / 30`, as
+    /// `needToRotate` reads it.
+    const NO_TURN: Num = Num::int(6);
+
     /// Steers each walker round the units in their way, as `Steering::steer` says, in stable-id
     /// order, with the work the planner has left this tick; once it has none, the rest keep their
     /// routes, and steer again in a later tick. A walker is stuck once it has come no half a step,
@@ -229,6 +233,13 @@ impl Walking {
                 _ => stepped,
             };
             let stuck_for = progress.track(at.get(), route.read().ahead()[0], pace);
+            // A Zero Hour mover its block holds stuck, or holds past its time, asks its route
+            // again (entries-and-blocking.md, A Zero Hour mover is stuck by its block).
+            let stuck_for = if progress.blocked_out(*rate) {
+                stuck_for.max(ask_ticks)
+            } else {
+                stuck_for
+            };
             // A flier steers in the plane of its route, as it walks (04-capabilities/navigation.md,
             // A flier walks in the plane).
             let position = at.get();
@@ -636,6 +647,17 @@ impl Walking {
                 MovementModel::ZeroHour(mover) => {
                     let mut drive =
                         drive.expect("a walker of a Zero Hour locomotor carries its drive");
+                    // It faces its waypoint where it needs no turn to it, as `needToRotate` reads
+                    // its path's point within `PI / 30`, and never while its route waits for the
+                    // planner, as a new path will probably require rotation
+                    // (entries-and-blocking.md, A Zero Hour mover is stuck by its block).
+                    let faces = route.asked().is_none()
+                        && route.read().ahead().first().is_none_or(|&next| {
+                            let off = at.ground_offset(next);
+                            Facing::along([off.x, off.z])
+                                .is_none_or(|way| facing.turn_to(way).abs() <= Self::NO_TURN)
+                        });
+                    let touch = brake.and_then(|(brake, _)| brake.touch);
                     let clearance = grid
                         .as_deref()
                         .map(|grid| grid.clearance(Walker::walking(body)));
@@ -651,9 +673,13 @@ impl Walking {
                         },
                         state: *drive,
                     };
-                    driver.follow(&mut route, &mut progress, |point| {
+                    let held = driver.follow(&mut route, &mut progress, |point| {
                         clearance.is_none_or(|clearance| !clearance.walled_at(point))
                     });
+                    // A walk that ended this tick leaves no block for the next.
+                    if !route.read().ahead().is_empty() {
+                        progress.block(touch, faces, held);
+                    }
                     let ZeroHourDriver { stance, state, .. } = driver;
                     drive.set_if_neq(state);
                     facing.set_if_neq(stance.facing);

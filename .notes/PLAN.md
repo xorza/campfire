@@ -22,6 +22,8 @@ It stands last, as the player's check is of the whole slice.
 - [x] A player of Tournament Desert as China against the America builder bot does what the design's last check says, in the client, but for the cannon's flashes.
 - [ ] The cannon's flashes show only as it fires, and its shots play at its own barrels, in the client; then the slice's decisions fold into `04-capabilities/actions.md`, `04-capabilities/interaction.md`, `04-capabilities/production.md`, `04-capabilities/navigation.md` and `09-zero-hour.md`, its losses into `09-zero-hour.md`'s, and `riders-and-upgrades.md` goes.
 
+## Foundations
+
 ## Changed
 
 - **A flier lands where Zero Hour's transport lands.** A flier that lands for its riders takes the first point of rings about where it hovers that a circle of the mode's probe clears, then the first cell of the mode's spiral about it that its body clears, read from the mode's new `[navigation.landing]`, which the Zero Hour rules set to a probe of 5, rings 5 apart and 400 cells; it finds the point once and holds it in the new flight goal `LandAt`, so a rider that walks under it moves it no more, which raised the snapshot's data version to 102. China's Helix at its base start lands 25 from its airfield, where it landed 245 away: the entry play's Helix boarding takes 767 ticks, from 837, and the bunker's 743, from 75, as the 3 soldiers the Helix leaves now walk 230 to the Overlord; the rules' fingerprint moved, and no other play.

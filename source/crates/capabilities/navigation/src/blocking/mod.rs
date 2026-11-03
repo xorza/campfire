@@ -47,12 +47,22 @@ pub(crate) struct Going {
     pub(crate) leg: Option<Num>,
 }
 
-/// What blocks a walker this tick: the longest step it may take, none when nothing blocks it, and,
-/// when it steps aside for one that blocks it head on, how far: the two radii.
+/// What blocks a walker this tick: the longest step it may take, none when nothing blocks it;
+/// when it steps aside for one that blocks it head on, how far: the two radii; and how a unit
+/// that blocks it touches it, if one does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Brake {
     pub(crate) step: Option<Num>,
     pub(crate) aside: Option<Num>,
+    pub(crate) touch: Option<Touch>,
+}
+
+/// A walker's touch of the units that block it, as Zero Hour's `blocked` flag comes of a
+/// collision: whether one it touches stands, a block that holds a Zero Hour mover stuck
+/// (`AIUpdateInterface::processCollision`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Touch {
+    pub(crate) stands: bool,
 }
 
 /// How a unit lies along a walker's way: how far ahead, and how far to the side, in bits.
@@ -120,6 +130,7 @@ impl Blocking {
         let mut brake = Brake {
             step: None,
             aside: None,
+            touch: None,
         };
         let Ok(at) = self.units.binary_search_by_key(&id, |unit| unit.id) else {
             return brake;
@@ -165,6 +176,13 @@ impl Blocking {
                 let allowed = (touch + ahead).clamp(0, full);
                 let allowed = Num::from_bits(i64::try_from(allowed).expect("within a step"));
                 brake.step = Some(brake.step.map_or(allowed, |step| step.min(allowed)));
+                // A walker braked to touch a unit ends touching it or a bit apart, as its step
+                // rounds toward it.
+                if touch <= 1 {
+                    let stands =
+                        unit.way.is_none() || brake.touch.is_some_and(|touch| touch.stands);
+                    brake.touch = Some(Touch { stands });
+                }
                 let yields = unit.weight > walker.weight
                     || (unit.weight == walker.weight && unit.id < walker.id);
                 if allowed == Num::ZERO && yields && Self::head_on(&walker, &unit) {
