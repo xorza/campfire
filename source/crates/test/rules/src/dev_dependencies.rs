@@ -120,6 +120,10 @@ pub(crate) fn a_dev_dependency_adds_only_test_support(workspace: &Workspace) {
     let manifests = workspace.crates();
     assert_eq!(dev_dependency_problems(manifests), Vec::<String>::new());
     assert_eq!(stale_past_entries(manifests), Vec::<String>::new());
+}
+
+#[test]
+fn each_dev_dependency_problem_is_found() {
     // `a` dev-depends on itself, on `b`, which its build holds through `c` with `c`'s `internals`,
     // on `e`, which `b`'s `internals` turns on through `c`'s weak entry, written before the entry
     // that turns `b` on, on `t`, a test crate, on `campfire-store`, `proptest` and `bevy`, and on

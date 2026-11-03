@@ -307,7 +307,7 @@ fn a_bot_reads_only_the_units_its_team_sees_and_of_them_what_its_player_slots_cl
             ApiError::Unreceived(DataKind::UnitStateOwner),
         ),
         (
-            "other.spawn_pos",
+            "other.spawn_position",
             ApiError::Unreceived(DataKind::Prediction),
         ),
         (

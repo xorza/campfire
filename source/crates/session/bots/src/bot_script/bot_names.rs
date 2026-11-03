@@ -5,7 +5,7 @@ use campfire_capabilities::{
     Books, GroundLocation, Location, MarkerLocation, NamedRefs, NearLocation,
 };
 use campfire_common::DeclaredName;
-use campfire_geometry::{Bounds, GridSearch};
+use campfire_geometry::{Bounds, GridReach, GridReachError};
 use campfire_items::ItemBook;
 use campfire_math::{Num, Vec3};
 use campfire_mode::{InputBook, InputType, MarkerSpec};
@@ -160,16 +160,13 @@ impl RefMap<NamedRefs, Loaded> for LoadRefs<'_, '_> {
             GroundLocation::At(at) => return Ok(LoadedPlace::At(self.ground(at)?)),
             GroundLocation::Near(near) => near,
         };
-        if gap <= Num::ZERO {
-            return Err(BotScriptError::NearGap(gap));
-        }
-        if steps > GridSearch::MAX_STEPS {
-            return Err(BotScriptError::NearSteps(steps));
-        }
+        let reach = GridReach::new(gap, steps).map_err(|refused| match refused {
+            GridReachError::Gap(gap) => BotScriptError::NearGap(gap),
+            GridReachError::Steps(steps) => BotScriptError::NearSteps(steps),
+        })?;
         Ok(LoadedPlace::Near {
             near: self.ground(near)?,
-            gap,
-            steps,
+            reach,
         })
     }
 

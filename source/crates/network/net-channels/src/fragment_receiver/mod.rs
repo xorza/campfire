@@ -1,5 +1,6 @@
 //! Fragment validation and reassembly for channel receives.
-use bevy_platform::collections::HashMap;
+use std::collections::BTreeMap;
+
 use bytes::Bytes;
 use campfire_net_core::Instant;
 use campfire_net_core::NetTick;
@@ -18,7 +19,9 @@ use tracing::trace;
 /// receiver learns each message's fragment size from its fragments).
 #[derive(Debug)]
 pub(crate) struct FragmentReceiver {
-    fragment_messages: HashMap<MessageId, FragmentConstructor>,
+    /// By the raw id, in a tree: the peer picks the ids, and a tree keeps a search a logarithm
+    /// of them for any keys, as `Admission`'s does, which a hashed map with a fixed seed does not.
+    fragment_messages: BTreeMap<u16, FragmentConstructor>,
     /// The bytes the partial messages hold, as charged to the receive budget.
     held: usize,
 }
@@ -57,9 +60,9 @@ pub(crate) enum FragmentOutcome {
 }
 
 impl FragmentReceiver {
-    pub(crate) fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
-            fragment_messages: HashMap::default(),
+            fragment_messages: BTreeMap::new(),
             held: 0,
         }
     }
@@ -84,21 +87,34 @@ impl FragmentReceiver {
         });
     }
 
-    /// Drops the partial messages older than `newest`, which a sequenced channel never delivers.
+    /// Drops the partial messages older than `newest`, which a sequenced channel never delivers:
+    /// the half of the id space before it, as the wrapping distance orders them, which is one or
+    /// two ranges of the raw ids.
     pub(crate) fn discard_older_than(&mut self, newest: MessageId) {
-        let held = &mut self.held;
-        self.fragment_messages.retain(|&id, constructor| {
-            let keep = id - newest >= 0;
-            if !keep {
-                *held -= constructor.charged;
-            }
-            keep
-        });
+        const HALF: u16 = 1 << 15;
+        let newest = newest.0;
+        let mut kept = self.fragment_messages.split_off(&newest);
+        // The ids from `newest` up to the half past it are newer; past the half, older.
+        if let Some(past_half) = newest.checked_add(HALF) {
+            let older = kept.split_off(&past_half);
+            self.fragment_messages.extend(older);
+        } else {
+            // The newer half wraps past `u16::MAX`: its rest is the low ids below the half's end.
+            let wrapped = newest.wrapping_add(HALF);
+            let mut low = core::mem::take(&mut self.fragment_messages);
+            let older = low.split_off(&wrapped);
+            kept.extend(low);
+            self.fragment_messages = older;
+        }
+        for constructor in self.fragment_messages.values() {
+            self.held -= constructor.charged;
+        }
+        self.fragment_messages = kept;
     }
 
     /// Drops the partial of `message_id`, if one is held.
     pub(crate) fn remove(&mut self, message_id: MessageId) {
-        if let Some(constructor) = self.fragment_messages.remove(&message_id) {
+        if let Some(constructor) = self.fragment_messages.remove(&message_id.0) {
             self.held -= constructor.charged;
         }
     }
@@ -146,7 +162,7 @@ impl FragmentReceiver {
         let message_id = fragment.message_id;
         let fragment_message = self
             .fragment_messages
-            .entry(message_id)
+            .entry(message_id.0)
             .or_insert_with(|| FragmentConstructor::new(remote_sent_tick, fragments));
         if fragment_message.fragments != fragments {
             return Err(ReceiveError::FragmentCountMismatch {

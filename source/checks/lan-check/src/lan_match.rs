@@ -22,8 +22,8 @@ use crate::process_outcome::ProcessOutcome;
 /// what still runs, on a machine of `RunnerSpeed::Local`: a match of 11 s, with a restart its
 /// clients notice in 5 s, ends in a few more.
 const DEADLINE: Duration = Duration::from_secs(30);
-/// How much longer CI's runners take: nextest's `ci` profile ends a test at 30 s where the default
-/// ends it at 5 s.
+/// How much longer CI's runners take: they run the suite 3.5 to 6 times slower than an M5, as
+/// `source/.config/nextest.toml` records for its `ci` profile.
 const CI_SCALE: u32 = 6;
 /// The server's data directory, in the run's directory.
 pub(crate) const SERVER_DATA: &str = "server-data";

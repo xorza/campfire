@@ -32,6 +32,8 @@ mod manifests;
 #[cfg(test)]
 mod named_path;
 #[cfg(test)]
+mod nextest_filters;
+#[cfg(test)]
 mod platform;
 #[cfg(test)]
 mod re_exports;
@@ -47,6 +49,8 @@ mod test_homes;
 mod test_modules;
 #[cfg(test)]
 mod test_support;
+#[cfg(test)]
+mod trait_defaults;
 #[cfg(test)]
 mod type_names;
 #[cfg(test)]

@@ -10,7 +10,7 @@ use crate::moves::Moves;
 /// mode's teams, whose crowd costs the load makes.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 #[component(immutable)]
-pub struct CrowdBook {
+pub(crate) struct CrowdBook {
     pub moves: Moves,
     pub(crate) teams: Box<[Team]>,
 }

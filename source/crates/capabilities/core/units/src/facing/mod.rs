@@ -2,7 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declarations::KindSpawn;
-use campfire_math::Num;
+use campfire_math::{Num, SinCos};
 use campfire_sim::SimComponent;
 use campfire_states::{Replication, SentPredicted};
 use campfire_visibility::DataKind;
@@ -58,6 +58,13 @@ impl Facing {
         self.0
     }
 
+    /// The way it points, `[x, z]` on the ground plane, a meter long to the bit: the inverse of
+    /// `along`.
+    pub fn way(self) -> [Num; 2] {
+        let SinCos { sin, cos } = SinCos::of_degrees(self.0);
+        [cos, -sin]
+    }
+
     /// The facing along `way`, its `x` and `z` on the ground plane: its angle in degrees,
     /// rounded once; `None` for a way of no length.
     pub fn along([x, z]: [Num; 2]) -> Option<Self> {
@@ -69,7 +76,7 @@ impl Facing {
 
     /// The angle between it and `other` the shorter way round, from 0 to 180 degrees.
     pub const fn apart(self, other: Self) -> Num {
-        Num::from_bits(self.turn_to(other).to_bits().abs())
+        self.turn_to(other).abs()
     }
 
     /// The turn from it to `way` the shorter way round, in degrees from just past −180 to 180,

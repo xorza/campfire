@@ -23,7 +23,7 @@ impl TrainSpec {
     pub fn book(cx: &BookCx<'_>) -> Result<ById<ActionId, Self>, BookError> {
         let mut book = ByIdBuilder::default();
         for action in LoadedAction::all(cx)? {
-            let spec = Self::of(&action, |scope, name| cx.unit_type(scope, name))?;
+            let spec = Self::of(&action, |scope, name| cx.type_named(scope, name))?;
             if let Some(spec) = spec {
                 book.set(action.action, spec);
             }

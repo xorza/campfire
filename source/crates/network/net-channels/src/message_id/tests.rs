@@ -4,6 +4,7 @@ use super::*;
 use crate::fragment_body::FragmentBody;
 use crate::fragment_count::FragmentCount;
 use crate::fragment_index::FragmentIndex;
+use crate::message_id_tag::MessageIdTag;
 use crate::single_body::SingleBody;
 
 #[test]
@@ -38,7 +39,12 @@ fn a_single_body_reads_back_in_its_bytes_len() {
         data.write(&mut writer);
         assert_eq!([writer.len(), data.bytes_len()], [len, len]);
         let mut reader = writer.into();
-        let decoded = SingleBody::read(&mut reader, id.is_some()).unwrap();
+        let tag = if id.is_some() {
+            MessageIdTag::Tagged
+        } else {
+            MessageIdTag::Untagged
+        };
+        let decoded = SingleBody::read(&mut reader, tag).unwrap();
         assert_eq!(decoded, data);
     }
 }

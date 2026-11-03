@@ -101,9 +101,18 @@ fn a_failed_write_stops_the_stream_keeps_its_failure_and_drops_what_follows() {
     while !writer.shared.pending.lock().stopped {
         thread::yield_now();
     }
-    // Pieces after the failure are dropped, even past the bound, with no wait.
+    // Pieces after the failure are dropped, even past the bound, with no wait; its worker runs
+    // on until the close, as a worker ends only so.
     for _ in 0..3 {
         sender.put(|out| out.extend_from_slice(b"yyyy"));
+    }
+    let mut writer = writer;
+    #[expect(
+        clippy::used_underscore_binding,
+        reason = "the writer holds its worker to join, which no other code reads"
+    )]
+    {
+        writer._worker.check();
     }
     // Closed, the writer gives the failure that stopped it.
     let Some(StreamError::Write(failure)) = writer.close() else {

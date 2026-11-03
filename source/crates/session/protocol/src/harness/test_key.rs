@@ -3,6 +3,7 @@ use std::num::NonZeroU32;
 
 use secp256k1::{Keypair, Secp256k1, SecretKey};
 
+use crate::delegation::{Delegation, DelegationTerms};
 use crate::entropy::Entropy;
 use crate::seed_chain::SeedChain;
 use crate::signer::Signer;
@@ -82,6 +83,11 @@ impl TestKey {
     /// The keys of the `n`th spectator, past every player's, the server's among them.
     pub fn spectator(n: u32) -> PlayerKeys {
         Self::pair(u8::try_from(100 + 2 * n).expect("a few spectators"))
+    }
+
+    /// The delegation of `terms` that the main key `main` signs at `NOW`.
+    pub fn delegation(main: Keypair, terms: &DelegationTerms) -> Delegation {
+        Delegation::sign(&Self::signer(main), terms, Self::NOW)
     }
 
     /// The seed chain the tests' servers commit to, of room for `room` segments.

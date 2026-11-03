@@ -13,19 +13,28 @@ use crate::workspace::{Crate, Workspace};
 const UPWARD: [(&str, &str); 1] = [("campfire-app-threads", "campfire-schedule")];
 
 /// The layers of the workspace's crates by their directory under `source/`, lowest first: the
-/// base crates, the sim's, the contracts below the capabilities, the capabilities, the network
-/// stack's `net-<name>` crates, the session's, `net`, the session over the stack, and the apps,
-/// tests and checks above all. The first prefix of a crate's path that a layer names is its.
+/// base crates, the sim's, the network stack's `net-<name>` crates, the contracts below the
+/// capabilities, the capabilities, the session's, `net`, the session over the stack, and the apps,
+/// tests and checks above all. The first prefix of a crate's path that a layer names is its
+/// (11-net-stack/layering.md, A stack crate depends on Campfire's base crates, never on `sim` or a
+/// capability).
 const LAYERS: [&[&str]; 8] = [
     &["crates/base/"],
     &["crates/sim/"],
+    &["crates/network/net-"],
     &["crates/capabilities/core/"],
     &["crates/capabilities/"],
-    &["crates/network/net-"],
     &["crates/session/"],
     &["crates/network/net"],
     &["crates/apps/", "crates/test/", "checks/"],
 ];
+
+/// Where the network stack's crates lie.
+const STACK: &str = "crates/network/net-";
+
+/// What a stack crate takes of the sim's layer below it: the numbers and the schedule settings,
+/// which hold no match's type.
+const STACK_TAKES_OF_SIM: [&str; 2] = ["campfire-math", "campfire-schedule"];
 
 /// The layer of the crate at `path`; none for one no layer names.
 fn layer(path: &str) -> Option<usize> {
@@ -42,6 +51,7 @@ fn upward(crates: &[Crate], allowed: &Allowlist<(&str, &str)>) -> Vec<String> {
         .iter()
         .map(|krate| (krate.name.as_str(), layer(&krate.path)))
         .collect();
+    let sim = layer("crates/sim");
     let mut found = Vec::new();
     for krate in crates {
         let Some(own) = layers[krate.name.as_str()] else {
@@ -58,6 +68,12 @@ fn upward(crates: &[Crate], allowed: &Allowlist<(&str, &str)>) -> Vec<String> {
                     krate.name
                 ));
             }
+            if krate.path.starts_with(STACK)
+                && layers.get(other) == Some(&sim)
+                && !STACK_TAKES_OF_SIM.contains(&other)
+            {
+                found.push(format!("{} requires {other}, of the sim", krate.name));
+            }
         }
     }
     found
@@ -73,7 +89,8 @@ pub(crate) fn each_crate_requires_only_its_own_layer_or_lower(workspace: &Worksp
 fn the_layer_rule_fails_on_what_breaks_it() {
     // A base crate that requires a sim crate breaks it; a sim crate that requires a base one,
     // and one that requires a test crate optionally, as its benches do, keep it; `net` takes a
-    // session crate, which a stack crate may not.
+    // session crate, which a stack crate may not, nor `sim` or a capability, where it takes
+    // `math`.
     let sample = |path: &str, name: &str, dependencies: &str| {
         let mut krate = Crate::sample(
             name,
@@ -83,10 +100,14 @@ fn the_layer_rule_fails_on_what_breaks_it() {
         krate
     };
     let crates = [
-        sample("crates/base/common", "common", "math.workspace = true\n"),
+        sample(
+            "crates/base/common",
+            "common",
+            "campfire-math.workspace = true\n",
+        ),
         sample(
             "crates/sim/math",
-            "math",
+            "campfire-math",
             "common.workspace = true\nmeasure = { workspace = true, optional = true }\n",
         ),
         sample("crates/test/measure", "measure", ""),
@@ -94,7 +115,14 @@ fn the_layer_rule_fails_on_what_breaks_it() {
         sample(
             "crates/network/net-core",
             "net-core",
-            "host.workspace = true\n",
+            "host.workspace = true\nsim.workspace = true\ncampfire-math.workspace = true\n",
+        ),
+        sample("crates/sim/sim", "sim", ""),
+        sample("crates/capabilities/units", "units", ""),
+        sample(
+            "crates/network/net-link",
+            "net-link",
+            "units.workspace = true\n",
         ),
         sample("crates/network/net", "net", "host.workspace = true\n"),
         sample("crates/other/x", "x", ""),
@@ -102,8 +130,10 @@ fn the_layer_rule_fails_on_what_breaks_it() {
     assert_eq!(
         upward(&crates, &Allowlist::new(&[])),
         [
-            "common requires math, of a higher layer",
+            "common requires campfire-math, of a higher layer",
             "net-core requires host, of a higher layer",
+            "net-core requires sim, of the sim",
+            "net-link requires units, of a higher layer",
             "crates/other/x lies in no layer",
         ]
     );

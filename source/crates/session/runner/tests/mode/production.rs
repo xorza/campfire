@@ -1,3 +1,4 @@
+use bevy_ecs::entity_disabling::Disabled;
 use campfire_actions::ProgressDues;
 use campfire_navigation::{PathArrival, PathArrivals};
 use campfire_production::{
@@ -178,12 +179,19 @@ fn on_input(ctx, player, name, value) {
             game.insert_parts(id, gatherer);
         }
     }
-    // Player 0 uses 2 + 1 + 1 = 4 of a cap of 6 at most 5; player 1 uses 1 of none.
+    // Player 0 uses 2 + 1 + 1 = 4 of a cap of 6 at most 5; player 1 uses 1 of none. A grunt of
+    // player 0's that rides, out of the world and the view's rows, uses 1 more, 5
+    // (04-capabilities/production.md, A rider counts for its player).
     Mode::tick_inputs(&mut game, &[(0, input("phase", "read"))]);
     assert_eq!(
         (Mode::field(&game, "count"), Mode::field(&game, "seen")),
         (StateValue::Int(4), StateValue::Int(5))
     );
+    let owner = Owner::new(PlayerSlot::new(0));
+    let rider = Spawn::of(grunt, Vec3::ZERO).parts(owner).place(&mut game);
+    game.insert_parts(rider, Disabled);
+    Mode::tick_inputs(&mut game, &[(0, input("phase", "read"))]);
+    assert_eq!(Mode::field(&game, "count"), StateValue::Int(5));
     Mode::tick_inputs(&mut game, &[(1, input("phase", "read"))]);
     assert_eq!(
         (Mode::field(&game, "count"), Mode::field(&game, "seen")),

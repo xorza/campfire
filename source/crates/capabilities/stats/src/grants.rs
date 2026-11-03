@@ -8,7 +8,7 @@ use campfire_sim::StableId;
 use campfire_values::{ActionId, ModifierId, Rank};
 
 use crate::lifetime::Hold;
-use crate::modifiers::{Carried, Modifiers};
+use crate::modifiers::Modifiers;
 
 /// The grants the stage's sources want, one run for each unit a source visited, in the order the
 /// sources pushed them, which `GrantPass` applies: each source keeps its own test of what changed,
@@ -38,11 +38,16 @@ pub enum GrantFrom {
     Nobody,
 }
 
-/// What a grant changes on its unit.
+/// What a grant changes on its unit (04-capabilities/stats.md, The holds of an instance agree on
+/// its rank).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GrantChange {
-    /// The modifier applies at this rank.
+    /// The modifier applies at this rank, as the unit holds no instance of it from the source.
     Apply(Rank),
+    /// The instance takes this rank: its shares renew at it, and its stacks stay.
+    Rank(Rank),
+    /// The hold joins the instance, which changes nothing else.
+    Join,
     /// The modifier is released.
     Release,
 }
@@ -89,18 +94,28 @@ impl Grant {
         }
     }
 
-    /// What the grant changes on the unit `unit`, which carries `modifiers`: an apply at its rank
-    /// when the unit does not hold the modifier from the grant's source at that rank by the
-    /// grant's hold, a release when it holds it and the grant has no rank, and nothing else.
+    /// What the grant changes on the unit `unit`, which carries `modifiers`. With no instance from
+    /// the grant's source, an apply at its rank. With one, the holds agree on the highest rank
+    /// any asks: a grant above it raises it, one below it lowers it only by a hold that asks a
+    /// rank of its own and is the only such hold, and any other joins it, if its hold does not
+    /// already; a grant of no rank releases its hold.
     pub fn change(self, modifiers: &Modifiers, unit: StableId) -> Option<GrantChange> {
-        let held = modifiers
-            .get(self.modifier, self.source(unit))
-            .filter(|instance| instance.lifetime.held_by(self.hold))
-            .map(|instance| instance.rank);
-        match self.rank {
-            Some(rank) if held != Some(rank) => Some(GrantChange::Apply(rank)),
-            None if held.is_some() => Some(GrantChange::Release),
-            Some(_) | None => None,
+        let Some(carried) = modifiers.get(self.modifier, self.source(unit)) else {
+            return self.rank.map(GrantChange::Apply);
+        };
+        let instance = carried.instance;
+        let held = instance.lifetime.held_by(self.hold);
+        let Some(rank) = self.rank else {
+            return held.then_some(GrantChange::Release);
+        };
+        let lowers = held
+            && rank < instance.rank
+            && self.hold.asks_rank()
+            && !instance.lifetime.ranked_besides(self.hold);
+        if rank > instance.rank || lowers {
+            Some(GrantChange::Rank(rank))
+        } else {
+            (!held).then_some(GrantChange::Join)
         }
     }
 }
@@ -148,10 +163,10 @@ impl Grants {
 
 impl UnitRun<'_> {
     /// Pushes the grants that make the unit hold exactly `wanted`, each from `from` by `hold` at
-    /// rank 1, of what it holds now, `modifiers`: an apply of each wanted one it does not hold so,
-    /// and a release of each it holds so and does not want. Every source of a hold of rank 1 diffs
-    /// alike, so a unit whose holds stand opens no run (04-capabilities/stats.md, Passives by one
-    /// pass).
+    /// rank 1, of what it holds now, `modifiers`: an apply of each wanted one `hold` does not hold,
+    /// and a release of each it holds and does not want. Every source of a hold of rank 1 diffs
+    /// alike, so a unit whose holds stand opens no run; one a hold of a higher rank raised stays
+    /// held (04-capabilities/stats.md, Passives by one pass).
     pub fn hold_exactly(
         &mut self,
         hold: Hold,
@@ -184,10 +199,7 @@ impl UnitRun<'_> {
             }
         }
         for &modifier in wanted {
-            let first = |carried: Carried<'_>| {
-                carried.instance.id == modifier && carried.instance.rank == Rank::FIRST
-            };
-            if !held.clone().any(first) {
+            if !held.clone().any(|carried| carried.instance.id == modifier) {
                 self.push(grant(modifier, Some(Rank::FIRST)));
             }
         }

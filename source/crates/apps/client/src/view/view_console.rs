@@ -165,15 +165,15 @@ impl ViewConsolePlugin {
         shots.pending.remove(at);
         let answer = match window_frame::rgba(frame) {
             Ok(frame) => {
-                let size = UVec2::new(frame.width, frame.height);
+                let size = UVec2::new(frame.width(), frame.height());
                 match ShotFrame::of(shot.region, size) {
                     Some(cut) => {
                         let image = cut.image(&frame);
                         shots.last = Some(cut);
                         ConsoleAnswer::Screenshot(WindowShot {
                             png: Base64::encode(&Png::encode(&image)),
-                            width: image.width,
-                            height: image.height,
+                            width: image.width(),
+                            height: image.height(),
                             origin: cut.region().min.to_array(),
                             scale: cut.scale(),
                             camera: shot.camera,

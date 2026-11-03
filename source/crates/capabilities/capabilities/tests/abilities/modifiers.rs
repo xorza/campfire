@@ -38,8 +38,9 @@ use campfire_values::{
 
 use crate::abilities::{
     LASH_OUT, abilities_match, abilities_match_with_modifiers, effect, half_meters, int, lash_out,
-    param, scripted, stat_attack, striker,
+    scripted, stat_attack, striker,
 };
+use crate::param;
 
 #[test]
 fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {

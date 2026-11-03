@@ -3,8 +3,9 @@
 
 use campfire_capabilities::Match;
 use campfire_combat::internals::Armed;
+use campfire_common::DeclaredName;
 use campfire_math::{Num, Vec3};
-use campfire_values::{Share, UnitType};
+use campfire_values::{Number, ParamRef, Share, UnitType};
 use serde::Deserialize;
 use serde::de::{IntoDeserializer, value};
 
@@ -23,6 +24,13 @@ mod scripts;
 mod stats;
 mod units;
 mod vision;
+
+/// The value of the param `name`.
+fn param(name: &str) -> Number {
+    Number::Param(ParamRef {
+        param: DeclaredName::new(name).unwrap(),
+    })
+}
 
 /// The point `(x, z)` in halves of a meter.
 fn halves(x: i64, z: i64) -> Vec3 {

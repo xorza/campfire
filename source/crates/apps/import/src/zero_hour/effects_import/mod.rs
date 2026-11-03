@@ -66,13 +66,14 @@ impl EffectsImport {
     /// The effects of `sources`, each list's sounds of `sounds` (02-engine-core.md, A sound is an
     /// effect); an error for two systems or two lists whose names give one, a texture of a name no
     /// package path holds, or a number not finite.
-    pub(crate) fn of<F, R>(
+    pub(crate) fn of<F, R, W>(
         sources: EffectSources<'_, F>,
-        sounds: &mut SoundImport<'_, R>,
+        sounds: &mut SoundImport<'_, R, W>,
     ) -> Result<Self, ZeroHourError>
     where
         F: Fn(&str) -> Option<ArchivePath>,
         R: FnMut(&ArchivePath) -> Result<Option<Vec<u8>>, ZeroHourError>,
+        W: FnMut(&PackagePath, &[u8]) -> Result<(), ZeroHourError>,
     {
         let mut losses = Losses::default();
         let names = Self::names(sources.systems.systems().keys())?;
@@ -302,15 +303,16 @@ impl EffectsImport {
     /// loop of it counted, and, of a shot of no projectile, its hit's list; and, in `units`, what
     /// the type of its projectile plays, its hit's list where it ends and its exhaust as it flies;
     /// each of those the file holds. None for an action that plays nothing.
-    pub(crate) fn action_looks<'d, R>(
+    pub(crate) fn action_looks<'d, R, W>(
         &self,
         weapons: &WeaponIni,
         converted: impl Fn(&str) -> &'d [ConvertedShot<'d>],
-        sounds: &mut SoundImport<'_, R>,
+        sounds: &mut SoundImport<'_, R, W>,
         units: &mut BTreeMap<DeclaredName, ClientUnit>,
     ) -> Result<BTreeMap<DeclaredName, ActionLook>, ZeroHourError>
     where
         R: FnMut(&ArchivePath) -> Result<Option<Vec<u8>>, ZeroHourError>,
+        W: FnMut(&PackagePath, &[u8]) -> Result<(), ZeroHourError>,
     {
         let mut looks = BTreeMap::new();
         for (name, weapon) in weapons.weapons() {

@@ -1,3 +1,5 @@
+use crate::message_id_tag::MessageIdTag;
+
 /// How a channel's messages are sent and received. See more information
 /// [here](https://web.archive.org/web/20250113064633/http://www.jenkinssoftware.com/raknet/manual/reliabilitytypes.html).
 ///
@@ -20,9 +22,11 @@ pub enum ChannelMode {
 }
 
 impl ChannelMode {
-    /// Whether each single message carries its id: a reliable or sequenced channel orders or
-    /// deduplicates by it, an unordered unreliable one has no use for it.
-    pub(crate) const fn single_has_id(self) -> bool {
-        !matches!(self, Self::UnorderedUnreliable)
+    /// Whether each single message carries its id.
+    pub(crate) const fn single_tag(self) -> MessageIdTag {
+        match self {
+            Self::UnorderedUnreliable => MessageIdTag::Untagged,
+            _ => MessageIdTag::Tagged,
+        }
     }
 }

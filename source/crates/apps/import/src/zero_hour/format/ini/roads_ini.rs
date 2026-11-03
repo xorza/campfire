@@ -24,6 +24,16 @@ pub(crate) struct RoadIni {
     pub(crate) width_in_texture: f32,
 }
 
+impl RoadIni {
+    /// Whether its widths lay a texture: each positive and finite, as one of none, below 0 or
+    /// not finite repeats the texture without end along the road.
+    pub(crate) fn lays(&self) -> bool {
+        [self.width, self.width_in_texture]
+            .iter()
+            .all(|&width| width.is_finite() && width > 0.0)
+    }
+}
+
 /// A road type of a `RoadsIni`, by its place in the order the types are read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct RoadId(pub(crate) usize);
@@ -164,6 +174,24 @@ mod tests {
         };
         assert_eq!(fields(b"Before"), ("", 0.0, 0.0));
         assert_eq!(fields(b"After"), ("D.tga", 30.0, 0.8));
+        // One of no width lays no texture, as one below 0 or not finite does; the default's
+        // widths lay it.
+        let lays = |name: &[u8]| ini[ini.road(name).unwrap()].lays();
+        assert!(!lays(b"Before") && lays(b"After"));
+        let widths = [
+            (-1.0, 0.8),
+            (f32::NAN, 0.8),
+            (30.0, f32::INFINITY),
+            (30.0, 0.0),
+        ];
+        for (width, width_in_texture) in widths {
+            let road = RoadIni {
+                width,
+                width_in_texture,
+                ..ini[ini.road(b"After").unwrap()].clone()
+            };
+            assert!(!road.lays(), "{width} {width_in_texture}");
+        }
         // Of a second file, the ids count on from the first's: 4 and 5.
         ini.read(b"Bridge B\nEnd\nRoad Later\nEnd\n").unwrap();
         assert_eq!(ini[ini.road(b"Later").unwrap()].id, 5);

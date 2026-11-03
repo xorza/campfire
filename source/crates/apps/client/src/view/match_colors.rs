@@ -6,6 +6,7 @@ use bevy::ecs::system::{Res, ResMut};
 use bevy::mesh::MeshTag;
 use bevy::render::storage::ShaderBuffer;
 use campfire_client_files::TeamColors;
+use campfire_common::EnumAll;
 use campfire_values::Team;
 
 /// The colors the models are painted by, in one buffer every file material reads: the match's
@@ -26,7 +27,7 @@ pub(crate) struct Paint {
 
 /// A tint over a whole model, which adds to its light: red over a build that may not stand there,
 /// as Zero Hour's `IllegalBuildColor` tints its placement's drawable.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
 pub(crate) enum Tint {
     Blocked,
 }
@@ -94,8 +95,6 @@ impl Paint {
 }
 
 impl Tint {
-    const ALL: [Self; 1] = [Self::Blocked];
-
     const fn color(self) -> LinearRgba {
         match self {
             Self::Blocked => LinearRgba::RED,

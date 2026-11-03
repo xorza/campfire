@@ -82,7 +82,7 @@ impl ViewApi {
             )
             .bind(
                 field(
-                    "spawn_pos",
+                    "spawn_position",
                     "where it spawned, where it respawns; `()` with none",
                 ),
                 |unit: &mut Unit| -> Checked<ScriptValue> {
@@ -216,7 +216,7 @@ impl UnitParams {
     fn get(&self, name: &str) -> Checked<ScriptValue> {
         let unit = &self.0;
         let unit_type = unit.read(|row| row.unit_type)?;
-        let param = unit.view().names().param(unit_type, name);
+        let param = unit.view().names().param_named(unit_type, name);
         let param = param.ok_or_else(|| ApiError::Unknown(Param::NAMES).fail())?;
         Ok(ScriptValue::from(param))
     }

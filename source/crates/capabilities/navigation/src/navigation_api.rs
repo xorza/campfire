@@ -6,7 +6,7 @@ use crate::navigation_effect::NavigationEffect;
 
 /// The script API of `navigation` beside its effect's calls: `unit.path`, and `ctx.teleport`.
 #[derive(Debug)]
-pub struct NavigationApi;
+pub(crate) struct NavigationApi;
 
 impl NavigationApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {

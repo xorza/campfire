@@ -148,3 +148,66 @@ book orders ById<UnitType, Acquire>
 book orders RetaliationBook
 book orders ById<UnitType, Retaliate>
 book orders ById<UnitType, Ai>
+observer Scripts::refill_view
+observer ViewReader::disabled
+observer ViewReader::enabled
+observer UnitTracker<GridUnits>::aged
+observer UnitTracker<GridUnits>::lost_body
+observer UnitTracker<GridUnits>::disabled
+observer UnitTracker<GridUnits>::enabled
+observer Lifespan::revived
+observer OrderSteps::forget_gone
+observer Level::raise
+observer Aiming::revived
+observer HeldHits::drop_died
+observer UnitTracker<StaticBodies>::aged
+observer UnitTracker<StaticBodies>::disabled
+observer UnitTracker<StaticBodies>::enabled
+observer StaticBodies::part_removed
+observer StaticBodies::state_inserted
+observer StaticBodies::state_removed
+observer Route::rewritten
+observer Flying::lose_teleported
+observer Flying::lose_died
+observer ProductionOrders::ordered
+observer TrainQueue::revived
+observer Holdings::inserted
+observer Holdings::removed
+observer Holdings::aged
+observer ShopIndex::typed
+observer ShopIndex::untyped
+observer Containers::ordered
+observer Containers::called_out
+observer UseOrders::ordered
+observer NextTurn<Acquire>::revived
+observer NextTurn<Ai>::revived
+removals Dead
+removals Modifiers
+removals Owner
+removals Dead
+removals Dead
+removals Gatherer
+run StaticTrackingRun
+run RoomMakingRun
+run OpenCellRun
+server Experience TrackLevels
+server ActionSlots BarrelTurns
+server ActionSlots ClipShots
+server ActionSlots ShotStreak
+server UnitEntity SeenBy
+server Player SeenCells
+server Player PlayerSupply
+server Builder AtWork
+engine_tag avatar
+engine_tag dead
+engine_tag air_target
+engine_tag on_wings
+engine_tag projectile
+engine_tag area
+engine_tag constructing
+engine_tag node
+engine_tag drop_off
+engine_tag gathering
+engine_tag being_built
+engine_tag airfield_held
+engine_tag holding

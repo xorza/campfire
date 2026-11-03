@@ -6,10 +6,11 @@ use std::sync::Arc;
 
 use campfire_script::ScriptId;
 
-use campfire_names::NameTables;
+use campfire_names::KindNames;
 use campfire_sim::{Capability, MatchRate};
 use campfire_values::{
-    MatchScope, NameId, Named, Names, PackageIndex, PackagePath, ScriptSource, TypeScope, UnitType,
+    MatchScope, NameId, Named, Names, NamesError, PackageIndex, PackagePath, ScriptSource,
+    TypeScope, UnitType,
 };
 
 use crate::book::Book;
@@ -39,7 +40,10 @@ pub type RuleFn = fn(&BookCx<'_>) -> Result<(), BookError>;
 pub struct BookCx<'a> {
     source: BookSource<'a>,
     types: Vec<SourceType<'a>>,
-    type_names: Names<UnitType>,
+    /// The names of the unit types, the one table that numbers them, which the units' book shares.
+    type_names: Arc<Names<UnitType>>,
+    /// The first type the table refused, a repeat or one past the most, which fails the load.
+    type_refusal: Option<TypeRefusal>,
     /// Where each package's scripts start among the match's.
     script_starts: Vec<usize>,
     cells: Vec<BookCell>,
@@ -53,11 +57,18 @@ pub struct BookCx<'a> {
     name_cells: Vec<NameCell>,
 }
 
+/// A unit type the table of types refused: its name and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeRefusal {
+    pub name: String,
+    pub error: NamesError,
+}
+
 /// A cell that holds the names of one kind of id, and how its table joins the others: none for
 /// a kind of a module the match does not run, whose table is empty.
 struct NameCell {
     type_id: TypeId,
-    add: fn(Option<&(dyn Any + Send + Sync)>, &mut NameTables),
+    add: fn(Option<&(dyn Any + Send + Sync)>, &mut KindNames),
 }
 
 /// How a cell builds its value.
@@ -100,10 +111,11 @@ enum Kept {
 
 impl<'a> BookCx<'a> {
     /// The build of `source`'s books, none declared yet; the unit types, each with its id in the
-    /// order a match declares them.
+    /// order a match declares them, and the first the table refuses kept for the units' load.
     pub fn new(source: BookSource<'a>) -> Self {
         let mut types = Vec::new();
         let mut type_names = Names::default();
+        let mut type_refusal = None;
         let mut script_starts = Vec::with_capacity(source.packages.len());
         let mut start = 0;
         for (package, at) in source.packages.iter().zip((0..).map(PackageIndex::new)) {
@@ -130,18 +142,25 @@ impl<'a> BookCx<'a> {
                 SourceKind::Mode | SourceKind::Loadout | SourceKind::Rules => None,
             };
             for mut unit in declared.chain(avatar) {
-                // A repeat or one past the most the units' own load refuses, as it declares them.
-                let Ok(unit_type) = type_names.try_add((unit.scope, unit.name)) else {
-                    continue;
-                };
-                unit.unit_type = unit_type;
-                types.push(unit);
+                match type_names.try_add((unit.scope, unit.name)) {
+                    Ok(unit_type) => {
+                        unit.unit_type = unit_type;
+                        types.push(unit);
+                    }
+                    Err(error) => {
+                        type_refusal.get_or_insert_with(|| TypeRefusal {
+                            name: unit.name.to_owned(),
+                            error,
+                        });
+                    }
+                }
             }
         }
         Self {
             source,
             types,
-            type_names,
+            type_names: Arc::new(type_names),
+            type_refusal,
             script_starts,
             cells: Vec::new(),
             pending: Vec::new(),
@@ -213,8 +232,18 @@ impl<'a> BookCx<'a> {
         self.types.iter().filter(|unit| unit.stands())
     }
 
+    /// The names of the unit types, which number them.
+    pub const fn type_names(&self) -> &Arc<Names<UnitType>> {
+        &self.type_names
+    }
+
+    /// The first unit type the table refused, which fails the load.
+    pub const fn type_refusal(&self) -> Option<&TypeRefusal> {
+        self.type_refusal.as_ref()
+    }
+
     /// The type of `name` in `scope`, if the match declares one.
-    pub fn unit_type(&self, scope: TypeScope, name: &str) -> Option<UnitType> {
+    pub fn type_named(&self, scope: TypeScope, name: &str) -> Option<UnitType> {
         self.type_names.named((scope, name))
     }
 
@@ -305,8 +334,8 @@ impl<'a> BookCx<'a> {
 
     /// The names of every kind of id the match's modules declare, each built if it is not yet:
     /// what a load that resolves any module's names reads.
-    pub fn name_tables(&self) -> Result<NameTables, BookError> {
-        let mut tables = NameTables::default();
+    pub fn kind_names(&self) -> Result<KindNames, BookError> {
+        let mut tables = KindNames::default();
         for cell in &self.name_cells {
             let at = self
                 .cells
@@ -404,7 +433,7 @@ impl<'a> BookCx<'a> {
     /// Adds the table of `I` that `value` holds, or an empty one, to `tables`.
     fn add_names<I: NameId + Named + 'static>(
         value: Option<&(dyn Any + Send + Sync)>,
-        tables: &mut NameTables,
+        tables: &mut KindNames,
     ) where
         Names<I>: Send + Sync,
         I::Scope: MatchScope,

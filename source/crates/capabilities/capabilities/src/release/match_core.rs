@@ -12,7 +12,7 @@ use campfire_sim::{
     UnreadCommands,
 };
 
-use crate::order::Directive;
+use crate::order::directive::Directive;
 
 /// What a match's build puts in itself before any module installs: the sim's world, and the
 /// match's facts; and the facts of what the packages' data names, which the modules add to. The

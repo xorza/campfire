@@ -29,6 +29,18 @@ fn a_way_gives_its_angle_and_a_turn_takes_the_shorter_side_at_most_its_step() {
     assert_eq!(degrees([0, 0]), None);
     // Toward `x` and `−z` alike: 45°.
     assert_eq!(degrees([2, -2]), Some(Num::int(45)));
+    // A facing's way, the inverse: 0° along `x`, 90° along `−z`, 180° along `−x`, 270° along
+    // `+z`, each a meter, and the facing along each is the facing again.
+    let way = |angle: i64| Facing::of(Num::int(angle)).way();
+    let (one, zero) = (Num::ONE, Num::ZERO);
+    assert_eq!(
+        [0, 90, 180, 270].map(way),
+        [[one, zero], [zero, -one], [-one, zero], [zero, one]]
+    );
+    for angle in [0, 45, 90, 180, 270] {
+        let facing = Facing::of(Num::int(angle));
+        assert_eq!(Facing::along(facing.way()), Some(facing), "{angle}");
+    }
     // Apart the shorter way round, across 0° too, and at most half a turn.
     let apart = |a: i64, b: i64| Facing::of(Num::int(a)).apart(Facing::of(Num::int(b)));
     assert_eq!(

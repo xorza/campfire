@@ -2,7 +2,6 @@ use core::fmt::Debug;
 use core::time::Duration;
 
 use bevy_ecs::system::RunSystemOnce;
-use bevy_replicon::client::confirm_history::ConfirmHistory;
 use bevy_replicon::prelude::RepliconTick;
 use bevy_replicon::shared::replication::diff::diff_index::DiffIndex;
 use bevy_replicon::shared::replication::storage::ReplicationStorage;
@@ -24,7 +23,10 @@ use campfire_net_timeline::LocalTimelineShift;
 use super::*;
 use crate::fixtures::prediction_stack::PredictionStack;
 use crate::fixtures::protocol::{CompNotNetworked, CompPredictionOnly};
-use crate::fixtures::steps::{request_forced_rollback_at_completed_tick, trigger_state_rollback};
+use crate::fixtures::steps::{
+    RollbackObserved, record_completed_mutate_tick, record_rollback,
+    request_forced_rollback_at_completed_tick, trigger_state_rollback,
+};
 use crate::prediction_despawn_commands_ext::PredictionDespawnCommandsExt;
 use crate::prediction_registration_ext::PredictionRegistrationExt;
 
@@ -230,18 +232,6 @@ fn insert_confirmed<C: Component + PartialEq>(
         history.insert(tick, state);
         entity_mut.insert(history);
     }
-}
-
-fn record_completed_mutate_tick(world: &mut World, replicon_tick: RepliconTick, tick: NetTick) {
-    // The server may have completed the tick already: a second confirmation of it is more
-    // messages than the tick had.
-    let mut mutate_ticks = world.resource_mut::<ServerMutateTicks>();
-    if !mutate_ticks.contains(replicon_tick) {
-        mutate_ticks.confirm(replicon_tick, 1);
-    }
-    let mut confirmed_ticks = world.resource_mut::<ConfirmedTickMap>();
-    confirmed_ticks.bridge_record(replicon_tick, tick);
-    confirmed_ticks.bridge_record_last_confirmed_tick(replicon_tick);
 }
 
 /// The newest tick whose mutations the client received. A fake completion at or before it meets
@@ -679,7 +669,7 @@ fn a_shift_of_the_local_timeline_leaves_the_confirmed_history() {
     {
         let world = stepper.client_world_mut(0);
         let mut check_state = world.resource_mut::<RollbackCheckState>();
-        check_state.local_despawn = vec![(NetTick(5), predicted)];
+        check_state.replay_despawn = vec![(NetTick(5), predicted)];
         check_state.local_skip_despawn = vec![(NetTick(7), predicted)];
     }
 
@@ -689,7 +679,7 @@ fn a_shift_of_the_local_timeline_leaves_the_confirmed_history() {
 
     let world = stepper.client_world(0);
     let check_state = world.resource::<RollbackCheckState>();
-    assert_eq!(check_state.local_despawn, [(NetTick(105), predicted)]);
+    assert_eq!(check_state.replay_despawn, [(NetTick(105), predicted)]);
     assert_eq!(check_state.local_skip_despawn, [(NetTick(107), predicted)]);
     let despawned = world
         .entity(despawned)
@@ -1626,16 +1616,6 @@ fn a_stale_confirm_history_with_no_prediction_history_is_ignored() {
     stepper.frame_step(1);
 }
 
-#[derive(Debug, Resource, Default)]
-struct RollbackObserved(bool);
-
-fn record_rollback(
-    rollback: Option<Res<'_, Rollback>>,
-    mut observed: ResMut<'_, RollbackObserved>,
-) {
-    observed.0 |= rollback.is_some();
-}
-
 #[test]
 fn a_confirm_history_tick_with_no_mapping_asks_for_no_rollback() {
     let (mut stepper, predicted) = setup();
@@ -1928,7 +1908,6 @@ fn rollback_state_world() -> World {
     world.resource_mut::<LocalTimeline>().shift(20);
     world.insert_resource(PredictionSetup::default());
     world.init_resource::<RollbackCheckState>();
-    world.init_resource::<PreSpawnedReceiver>();
     world
 }
 
@@ -1994,7 +1973,7 @@ fn local_despawn_is_pruned_to_the_rollback_window() {
         .max_rollback_ticks = 4;
     world.insert_resource(InputTimelineSetup::default());
     let entities = [1, 16, 17].map(|tick| (NetTick(tick), world.spawn_empty().id()));
-    world.resource_mut::<RollbackCheckState>().local_despawn = entities.to_vec();
+    world.resource_mut::<RollbackCheckState>().replay_despawn = entities.to_vec();
     // Protections ending at ticks 15, 16 and 17: the one before tick 16 ends, rolled back
     // again, the other two stay; one ended for a unit gone ends with nothing to roll back.
     let protected = [15, 16, 17].map(|tick| (NetTick(tick), world.spawn(DisableRollback).id()));
@@ -2015,7 +1994,7 @@ fn local_despawn_is_pruned_to_the_rollback_window() {
         .unwrap();
 
     assert_eq!(
-        world.resource::<RollbackCheckState>().local_despawn,
+        world.resource::<RollbackCheckState>().replay_despawn,
         entities[1..]
     );
     assert_eq!(

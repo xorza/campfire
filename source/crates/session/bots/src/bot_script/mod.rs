@@ -446,16 +446,15 @@ impl<S: TeamSight> RefMap<Loaded, Ids> for DueRefs<'_, '_, '_, S> {
     /// The point, or the nearest of its search where the build of the order's slot passes, for
     /// its first unit, the builder, as the order goes out.
     fn place(&mut self, place: LoadedPlace, angle: Num) -> Result<GroundPoint, OrderUnsent> {
-        let (near, gap, steps) = match place {
+        let (near, reach) = match place {
             LoadedPlace::At(at) => return Ok(at),
-            LoadedPlace::Near { near, gap, steps } => (near, gap, steps),
+            LoadedPlace::Near { near, reach } => (near, reach),
         };
         let search = PlaceSearch {
             builder: self.units[0],
             slot: self.order_slot(),
             near,
-            gap,
-            steps,
+            reach,
             angle,
         };
         self.view.place(search).ok_or(OrderUnsent::NoPlace)

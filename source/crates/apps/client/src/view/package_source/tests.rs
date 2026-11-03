@@ -14,7 +14,7 @@ use campfire_store::internals::TestDir;
 
 use super::*;
 use crate::test_app;
-use crate::view::package_source::internals::package;
+use crate::view::package_source::reach_in::package;
 
 #[test]
 fn a_path_reads_its_packages_file_checked_against_its_index() {

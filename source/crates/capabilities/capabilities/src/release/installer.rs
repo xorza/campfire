@@ -10,9 +10,9 @@ use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declarations::NamesFn;
 use campfire_declarations::{
-    Book, BuildFn, BuiltBooks, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations,
-    EntityKind, EntityParts, ExtendFn, Fact, InstallFacts, KindSpawn, KindVisitor, Listed,
-    ModuleSystems, OneShot, Report, Role, RuleFn, Scratch, Section, SpawnParts,
+    Book, BuildFn, BuiltBooks, Cache, Callbacks, ColumnFill, Declarations, EntityKind, EntityParts,
+    ExtendFn, Fact, InstallFacts, KindSpawn, KindVisitor, Listed, ModuleSystems, OneShot, Report,
+    Role, RuleFn, Scratch, Section, SpawnParts,
 };
 use campfire_mode::{ModeQueue, ModeQueues};
 use campfire_script::{
@@ -38,7 +38,6 @@ pub(super) struct Installer<'a> {
     schedule: &'a mut Schedule,
     registry: &'a mut StateRegistryBuilder,
     books: &'a mut BuiltBooks,
-    set: CapabilitySet,
     role: &'a Role,
     /// The capability of the module whose declarations it installs.
     capability: Option<Capability>,
@@ -67,7 +66,6 @@ impl<'a> Installer<'a> {
             schedule,
             registry,
             books,
-            set: facts.facts.set,
             role: &facts.facts.role,
             capability: None,
         }
@@ -77,7 +75,6 @@ impl<'a> Installer<'a> {
 impl Debug for Installer<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Installer")
-            .field("set", &self.set)
             .field("role", &self.role)
             .field("capability", &self.capability)
             .finish_non_exhaustive()

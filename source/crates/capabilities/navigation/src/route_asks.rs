@@ -163,7 +163,6 @@ impl RouteAsks {
             }
             return;
         };
-        search.planner.begin_tick();
         for index in 0..self.waiting.len() {
             let next = self.waiting[index];
             if next.answered {

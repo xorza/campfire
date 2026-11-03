@@ -26,7 +26,8 @@ use campfire_units::internals::Spawn;
 use campfire_units::{AudienceNone, UnitState, UnitTypeCore, Units};
 use campfire_values::{PackageIndex, Param, Ranked, Scalar, Team, TypeScope, UnitType};
 
-use crate::abilities::{effect, half_meters, int, param, scripted};
+use crate::abilities::{effect, half_meters, int, scripted};
+use crate::param;
 
 #[test]
 fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {

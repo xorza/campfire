@@ -16,16 +16,15 @@ use campfire_sim::{
 use campfire_stats::{Held, HeldModifiers};
 use campfire_units::{
     Dead, Facing, FiringRider, FlightGoal, Leaving, Life, OpenCellAsk, OpenCellRun, OrderKind,
-    Owner, RiderFate, RidersCalledOut, SeeingRider, SeenBy, SpawnAt, Spawner, StatusTags, TagBook,
-    UnitOrdered,
+    Owner, RiderFate, RidersCalledOut, SeeingRider, SpawnAt, StatusTags, TagBook, UnitOrdered,
 };
-use campfire_values::{Rank, TagSet, Team, TeamSet, UnitTags, UnitType};
+use campfire_values::{Rank, TagSet, Team, UnitTags, UnitType};
 
 use crate::Interaction;
 use crate::enter_spec::EnterSpec;
 use crate::rider_size::RiderSize;
 use crate::riders::Riders;
-use crate::riding::Riding;
+use crate::riding::{RiderParts, Riding, SpawnsInside};
 
 /// The containers' passes: the exits their orders and their falls ask for, the riders they carry,
 /// and the riders they spawn with (04-capabilities/interaction.md, A rider leaves at a free cell by
@@ -97,7 +96,7 @@ type Retagged<'w, 's> = Query<
     (Changed<UnitTags>, Without<Dead>),
 >;
 
-/// The containers, with their places and their flight goals.
+/// The containers that fly, with their places and their flight goals.
 type Landers<'w, 's> = Query<
     'w,
     's,
@@ -105,7 +104,7 @@ type Landers<'w, 's> = Query<
         &'static StableId,
         &'static mut Riders,
         &'static Position,
-        Option<&'static mut FlightGoal>,
+        &'static mut FlightGoal,
         &'static UnitType,
     ),
     Without<Dead>,
@@ -374,7 +373,13 @@ impl Containers {
             let frame = ContainerFrame::of(at.get(), facing);
             placed.clear();
             placed.extend(points.iter().map(|&point| frame.place(point)));
-            if riders.aim(id, &placed, target.get()) {
+            // The part is marked changed only as a point moves, so a retarget that keeps it is
+            // not sent and hashed again, nor its riders placed again.
+            if riders
+                .bypass_change_detection()
+                .aim(id, &placed, target.get())
+            {
+                riders.set_changed();
                 let point = riders
                     .iter()
                     .find(|rider| rider.id == id)
@@ -393,16 +398,16 @@ impl Containers {
     /// flier lands for its riders; riders-and-upgrades.md, A flier lands where Zero Hour's
     /// transport lands).
     pub(crate) fn land(
-        mut containers: Landers<'_, '_>,
+        mut fliers: Landers<'_, '_>,
         mut boarders: Boarders<'_, '_>,
         (index, specs): (Res<'_, EntityIndex>, Res<'_, ById<UnitType, EnterSpec>>),
         mut indexes: ProgressIndexes<'_>,
     ) {
-        for (&id, mut riders, position, goal, &unit_type) in &mut containers {
+        for (&id, mut riders, position, mut goal, &unit_type) in &mut fliers {
             let Some(spec) = specs.get(unit_type) else {
                 continue;
             };
-            let grounded = Riders::stands(position.get(), goal.is_some());
+            let grounded = Riders::stands(position.get(), true);
             if !riders.wants_ground() && !riders.lands() {
                 continue;
             }
@@ -452,14 +457,12 @@ impl Containers {
                 riders.set_changed();
             }
             let lands = riders.wants_ground();
-            if let Some(mut goal) = goal {
-                if lands {
-                    if !goal.is_landing() {
-                        *goal = FlightGoal::Land;
-                    }
-                } else if riders.lands() {
-                    goal.set_if_neq(FlightGoal::Height);
+            if lands {
+                if !goal.is_landing() {
+                    *goal = FlightGoal::Land;
                 }
+            } else if riders.lands() {
+                goal.set_if_neq(FlightGoal::Height);
             }
             if riders.lands() != lands {
                 riders.set_lands(lands);
@@ -497,13 +500,10 @@ impl Containers {
     /// inside it, in their order, each of its team and its player, as it comes full
     /// (04-capabilities/interaction.md, A container may come full).
     pub(crate) fn fill(world: &mut World, entity: Entity) {
-        let Some(spec) = Self::spec(world, entity) else {
+        let Some(spec) = Self::spec(world, entity).filter(|spec| !spec.payload.is_empty()) else {
             return;
         };
-        let payload = spec.payload.clone();
-        if payload.is_empty() {
-            return;
-        }
+        let spec = spec.clone();
         let container = world.entity(entity);
         let container_id = *container.get::<StableId>().expect("a container has an id");
         let position = container
@@ -512,16 +512,23 @@ impl Containers {
             .get();
         let team = *container.get::<Team>().expect("a container has a team");
         let owner: Option<PlayerSlot> = container.get::<Owner>().map(|owner| owner.player_slot());
-        let points = Self::spec(world, entity).map_or(0, |spec| spec.fire.points().len());
-        let sees = Self::spec(world, entity).is_some_and(|spec| spec.sight);
-        for each in &payload {
+        let held = container
+            .get::<UnitTags>()
+            .map_or(TagSet::NONE, |held| held.tags);
+        let points = spec.fire.points().len();
+        for each in &spec.payload {
+            let size = world
+                .resource::<ById<UnitType, RiderSize>>()
+                .get(each.unit_type);
+            let room = spec.counts.room_of(size.map_or(1, |size| size.get()));
+            let tags = world.resource::<TagBook>().own(each.unit_type);
+            let parts = RiderParts {
+                riding: Riding::new(container_id),
+                team,
+                fires: spec.rider_fires(tags, held),
+                sees: spec.sight,
+            };
             for _ in 0..each.count {
-                let room = Self::room(world, entity, each.unit_type);
-                let fires = Self::spec(world, entity).is_some_and(|spec| {
-                    let tags = world.resource::<TagBook>().own(each.unit_type);
-                    let held = world.get::<UnitTags>(entity);
-                    spec.rider_fires(tags, held.map_or(TagSet::NONE, |held| held.tags))
-                });
                 let at = SpawnAt {
                     id: world.resource_mut::<IdAllocator>().allocate(),
                     unit_type: each.unit_type,
@@ -531,29 +538,12 @@ impl Containers {
                     angle: Num::ZERO,
                     variation: None,
                 };
-                let parts = (
-                    Riding::new(container_id),
-                    SeenBy::new(TeamSet::NONE.with(team)),
-                );
-                // Whole as it spawns, a rider that fires or sees with its marks.
-                match (fires, sees) {
-                    (true, true) => Spawner::spawn(world, at, (parts, FiringRider, SeeingRider)),
-                    (true, false) => Spawner::spawn(world, at, (parts, FiringRider)),
-                    (false, true) => Spawner::spawn(world, at, (parts, SeeingRider)),
-                    (false, false) => Spawner::spawn(world, at, parts),
-                };
+                parts.give(SpawnsInside(world, at));
                 let mut riders = world.get_mut::<Riders>(entity).expect("a container");
                 riders.take(at.id, room, points);
             }
         }
         Self::holding(world, entity, true);
-    }
-
-    /// The room a rider of `unit_type` takes of the container of `entity`.
-    fn room(world: &World, entity: Entity, unit_type: UnitType) -> u32 {
-        let spec = Self::spec(world, entity).expect("a container takes riders by its spec");
-        let size = world.resource::<ById<UnitType, RiderSize>>().get(unit_type);
-        spec.room_of(size.map_or(1, |size| size.get()))
     }
 
     /// Puts `rider`, which left the container of `entity`, out at the center of the free cell
@@ -580,6 +570,11 @@ impl Containers {
         let mut out = world.entity_mut(unit);
         out.remove::<(Riding, FiringRider, SeeingRider)>();
         *out.get_mut::<Position>().expect("a rider stands") = Position::from(position);
+        // The deaths read no rider, so one whose life a drain took while it rode dies as it comes
+        // out (04-capabilities/interaction.md, A rider dies as it comes out).
+        if let Some(mut life) = out.get_mut::<Life>() {
+            life.set_changed();
+        }
         if let Some(mut leaving) = out.get_mut::<Leaving>() {
             Leaving::set(&mut leaving, true);
         }

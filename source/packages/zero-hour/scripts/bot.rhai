@@ -122,12 +122,18 @@ fn train(ctx, faction) {
     for building in ctx.params[`base_buildings_${faction}`] {
         producers += ctx.own_units(building);
     }
+    // The units of each army type a producer may train, counted once a think, as an order trains
+    // none before the think ends.
+    let counts = #{};
     for producer in producers {
         let pick = ();
         let fewest = 0;
         for unit in army {
             if ctx.can_start(producer, `train_${unit}`) {
-                let held = ctx.own_units(unit).len();
+                if !(unit in counts) {
+                    counts[unit] = ctx.own_units(unit).len();
+                }
+                let held = counts[unit];
                 if pick == () || held < fewest {
                     pick = unit;
                     fewest = held;

@@ -123,7 +123,7 @@ impl RequirementBook {
             };
             let scope = TypeScope::of_package(action.package);
             let resolve = |name: &DeclaredName| {
-                let unit_type = cx.unit_type(scope, name.as_str());
+                let unit_type = cx.type_named(scope, name.as_str());
                 unit_type.ok_or_else(|| UnknownName::new(UnitType::NAMES, name))
             };
             let units = requires.units.iter().map(|entry| {

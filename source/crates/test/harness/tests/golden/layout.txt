@@ -1,4 +1,4 @@
-data_version 102
+data_version 103
 actions.player_cooldowns e392c93f37f118db
 actions.progress cf0f07e0b1cf07cf
 actions.slot_times e81a763b4f0f5285
@@ -91,7 +91,7 @@ sim.position fade50b9f1588dc0
 sim.tick 3328d301c5649b40
 stats.level ad5ac71447c2fd50
 stats.modifier_clocks 5af3c8c15034127c
-stats.modifiers 9b0346a69679eb38
+stats.modifiers e95bd8efa4670cb2
 stats.player_modifiers a8df3177805e52f3
 stats.pools 7afa89e615deaaca
 units.accel_step 963d57f3ef8c2a5e

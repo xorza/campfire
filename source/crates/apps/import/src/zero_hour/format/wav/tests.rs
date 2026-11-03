@@ -42,7 +42,13 @@ fn a_pcm_file_writes_and_reads_back_and_another_encoding_is_refused() {
     let adpcm = wav([17, 2, 16, 4], 44_100, None, &[0; 16]);
     let file = WavFile::read(&adpcm).unwrap();
     let samples = [1, -2, 300, -32_768];
-    let pcm = file.pcm_file(&samples);
+    let pcm = file.pcm_file(&samples).unwrap();
+    // The sizes are `u32`s, the RIFF's the data's plus 36: 2,147,483,629 samples, 4,294,967,258
+    // bytes, are the most, and one more is refused.
+    let most = (u32::MAX - 36) / 2;
+    let most = usize::try_from(most).unwrap();
+    assert_eq!(WavFile::data_size(most), Some(u32::MAX - 37));
+    assert_eq!(WavFile::data_size(most + 1), None);
     let read = WavFile::read(&pcm).unwrap();
     assert_eq!(
         (read.encoding, read.channels, read.rate),
@@ -86,7 +92,7 @@ fn a_pcm_file_writes_and_reads_back_and_another_encoding_is_refused() {
     assert!(!file.whole);
     assert!(WavFile::read(&pcm).unwrap().whole);
     assert_eq!(file.decode(), [1, 2]);
-    let rewritten = file.pcm_file(&file.decode());
+    let rewritten = file.pcm_file(&file.decode()).unwrap();
     assert_eq!(rewritten.len(), 44 + 4);
     assert!(WavFile::read(&rewritten).unwrap().whole);
 }

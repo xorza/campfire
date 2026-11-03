@@ -76,10 +76,19 @@ fn an_event_converts_once_its_files_read_once_its_language_first_and_adpcm_decod
     audio.read(AUDIO.as_bytes()).unwrap();
     let held = archives();
     let reads = RefCell::new(Vec::new());
-    let mut sounds = SoundImport::new(&audio, Some("english"), |path: &ArchivePath| {
+    let mut written = BTreeMap::new();
+    let read = |path: &ArchivePath| {
         reads.borrow_mut().push(path.as_str().to_owned());
         Ok(held.get(path).cloned())
-    });
+    };
+    let write = |path: &PackagePath, bytes: &[u8]| {
+        assert!(
+            written.insert(path.clone(), bytes.to_vec()).is_none(),
+            "{path}: once"
+        );
+        Ok(())
+    };
+    let mut sounds = SoundImport::new(&audio, Some("english"), read, write);
     let name = |text: &str| DeclaredName::new(text).unwrap();
     let path = |text: &str| PackagePath::parse(text).unwrap();
     // The rifle: its English first stem, its decoded second, its third of no file counted; its
@@ -179,16 +188,16 @@ fn an_event_converts_once_its_files_read_once_its_language_first_and_adpcm_decod
         }
     );
     let imported = sounds.finish();
-    // The files kept: the rifle's English first stem as it is, its ADPCM second as PCM of its
-    // five samples, the voice, the engine and the three tracks.
-    assert_eq!(imported.files.len(), 7);
-    let decoded = WavFile::read(&imported.files[&path("client/sounds/iranweab.wav")]).unwrap();
+    // The files written, each once: the rifle's English first stem as it is, its ADPCM second as
+    // PCM of its five samples, the voice, the engine and the three tracks.
+    assert_eq!(written.len(), 7);
+    let decoded = WavFile::read(&written[&path("client/sounds/iranweab.wav")]).unwrap();
     assert_eq!(decoded.encoding, WavEncoding::Pcm16);
     assert_eq!(
-        imported.files[&path("client/sounds/iranweaa.wav")],
+        written[&path("client/sounds/iranweaa.wav")],
         archives()[&ArchivePath::of("data\\audio\\sounds\\english\\iranweaa.wav")]
     );
-    assert_eq!(imported.files[&path("client/music/usa_02.mp3")], b"ID3 two");
+    assert_eq!(written[&path("client/music/usa_02.mp3")], b"ID3 two");
     let dropped = |name: &str, cause| Dropped {
         name: name.to_owned(),
         cause,
@@ -220,9 +229,12 @@ fn voices_take_the_made_units_create_first_and_the_settings_make_the_sound_file(
         )
         .unwrap();
     let held = archives();
-    let mut sounds = SoundImport::new(&audio, None, |path: &ArchivePath| {
-        Ok(held.get(path).cloned())
-    });
+    let mut sounds = SoundImport::new(
+        &audio,
+        None,
+        |path: &ArchivePath| Ok(held.get(path).cloned()),
+        |_: &PackagePath, _: &[u8]| Ok(()),
+    );
     let name = |text: &str| DeclaredName::new(text).unwrap();
     // The ranger's select voice and its `VoiceCreate`, which comes before its `VoiceCreated`; a
     // voice of no event is none.

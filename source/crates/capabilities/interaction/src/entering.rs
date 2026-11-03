@@ -5,17 +5,16 @@ use campfire_declarations::ById;
 use campfire_math::Vec3;
 use campfire_script::{CallError, Frame, View};
 use campfire_sim::{Position, StableId};
-use campfire_units::{
-    Dead, Destination, FiringRider, FlightGoal, Life, Owner, SeeingRider, SeenBy, UnitsWorld,
-};
-use campfire_values::{Share, TagSet, Team, TeamSet, UnitTags, UnitType};
+use campfire_units::{Dead, Destination, FlightGoal, Life, Owner, UnitsWorld};
+use campfire_values::{Share, TagSet, Team, UnitTags, UnitType};
 
+use crate::Interaction;
 use crate::containers::{ContainerFrame, Containers};
 use crate::enter_spec::EnterSpec;
 use crate::interaction_effect::InteractionEffect;
 use crate::rider_size::RiderSize;
 use crate::riders::{HeldFrom, Riders};
-use crate::riding::Riding;
+use crate::riding::{RiderParts, Riding};
 
 /// The effect the `enter` kind ends its `on_resolve` with, which no data writes: its rider enters
 /// the container it reached.
@@ -104,17 +103,13 @@ impl Riders {
             Destination::route_to(&mut destination, None);
         }
         *unit.get_mut::<Position>().expect("a rider stands") = Position::from(place);
-        let riding = (
-            Riding::new(container_id),
-            SeenBy::new(TeamSet::NONE.with(team)),
-        );
-        // Out of the world in one move, a rider that fires or sees with its marks.
-        match (fires, sees) {
-            (true, true) => unit.insert((riding, FiringRider, SeeingRider)),
-            (true, false) => unit.insert((riding, FiringRider)),
-            (false, true) => unit.insert((riding, SeeingRider)),
-            (false, false) => unit.insert(riding),
-        };
+        RiderParts {
+            riding: Riding::new(container_id),
+            team,
+            fires,
+            sees,
+        }
+        .give(&mut unit);
         if takes_side {
             let owner = owner.expect("a free building takes a player's side");
             world.entity_mut(container).insert((owner, team));
@@ -124,7 +119,9 @@ impl Riders {
     }
 
     /// The room the rider of `rider` takes of the container of `container`, when the container
-    /// takes it.
+    /// takes it: its tags open it, `holding` as its riders now stand, as a rider that entered
+    /// earlier in the tick turned it before the tags derive again (04-capabilities/interaction.md,
+    /// A bunker is an entry a tag opens).
     fn admits(world: &World, rider: Entity, container: Entity) -> Option<u32> {
         let spec = Self::spec(world, container)?;
         let (rider_unit, container_unit) = (world.entity(rider), world.entity(container));
@@ -152,12 +149,24 @@ impl Riders {
             .get::<UnitTags>()
             .map_or(TagSet::NONE, |tags| tags.tags);
         let riders = container_unit.get::<Self>()?;
+        let holding = Interaction::HOLDING.tag();
+        let container_tags = container_unit
+            .get::<UnitTags>()
+            .map_or(TagSet::NONE, |tags| tags.tags);
+        let container_tags = if riders.is_empty() {
+            container_tags.without(holding)
+        } else {
+            container_tags.with(holding)
+        };
+        if !spec.opens(container_tags) {
+            return None;
+        }
         let owner = rider_unit.get::<Owner>().map(|owner| owner.player_slot());
         let held_by = container_unit
             .get::<Owner>()
             .map(|owner| owner.player_slot());
         let side = spec.sides(held_by, owner);
-        let room = spec.room_of(size.get());
+        let room = spec.counts.room_of(size.get());
         let fits = u64::from(riders.room()) + u64::from(room) <= u64::from(spec.capacity);
         (!full && spec.admits(relation, tags) && side && fits).then_some(room)
     }

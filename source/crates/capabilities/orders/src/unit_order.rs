@@ -8,7 +8,9 @@ use campfire_common::Tick;
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{Party, PathWalker, Progress, Route, RouteAsk, RouteMut};
-use campfire_sim::{Position, SimComponent, StableId, UnitDues};
+use campfire_sim::{
+    Position, SimComponent, StableId, TimedKept, TimedProcess, TimedRuns, UnitDues,
+};
 use campfire_states::{Replication, SentPredicted};
 use campfire_units::{
     BuildTarget, Destination, GroundPoint, OrderKind, SpawnPoint, UnitEntity, WalkGoal,
@@ -80,13 +82,14 @@ pub(crate) struct OrderedUnit {
     pub(crate) held: Option<&'static mut HeldOrder>,
 }
 
-/// The indexes an order pushes its unit into: of its actions' progress, of its route's ask, and
-/// of the units that attack-move.
+/// The indexes an order pushes its unit into: of its actions' progress, of its route's ask, of
+/// the units that attack-move, and of the units that hold an order.
 #[derive(Debug)]
 pub(crate) struct OrderDues<'a> {
     pub(crate) progress: ProgressDues<'a>,
     pub(crate) routes: UnitDues<'a, Route>,
     pub(crate) goals: UnitDues<'a, AttackMove>,
+    pub(crate) held: UnitDues<'a, HeldOrder>,
 }
 
 impl UnitOrder {
@@ -118,6 +121,7 @@ impl UnitOrder {
             progress: dues,
             routes,
             goals,
+            held: holds,
         } = dues;
         let OrderedUnitItem {
             entity: _,
@@ -139,6 +143,7 @@ impl UnitOrder {
                 && underway.wind_down(now, dues)
             {
                 held.hold(self);
+                holds.push(underway.wind_down_until());
                 return None;
             }
         }
@@ -313,6 +318,21 @@ impl SimComponent for HeldOrder {
         world
             .get::<ActionSlots>(entity)
             .is_some_and(|slots| usize::from(slot) < slots.len())
+    }
+}
+
+/// The units that hold an order as their channel winds down: each is due as its wind-down ends,
+/// when its order is given, so the orders held go in the order of their ticks, then their units'
+/// stable ids, in every world of the same state.
+impl TimedProcess for HeldOrder {
+    const RUNS: TimedRuns = TimedRuns::EveryRole;
+    const KEPT: TimedKept = TimedKept::BySetters;
+    type Parts = (&'static Self, Option<&'static ActionProgress>);
+    type Books = ();
+
+    fn due((): &(), (held, progress): (&Self, Option<&ActionProgress>)) -> Option<Tick> {
+        held.0?;
+        progress?.wind_down_until()
     }
 }
 

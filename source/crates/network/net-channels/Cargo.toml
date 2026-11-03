@@ -28,7 +28,6 @@ criterion = { workspace = true, features = ["cargo_bench_support"], optional = t
 thiserror = { workspace = true, features = ["std"] }
 tracing = { workspace = true, features = ["attributes", "std"] }
 
-bevy_platform = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 campfire-net-channels = { workspace = true, features = ["internals"] }

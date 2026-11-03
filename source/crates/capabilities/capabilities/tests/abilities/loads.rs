@@ -30,7 +30,8 @@ use campfire_values::{
     TrackId, TypeScope, UnitTags,
 };
 
-use crate::abilities::{LASH_OUT, STRIKE, abilities_match, cost, int, lash_out, param};
+use crate::abilities::{LASH_OUT, STRIKE, abilities_match, cost, int, lash_out};
+use crate::param;
 
 #[test]
 fn an_ability_loads_only_when_its_data_holds() {

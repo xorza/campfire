@@ -18,7 +18,8 @@ use campfire_units::internals::Spawn;
 use campfire_units::{Owner, UnitTypeCore, Units};
 use campfire_values::{NameId, PackageIndex, Rank, Ranked, Stat, Team, TypeScope, UnitType};
 
-use crate::abilities::{changing, int, param, scaling};
+use crate::abilities::{changing, int, scaling};
+use crate::param;
 
 fn decimal(text: &str) -> Num {
     text.parse().unwrap()

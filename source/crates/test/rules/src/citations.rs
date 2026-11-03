@@ -10,8 +10,12 @@ use crate::workspace::{Workspace, source};
 /// The most bytes a test reads of a design document: far past any the design holds.
 const DOC_LEN: usize = 1 << 20;
 
-/// The workspace's files outside `crates/` and `checks/` whose comments cite the design.
-const OTHER_FILES: [&str; 3] = ["Cargo.toml", "clippy.toml", ".config/nextest.toml"];
+/// The kinds of text file outside the Rust sources a citation may stand in, by extension.
+const TEXT_KINDS: [&str; 5] = ["md", "toml", "rhai", "yml", "txt"];
+
+/// The directories of the repository no citation is read from, none of them tracked: the
+/// build's, git's, and the local settings of an agent, which git ignores.
+const SKIPPED_DIRS: [&str; 3] = ["target", ".git", ".claude"];
 
 /// `text` with each comment's lines joined, so a citation a comment wraps reads whole.
 fn joined(text: &str) -> String {
@@ -81,11 +85,13 @@ fn citations(text: &str) -> Vec<Citation> {
     found
 }
 
-/// The titles a design document holds, and the bold leads of its bullets that never close.
+/// The titles a design document holds, the bold leads of its bullets that never close, and the
+/// titles no citation can name, as a `;` parts two citations and a parenthesis ends one.
 #[derive(Debug)]
 struct Titles {
     titles: Vec<String>,
     unclosed: Vec<String>,
+    uncitable: Vec<String>,
 }
 
 /// The titles of `text`, a design document: each heading, and each bold lead of a bullet, nested
@@ -95,6 +101,7 @@ fn titles(text: &str) -> Titles {
     let mut found = Titles {
         titles: Vec::new(),
         unclosed: Vec::new(),
+        uncitable: Vec::new(),
     };
     let mut lines = text.lines().peekable();
     while let Some(line) = lines.next() {
@@ -116,9 +123,13 @@ fn titles(text: &str) -> Titles {
             bullet.push_str(next.trim_start());
         }
         match bullet.split_once("**") {
-            Some((title, _)) => found
-                .titles
-                .push(title.trim_end_matches(['.', ',']).to_owned()),
+            Some((title, _)) => {
+                let title = title.trim_end_matches(['.', ',', ';']).to_owned();
+                if title.contains([';', '(', ')']) {
+                    found.uncitable.push(title.clone());
+                }
+                found.titles.push(title);
+            }
             None => found.unclosed.push(bullet),
         }
     }
@@ -134,6 +145,9 @@ fn broken(files: &[SourceFile], documents: &BTreeMap<String, Option<Titles>>) ->
             found.push(format!(
                 "{document}: a bold lead that never closes: {lead:?}"
             ));
+        }
+        for title in titles.iter().flat_map(|titles| &titles.uncitable) {
+            found.push(format!("{document}: a title no citation names: {title:?}"));
         }
     }
     for SourceFile {
@@ -176,30 +190,35 @@ fn numbered_decisions(text: &str) -> bool {
     })
 }
 
-/// The design's documents, each by its path under `docs/design/`, with its text, its wrapped lines
-/// joined, so a citation a bullet wraps reads whole.
-fn design_documents() -> Vec<SourceFile> {
+/// Every text file of the repository but the Rust sources and the skipped directories, each by
+/// its path from the repository's root, with its text, a Markdown document's wrapped lines joined,
+/// so a citation a bullet wraps reads whole.
+fn repository_texts() -> Vec<SourceFile> {
+    let root = source().join("..");
     let mut found = Vec::new();
     let mut dirs = vec![String::new()];
     while let Some(dir) = dirs.pop() {
-        let at = source().join("../docs/design").join(&dir);
-        for entry in DirEntries::read(&at).unwrap() {
-            let name = entry.name.to_str().expect("a document's name is UTF-8");
+        for entry in DirEntries::read(&root.join(&dir)).unwrap() {
+            let name = entry.name.to_str().expect("a file's name is UTF-8");
             let path = if dir.is_empty() {
                 name.to_owned()
             } else {
                 format!("{dir}/{name}")
             };
+            let extension = Path::new(name).extension().and_then(|ext| ext.to_str());
             match entry.kind {
-                EntryKind::Dir => dirs.push(path),
-                EntryKind::File if Path::new(name).extension().is_some_and(|ext| ext == "md") => {
-                    let text = InputFile::read_text(&at.join(name), DOC_LEN).unwrap();
-                    let text = text
-                        .lines()
-                        .map(str::trim_start)
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    found.push(SourceFile::new(format!("docs/design/{path}"), text));
+                EntryKind::Dir if !SKIPPED_DIRS.contains(&name) => dirs.push(path),
+                EntryKind::File if extension.is_some_and(|ext| TEXT_KINDS.contains(&ext)) => {
+                    let text = InputFile::read_text(&root.join(&path), DOC_LEN).unwrap();
+                    let text = if extension == Some("md") {
+                        text.lines()
+                            .map(str::trim_start)
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    } else {
+                        text
+                    };
+                    found.push(SourceFile::new(path, text));
                 }
                 _ => {}
             }
@@ -236,16 +255,15 @@ pub(crate) fn a_citation_names_a_decision_its_document_holds(workspace: &Workspa
         .filter(|file| file.path != "crates/test/rules/src/citations.rs")
         .cloned()
         .collect();
-    for file in OTHER_FILES {
-        files.push(SourceFile::new(
-            file,
-            InputFile::read_text(&source().join(file), DOC_LEN).unwrap(),
-        ));
-    }
-    // The design's documents cite each other too; the walk reads them, so a moved tree fails.
-    let design = design_documents();
-    assert!(design.len() > 20, "{} documents", design.len());
-    files.extend(design);
+    // Every other text file of the repository cites the design too, its documents, its notes and
+    // its manifests among them; the walk reads them, so a moved tree fails.
+    let texts = repository_texts();
+    let design = texts
+        .iter()
+        .filter(|file| file.path.starts_with("docs/design/"))
+        .count();
+    assert!(design > 20, "{design} documents");
+    files.extend(texts);
     let mut documents = BTreeMap::new();
     for file in &files {
         for Citation {
@@ -258,33 +276,6 @@ pub(crate) fn a_citation_names_a_decision_its_document_holds(workspace: &Workspa
         }
     }
     assert_eq!(broken(&files, &documents), Vec::<String>::new());
-
-    // A sample: a whole document, a title a wrapped comment holds, two in one parenthesis, a
-    // title its bullet wraps, a nested bullet's, a missing title, a missing document, a link that
-    // is no citation, and the old form; and a lead that never closes.
-    let sample = "/// As (a.md) says, and (a.md, One title; a.md, Two\n/// title), not (a.md, Three) \
-                  nor (b.md, One title); [a link](a.md#one-title); [a path](c.md); design 02, D1. \
-                  (a.md, A long wrapped title) (a.md, Nested) (D7)\nfn f() {}\n";
-    let documents = BTreeMap::from([
-        (
-            "a.md".to_owned(),
-            Some(titles(
-                "# A\n\n- **One title.** Text.\n- **Two title,** text.\n- **A long\n  wrapped \
-                 title.** Text.\n  - **Nested.** Text.\n- **Never closed. Text.\n\n- **Four.** x\n",
-            )),
-        ),
-        ("b.md".to_owned(), None),
-    ]);
-    assert_eq!(
-        broken(&[SourceFile::new("s.rs", sample)], &documents),
-        [
-            "a.md: a bold lead that never closes: \"Never closed. Text.\"",
-            "s.rs: a.md holds no \"Three\"",
-            "s.rs: no b.md",
-            "s.rs: a decision cited by its number",
-            "s.rs: a design cited by its number",
-        ]
-    );
 }
 
 /// The relative paths `text`, a Markdown document's, links to: each `](path)` that names no
@@ -323,12 +314,16 @@ fn lexical(path: &Path) -> PathBuf {
 }
 
 pub(crate) fn a_documents_link_names_a_file(_: &Workspace) {
-    // The design's documents and `AGENTS.md`, each link resolved from its document's folder,
+    // Every Markdown document of the repository, each link resolved from its document's folder,
     // its target looked up in its folder's listing, each folder listed once.
     let root = source().join("..");
-    let mut documents = design_documents();
-    let agents = InputFile::read_text(&root.join("AGENTS.md"), DOC_LEN).unwrap();
-    documents.push(SourceFile::new("AGENTS.md", agents));
+    let mut documents = repository_texts();
+    documents.retain(|file| {
+        Path::new(&file.path)
+            .extension()
+            .is_some_and(|ext| ext == "md")
+    });
+    assert!(documents.iter().any(|file| file.path == "AGENTS.md"));
     let mut listed: BTreeMap<PathBuf, BTreeSet<OsString>> = BTreeMap::new();
     let mut broken = Vec::new();
     for file in &documents {
@@ -357,6 +352,44 @@ pub(crate) fn a_documents_link_names_a_file(_: &Workspace) {
         }
     }
     assert_eq!(broken, Vec::<String>::new());
+}
+
+#[test]
+fn each_broken_citation_is_found() {
+    // A sample: a whole document, a title a wrapped comment holds, two in one parenthesis, a
+    // title its bullet wraps, a nested bullet's, a missing title, a missing document, a link that
+    // is no citation, and the old form, a title a trailing `;` ends; and a lead that never closes,
+    // and two titles no citation can name.
+    let sample = "/// As (a.md) says, and (a.md, One title; a.md, Two\n/// title), not (a.md, Three) \
+                  nor (b.md, One title); [a link](a.md#one-title); [a path](c.md); design 02, D1. \
+                  (a.md, A long wrapped title) (a.md, Nested) (D7) (a.md, Ends)\nfn f() {}\n";
+    let documents = BTreeMap::from([
+        (
+            "a.md".to_owned(),
+            Some(titles(
+                "# A\n\n- **One title.** Text.\n- **Two title,** text.\n- **A long\n  wrapped \
+                 title.** Text.\n  - **Nested.** Text.\n- **Never closed. Text.\n\n- **Four.** x\n\
+                 - **Ends;** x\n- **One; two.** x\n- **Wallet (NWC).** x\n",
+            )),
+        ),
+        ("b.md".to_owned(), None),
+    ]);
+    assert_eq!(
+        broken(&[SourceFile::new("s.rs", sample)], &documents),
+        [
+            "a.md: a bold lead that never closes: \"Never closed. Text.\"",
+            "a.md: a title no citation names: \"One; two\"",
+            "a.md: a title no citation names: \"Wallet (NWC)\"",
+            "s.rs: a.md holds no \"Three\"",
+            "s.rs: no b.md",
+            "s.rs: a decision cited by its number",
+            "s.rs: a design cited by its number",
+        ]
+    );
+}
+
+#[test]
+fn a_link_is_a_path_and_prose_is_none() {
     // A sample: a path, one up with an anchor, an anchor alone, a web link, and a bracket and
     // a parenthesis that hold prose, not a link.
     let sample = "[a](b.md) and [c](../d/e.md#x), [f](#g), [h](https://i.org/j), [k] (l), \

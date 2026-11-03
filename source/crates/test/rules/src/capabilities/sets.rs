@@ -1,19 +1,79 @@
-use super::{NamedCode, capability_sources};
+use std::collections::BTreeSet;
+
+use proc_macro2::{TokenStream, TokenTree};
+use syn::visit::{self, Visit};
+use syn::{Ident, ImplItemFn, ItemImpl, ItemUse, Macro, ReturnType, Type};
+
+use crate::capabilities::{NamedCode, capability_sources};
 use crate::workspace::Workspace;
 
-/// `code` with the body of each set's place left out, where a module names the steps of the
-/// modules it builds on.
-fn outside_places(code: &str) -> String {
-    let mut out = String::new();
-    let mut rest = code;
-    while let Some(at) = rest.find("    fn place(self) -> SetPlace {") {
-        out.push_str(&rest[..at]);
-        let body = &rest[at..];
-        let end = body.find("\n    }\n").expect("a place's body ends") + "\n    }\n".len();
-        rest = &body[end..];
+/// What a file names of the sets: the sets it implements `ModuleSystems` for, the identifiers
+/// it names outside its imports and its sets' places, a macro's among them, and whether it holds
+/// a place, where a module names the steps of the modules it builds on.
+#[derive(Debug, Default)]
+struct SetNames {
+    sets: Vec<String>,
+    words: BTreeSet<String>,
+    places: bool,
+}
+
+impl SetNames {
+    fn of(code: &str) -> Self {
+        let file = syn::parse_file(code).expect("a workspace source parses");
+        let mut found = Self::default();
+        found.visit_file(&file);
+        found
     }
-    out.push_str(rest);
-    out
+
+    /// Takes each identifier of `tokens`, a macro's arguments, which no item holds.
+    fn take_tokens(&mut self, tokens: TokenStream) {
+        for token in tokens {
+            match token {
+                TokenTree::Ident(ident) => {
+                    self.words.insert(ident.to_string());
+                }
+                TokenTree::Group(group) => self.take_tokens(group.stream()),
+                TokenTree::Punct(_) | TokenTree::Literal(_) => {}
+            }
+        }
+    }
+}
+
+impl<'ast> Visit<'ast> for SetNames {
+    fn visit_item_impl(&mut self, item: &'ast ItemImpl) {
+        let implemented = (item.trait_.as_ref()).and_then(|(path, _)| path.segments.last());
+        if implemented.is_some_and(|segment| segment.ident == "ModuleSystems")
+            && let Type::Path(path) = &*item.self_ty
+            && let Some(segment) = path.path.segments.last()
+        {
+            self.sets.push(segment.ident.to_string());
+        }
+        visit::visit_item_impl(self, item);
+    }
+
+    /// An import names a set for its place's sake.
+    fn visit_item_use(&mut self, _: &'ast ItemUse) {}
+
+    /// A set's place names the steps of the modules it builds on.
+    fn visit_impl_item_fn(&mut self, item: &'ast ImplItemFn) {
+        let place = item.sig.ident == "place"
+            && matches!(&item.sig.output, ReturnType::Type(_, output)
+                if matches!(&**output, Type::Path(path) if path.path.is_ident("SetPlace")));
+        if place {
+            self.places = true;
+        } else {
+            visit::visit_impl_item_fn(self, item);
+        }
+    }
+
+    fn visit_macro(&mut self, item: &'ast Macro) {
+        self.take_tokens(item.tokens.clone());
+        visit::visit_macro(self, item);
+    }
+
+    fn visit_ident(&mut self, ident: &'ast Ident) {
+        self.words.insert(ident.to_string());
+    }
 }
 
 pub(crate) fn a_module_names_another_modules_sets_only_where_its_sets_run(workspace: &Workspace) {
@@ -22,54 +82,54 @@ pub(crate) fn a_module_names_another_modules_sets_only_where_its_sets_run(worksp
     // through its set's place (02-engine-core.md, Sets order against the steps of the modules
     // they build on).
     let module_of = |path: &str| path.split('/').next().unwrap_or_default().to_owned();
-    let sources = capability_sources(workspace);
-    let mut sets = Vec::new();
-    for NamedCode { path, code } in &sources {
-        for (at, _) in code.match_indices("impl ModuleSystems for ") {
-            let rest = &code[at + "impl ModuleSystems for ".len()..];
-            let end = rest.find(|c: char| !c.is_ascii_alphanumeric()).unwrap();
-            sets.push((module_of(path), rest[..end].to_owned()));
-        }
-    }
+    let files: Vec<(String, SetNames)> = capability_sources(workspace)
+        .into_iter()
+        .map(|NamedCode { path, code }| (path, SetNames::of(&code)))
+        .collect();
+    let sets: Vec<(String, &String)> = files
+        .iter()
+        .flat_map(|(path, names)| names.sets.iter().map(|set| (module_of(path), set)))
+        .collect();
     assert!(
         sets.iter()
-            .any(|(module, set)| module == "actions" && set == "ActionsSystems")
+            .any(|(module, set)| module == "actions" && *set == "ActionsSystems")
     );
     let mut named = Vec::new();
     let mut placed = Vec::new();
-    for NamedCode { path, code } in &sources {
+    for (path, names) in &files {
         let module = module_of(path);
-        let outside = outside_places(code);
-        if outside.len() < code.len() && code.contains("SetPlace::at(") {
+        if names.places {
             placed.push(module.clone());
         }
-        // An import names the set for the place's sake; a statement of it may take lines.
-        let mut importing = false;
-        let used = outside.lines().filter(|line| {
-            importing |= line.trim_start().starts_with("use ");
-            let used = !importing;
-            importing &= !line.trim_end().ends_with(';');
-            used
-        });
-        let words =
-            used.flat_map(|line| line.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')));
-        for word in words {
+        for word in &names.words {
             // `NoSystems`, of a module that adds no system, is no module's.
             let other = sets
                 .iter()
-                .find(|(home, set)| set == word && *home != module && home != "declarations");
+                .find(|(home, set)| *set == word && *home != module && home != "declarations");
             if let Some((home, set)) = other {
                 named.push(format!("{path} names {home}'s {set}"));
             }
         }
     }
-    named.sort();
-    named.dedup();
     assert_eq!(named, Vec::<String>::new());
     // The capabilities do place their sets at the steps of others: the scan sees them.
     assert!(placed.contains(&"combat".to_owned()), "{placed:?}");
-    assert_eq!(
-        outside_places("a\n    fn place(self) -> SetPlace {\n        X\n    }\nb"),
-        "a\nb"
+}
+
+#[test]
+fn a_set_named_outside_its_place_and_imports_is_found() {
+    // A set's place and an import name no set the file's words hold; a statement, a macro's
+    // arguments and a type do.
+    let names = SetNames::of(
+        "use crate::{A, B};\nimpl ModuleSystems for CombatSystems {\n    fn place(self) -> SetPlace \
+         {\n        SetPlace::at(C)\n    }\n}\nfn f(_: D) { g(E); assert!(F); }\n",
     );
+    assert_eq!(names.sets, ["CombatSystems"]);
+    assert!(names.places);
+    for word in ["D", "E", "F", "CombatSystems"] {
+        assert!(names.words.contains(word), "{word}");
+    }
+    for word in ["A", "B", "C"] {
+        assert!(!names.words.contains(word), "{word}");
+    }
 }

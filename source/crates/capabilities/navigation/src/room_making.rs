@@ -17,7 +17,7 @@ use crate::walker::Walker;
 
 /// The room a static body makes for itself as it spawns, as `Navigation::make_room` says.
 #[derive(Debug)]
-pub struct RoomMaking;
+pub(crate) struct RoomMaking;
 
 /// The room making as a system of its own, which a spawn runs out of the schedule, so its query
 /// of the walkers and its list of those a body overlaps persist between its runs.

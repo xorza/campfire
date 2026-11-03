@@ -153,5 +153,7 @@ packet stream under the transport's messages. The sealed handshake is in [UDP](u
   §7.
 - **The keep-alive and the idle timeout are the packet session's,** on every IO, and only an
   authenticated packet resets the idle timer.
-- **A close carries its code,** and a closed packet session answers each packet of the next 3 probe
-  timeouts with its close again; the peer's own close ends that at once. Source: RFC 9000 §10.2.
+- **A close carries its code,** and a closed packet session answers the packets of the next 3 probe
+  timeouts with its close again, the 1st, the 2nd, the 4th and each power of two after, so a peer
+  that keeps sending draws ever fewer; the peer's own close ends that at once. Source: RFC 9000
+  §10.2, and §10.2.1, which asks a closing end to limit the rate of its closes.

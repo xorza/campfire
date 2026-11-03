@@ -100,9 +100,9 @@ mod tests {
     /// A book of a test, of a count.
     #[derive(Resource, Debug, PartialEq, Eq)]
     #[component(immutable)]
-    struct Count(u32);
+    struct CountBook(u32);
 
-    impl Book for Count {
+    impl Book for CountBook {
         const SCRIPTS_ONLY: bool = false;
 
         fn share(&self, _: &mut MatchNames) {}
@@ -111,7 +111,7 @@ mod tests {
     /// A world that holds the count 1 and the names books share.
     fn world() -> World {
         let mut world = World::new();
-        world.insert_resource(Count(1));
+        world.insert_resource(CountBook(1));
         world.init_resource::<MatchNames>();
         world
     }
@@ -120,11 +120,11 @@ mod tests {
     #[test]
     fn an_amend_changes_a_book_before_the_install() {
         let mut world = world();
-        let before = Count::amend(&mut world, |_, count| {
+        let before = CountBook::amend(&mut world, |_, count| {
             count.0 += 1;
             count.0 - 1
         });
-        assert_eq!((before, world.resource::<Count>()), (1, &Count(2)));
+        assert_eq!((before, world.resource::<CountBook>()), (1, &CountBook(2)));
     }
 
     /// Once the match's systems installed, an amend panics, as the install read the book.
@@ -136,6 +136,6 @@ mod tests {
         world
             .resource_mut::<Schedules>()
             .insert(Schedule::new(SimUpdate));
-        Count::amend(&mut world, |_, count| count.0 += 1);
+        CountBook::amend(&mut world, |_, count| count.0 += 1);
     }
 }

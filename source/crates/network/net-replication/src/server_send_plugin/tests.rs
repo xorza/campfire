@@ -756,7 +756,10 @@ fn a_client_in_both_targets_is_predicted_alone() {
         entity: source.to_bits(),
         link: stepper.client_of_entity(0).to_bits(),
     };
-    assert_eq!(stepper.log().take::<TargetsOverlap>(), [overlap, overlap]);
+    assert_eq!(
+        stepper.log_check().take::<TargetsOverlap>(),
+        [overlap, overlap]
+    );
     stepper.frame_step(PROPAGATION_FRAMES);
     let markers = |stepper: &Stepper<ReplicationStack>| {
         let copy = stepper

@@ -23,10 +23,12 @@ use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_net_timeline::TimelineRate;
 use campfire_protocol::{JournalFrames, SeedChain, SessionLog};
-use campfire_runner::{Replay, Session, SessionWorld};
+use campfire_runner::{Replay, SessionWorld};
 use campfire_sim::{MatchRate, SimWorld};
 use campfire_store::InputFile;
 use campfire_store::internals::TestDir;
+
+use crate::session_log;
 
 /// A chain of room for three checkpoints.
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::new(4).unwrap());
@@ -64,10 +66,6 @@ fn command(local: &mut InProcessMatch, command: JournalCommand) {
     world.resource_mut::<PendingJournalCommands>().push(command);
 }
 
-fn log(local: &InProcessMatch) -> &SessionLog {
-    local.server().world().resource::<Session>().log()
-}
-
 /// How many loads the journal of `local`'s session, kept in `scratch`, records, once its writer
 /// thread, which writes in its own time, synced every record the log took.
 fn loads(test_dir: &TestDir, local: &InProcessMatch) -> usize {
@@ -76,7 +74,7 @@ fn loads(test_dir: &TestDir, local: &InProcessMatch) -> usize {
         watch.wait_settled(Duration::from_secs(5)),
         "the journal's writer syncs"
     );
-    let id = log(local).session_id().to_string();
+    let id = session_log(local).session_id().to_string();
     let journal = test_dir
         .path("data")
         .join("sessions")
@@ -113,9 +111,9 @@ fn a_players_save_is_refused_when_the_mode_alone_saves() {
     for _ in 0..10 {
         local.step();
     }
-    assert_eq!(log(&local).segment(), 0);
+    assert_eq!(session_log(&local).segment(), 0);
     assert_eq!(
-        local.log().take::<JournalRefused>(),
+        local.log_check().take::<JournalRefused>(),
         [JournalRefused {
             refusal: JournalRefusal::ByMode,
         }]
@@ -133,12 +131,12 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
         local.step();
     }
     local.server_mut().world_mut().settle_checkpoint();
-    let save = log(&local).checkpoints().next().unwrap().clone();
+    let save = session_log(&local).checkpoints().next().unwrap().clone();
     assert_eq!(save.segment, 1);
     for _ in 0..30 {
         local.step();
     }
-    assert!(log(&local).next_tick() > save.tick);
+    assert!(session_log(&local).next_tick() > save.tick);
 
     // The quick load, at speed 2, pressed twice in one frame: the server loads once, in place,
     // at that speed, the match at the save's tick and in its state, the log holding nothing after
@@ -150,12 +148,12 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     for _ in 0..10 {
         local.step();
         assert!(linked(&local, links));
-        if log(&local).next_tick() == save.tick {
+        if session_log(&local).next_tick() == save.tick {
             break;
         }
     }
     let world = local.server().world();
-    assert_eq!(log(&local).next_tick(), save.tick);
+    assert_eq!(session_log(&local).next_tick(), save.tick);
     assert_eq!(world.state_hash(), save.state_hash);
     // At speed 2 the timelines run at twice the session's 30 Hz, 60 Hz, whose tick is
     // 16,666,666.6… ns, to the nearest 16,666,667, and a frame runs 9 ticks at most
@@ -168,7 +166,10 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
         world.resource::<Time<Virtual>>().max_delta(),
         Duration::from_nanos(16_666_667 * 9)
     );
-    assert_eq!(log(&local).checkpoints().collect::<Vec<_>>(), [&save]);
+    assert_eq!(
+        session_log(&local).checkpoints().collect::<Vec<_>>(),
+        [&save]
+    );
     assert_eq!(loads(&test_dir, &local), 1);
 
     // Every client joins again on its link and plays on from the save.
@@ -182,7 +183,7 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     assert!(playing_on(&local));
     assert!(local.next_tick(End::Server) > save.tick.get() + 30);
     // Each player's order after the save never applies.
-    let mut discarded = local.log().take::<InputsDiscarded>();
+    let mut discarded = local.log_check().take::<InputsDiscarded>();
     discarded.sort_by_key(|event| event.player_slot);
     let player_slots = [0, 1].map(PlayerSlot::new);
     assert_eq!(
@@ -201,7 +202,7 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
         .session_mut()
         .close_journal()
         .unwrap();
-    let held = log(&local);
+    let held = session_log(&local);
     let revealed = held.revealed_seeds().unwrap();
     let last = revealed.seed(held.segment()).unwrap().clone();
     let id = held.session_id();
@@ -227,9 +228,9 @@ fn a_save_due_as_the_server_stopped_begins_as_its_restore_reaches_the_boundary()
         local.step();
     }
     local.server_mut().world_mut().settle_checkpoint();
-    let save = log(&local).checkpoints().next().unwrap().clone();
+    let save = session_log(&local).checkpoints().next().unwrap().clone();
     assert_eq!((save.segment, save.tick), (1, Tick::new(30)));
-    let id = log(&local).session_id();
+    let id = session_log(&local).session_id();
     local.stop_server();
 
     // A stop after tick 29, before the save began: the journal ends before its begin, and its
@@ -254,6 +255,6 @@ fn a_save_due_as_the_server_stopped_begins_as_its_restore_reaches_the_boundary()
     local.restart_server();
     assert_eq!(local.next_tick(End::Server), 30);
     local.server_mut().world_mut().settle_checkpoint();
-    assert_eq!(log(&local).checkpoint_at(save.tick), Some(&save));
+    assert_eq!(session_log(&local).checkpoint_at(save.tick), Some(&save));
     assert!(test_dir.exists(&snapshot));
 }

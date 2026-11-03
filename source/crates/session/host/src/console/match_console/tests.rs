@@ -164,6 +164,13 @@ fn a_run_plays_until_its_end_and_pauses_there() {
         ],
     );
     assert_eq!(replies[0].tick, Some(2));
+    // A count of every tick a `u64` numbers runs to its last, where a sum would pass it.
+    let console = world.resource::<MatchConsole>();
+    let most = console.until(&world, 3, &RunTo::Ticks(u64::MAX));
+    let RunStart::Runs(most) = most else {
+        panic!("a run of more ticks runs");
+    };
+    assert_eq!(most.until, RunUntil::Tick(u64::MAX));
     assert_eq!(
         answered(replies),
         [

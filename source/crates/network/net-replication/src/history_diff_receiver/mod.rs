@@ -536,17 +536,6 @@ pub(crate) mod internals {
             self.queue_diff(tick, first_diff_index + offset, diffs)
         }
 
-        /// Queues a message of `diffs` from `first_diff_index`, as the bridge's `queue_diffs`
-        /// does.
-        pub fn bridge_queue_diffs(
-            &mut self,
-            tick: NetTick,
-            first_diff_index: DiffIndex,
-            diffs: Vec<C::Diff>,
-        ) -> Result<(), HistoryDiffError> {
-            self.queue_diffs(tick, first_diff_index, diffs)
-        }
-
         /// Queues the diffs ending at `index`, as the bridge's `queue_diff` does.
         pub fn bridge_queue_diff(
             &mut self,

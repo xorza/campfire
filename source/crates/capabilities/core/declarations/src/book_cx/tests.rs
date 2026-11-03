@@ -19,20 +19,20 @@ use crate::unit_type_data::UnitTypeData;
 /// A book of a test, of a count.
 #[derive(Resource, Debug, Default, PartialEq, Eq)]
 #[component(immutable)]
-struct Count(u32);
+struct CountBook(u32);
 
-impl Book for Count {
+impl Book for CountBook {
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &mut MatchNames) {}
 }
 
-/// A book of a test that reads `Count`.
+/// A book of a test that reads `CountBook`.
 #[derive(Resource, Debug, Default, PartialEq, Eq)]
 #[component(immutable)]
-struct Doubled(u32);
+struct DoubledBook(u32);
 
-impl Book for Doubled {
+impl Book for DoubledBook {
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &mut MatchNames) {}
@@ -56,12 +56,12 @@ impl Section for Shell {
     const STATUS: Status = Status::Runs(ApiVersion::FIRST);
 }
 
-/// A book of a test that reads itself through `Doubled`.
+/// A book of a test that reads itself through `DoubledBook`.
 #[derive(Resource, Debug, Default)]
 #[component(immutable)]
-struct Looped;
+struct LoopedBook;
 
-impl Book for Looped {
+impl Book for LoopedBook {
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &mut MatchNames) {}
@@ -93,46 +93,46 @@ fn with_cx<T>(run: impl FnOnce(BookCx<'_>) -> T) -> T {
 #[test]
 fn a_book_builds_once_as_first_asked_for_with_its_extensions() {
     with_cx(|mut cx| {
-        // `Doubled` is declared first and asks for `Count`, built then of the fact `Base` and
+        // `DoubledBook` is declared first and asks for `CountBook`, built then of the fact `Base` and
         // extended by 1, by an extension declared before it, then by 2 more: 2 × (3 + 1 + 2).
-        cx.declare_book::<Doubled>(|cx| Ok(Doubled(cx.book::<Count>()?.0 * 2)));
-        cx.declare_extend::<Count>(|_, count| {
+        cx.declare_book::<DoubledBook>(|cx| Ok(DoubledBook(cx.book::<CountBook>()?.0 * 2)));
+        cx.declare_extend::<CountBook>(|_, count| {
             count.0 += 1;
             Ok(())
         });
-        cx.declare_book::<Count>(|cx| Ok(Count(cx.fact::<Base>()?.0)));
+        cx.declare_book::<CountBook>(|cx| Ok(CountBook(cx.fact::<Base>()?.0)));
         cx.declare_fact::<Base>(|_| Ok(Base(3)));
-        cx.declare_extend::<Count>(|_, count| {
+        cx.declare_extend::<CountBook>(|_, count| {
             count.0 += 2;
             Ok(())
         });
-        assert!(cx.book_if::<Looped>().unwrap().is_none());
+        assert!(cx.book_if::<LoopedBook>().unwrap().is_none());
         cx.build_all().unwrap();
         assert_eq!(cx.take_fact::<Base>().unwrap(), Some(Base(3)));
         let mut books = cx.into_books();
-        assert_eq!(books.take::<Doubled>(), Some(Doubled(12)));
-        assert_eq!(books.take::<Count>(), Some(Count(6)));
+        assert_eq!(books.take::<DoubledBook>(), Some(DoubledBook(12)));
+        assert_eq!(books.take::<CountBook>(), Some(CountBook(6)));
         assert!(books.is_empty(), "a fact is no book: {books:?}");
     });
     // An extension of a book of a module the match does not run does nothing.
     with_cx(|mut cx| {
-        cx.declare_extend::<Count>(|_, _| panic!("Count is not built"));
-        cx.declare_absent::<Count>();
+        cx.declare_extend::<CountBook>(|_, _| panic!("CountBook is not built"));
+        cx.declare_absent::<CountBook>();
         cx.check_all().unwrap();
         cx.build_all().unwrap();
-        assert!(cx.book_if::<Count>().unwrap().is_none());
+        assert!(cx.book_if::<CountBook>().unwrap().is_none());
     });
 }
 
 #[test]
 fn the_first_error_a_build_or_a_rule_refuses_ends_it() {
     with_cx(|mut cx| {
-        cx.declare_book::<Count>(|_| Err(broken("scripts/none.rhai")));
-        cx.declare_book::<Doubled>(|cx| Ok(Doubled(cx.book::<Count>()?.0)));
+        cx.declare_book::<CountBook>(|_| Err(broken("scripts/none.rhai")));
+        cx.declare_book::<DoubledBook>(|cx| Ok(DoubledBook(cx.book::<CountBook>()?.0)));
         assert_eq!(cx.build_all(), Err(broken("scripts/none.rhai")));
         // A later ask of the refused book, or of the one that asked for it, refuses again.
-        assert_eq!(cx.book::<Count>(), Err(broken("scripts/none.rhai")));
-        assert_eq!(cx.book::<Doubled>(), Err(broken("scripts/none.rhai")));
+        assert_eq!(cx.book::<CountBook>(), Err(broken("scripts/none.rhai")));
+        assert_eq!(cx.book::<DoubledBook>(), Err(broken("scripts/none.rhai")));
     });
     // The rules check in their order, and the first the data breaks ends the check.
     with_cx(|mut cx| {
@@ -144,25 +144,25 @@ fn the_first_error_a_build_or_a_rule_refuses_ends_it() {
 }
 
 #[test]
-#[should_panic(expected = "Count is extended, and no module of the release declares it")]
+#[should_panic(expected = "CountBook is extended, and no module of the release declares it")]
 fn an_extension_of_a_book_no_module_declares_is_a_logic_error() {
     with_cx(|mut cx| {
-        cx.declare_extend::<Count>(|_, _| Ok(()));
+        cx.declare_extend::<CountBook>(|_, _| Ok(()));
         cx.build_all().unwrap();
     });
 }
 
 #[test]
-#[should_panic(expected = "Looped builds of itself")]
+#[should_panic(expected = "LoopedBook builds of itself")]
 fn a_book_that_asks_for_itself_is_a_logic_error() {
     with_cx(|mut cx| {
-        cx.declare_book::<Looped>(|cx| {
-            cx.book::<Doubled>()?;
-            Ok(Looped)
+        cx.declare_book::<LoopedBook>(|cx| {
+            cx.book::<DoubledBook>()?;
+            Ok(LoopedBook)
         });
-        cx.declare_book::<Doubled>(|cx| {
-            cx.book::<Looped>()?;
-            Ok(Doubled(0))
+        cx.declare_book::<DoubledBook>(|cx| {
+            cx.book::<LoopedBook>()?;
+            Ok(DoubledBook(0))
         });
         cx.build_all().unwrap();
     });
@@ -239,12 +239,12 @@ fn the_types_number_by_package_then_name_then_avatar_and_scripts_by_package() {
     let standing: Vec<usize> = cx.standing().map(|unit| unit.unit_type.index()).collect();
     assert_eq!(standing, [1, 2, 3]);
     assert!(cx.type_of(UnitType::new(3)).is_avatar());
-    assert_eq!(cx.unit_type(hero_scope, "bolt"), Some(UnitType::new(2)));
+    assert_eq!(cx.type_named(hero_scope, "bolt"), Some(UnitType::new(2)));
     assert_eq!(
-        cx.unit_type(TypeScope::Mode, "hero-x"),
+        cx.type_named(TypeScope::Mode, "hero-x"),
         Some(UnitType::new(3))
     );
-    assert_eq!(cx.unit_type(hero_scope, "tower"), None);
+    assert_eq!(cx.type_named(hero_scope, "tower"), None);
     // A script's id is its place among every package's, the mode's first.
     let hero_index = PackageIndex::new(1);
     assert_eq!(cx.script(hero_index, &paths[2]), Ok(ScriptId::nth(2)));

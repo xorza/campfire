@@ -180,10 +180,13 @@ impl<Io: DatagramIo> PlainHost<Io> {
                             self.next_carrier += 1;
                             carrier
                         };
+                        let ended = core.carry(key, carrier, self.runtime.io().mtu(address));
                         let link = self.links.entry(carrier).or_default();
                         link.binding = binding;
-                        link.linked = true;
-                        core.carry(key, carrier, self.runtime.io().mtu(address));
+                        // A packet session that ended before the frame carried it unlinks the
+                        // link it just made, which no later news names, as the endpoint's does.
+                        link.linked = ended.is_none();
+                        link.ended = ended;
                     }
                     News::Ended { carrier, reason } => {
                         if let Some(link) = self.links.get_mut(&carrier) {

@@ -8,9 +8,6 @@ use crate::error::CheckError;
 use crate::process::Process;
 use crate::process_log::ProcessLog;
 
-/// The most bytes a process's log holds as its tail opens it: far past what a LAN match logs.
-const MAX_LOG_LEN: usize = 1 << 30;
-
 /// A process's log as it grows: its file open where the last read ended, so each read takes only
 /// what the process wrote since, and the lines read so far, each parsed once.
 #[derive(Debug)]
@@ -20,8 +17,6 @@ pub(crate) struct LogTail {
     file: Option<InputStream>,
     /// What the file held past its last whole line.
     rest: Vec<u8>,
-    /// The bytes read from the file, within `ProcessLog::MAX_LEN`.
-    read: usize,
     log: ProcessLog,
 }
 
@@ -32,7 +27,6 @@ impl LogTail {
             path: process.log_path(dir),
             file: None,
             rest: Vec::new(),
-            read: 0,
             log: ProcessLog::empty(process),
         }
     }
@@ -55,7 +49,7 @@ impl LogTail {
     pub(crate) fn read(&mut self) -> Result<&ProcessLog, CheckError> {
         let file = match &mut self.file {
             Some(file) => file,
-            None => match InputFile::stream(&self.path, MAX_LOG_LEN) {
+            None => match InputFile::stream(&self.path, ProcessLog::MAX_LEN) {
                 Ok(file) => self.file.insert(file),
                 Err(PathError {
                     error: ReadError::Missing,
@@ -70,17 +64,8 @@ impl LogTail {
                 error,
             })
         };
-        let left = ProcessLog::MAX_LEN - self.read;
-        let read = file
-            .take(u64::try_from(left).expect("a length fits u64") + 1)
-            .read_to_end(&mut self.rest)
-            .map_err(|error| failed(ReadError::Read(error)))?;
-        if read > left {
-            return Err(failed(ReadError::TooLarge {
-                max: ProcessLog::MAX_LEN,
-            }));
-        }
-        self.read += read;
+        file.read_to_end(&mut self.rest)
+            .map_err(|error| failed(ReadError::of_stream(error)))?;
         let whole = self.log.extend(&self.rest)?;
         self.rest.drain(..whole);
         Ok(&self.log)

@@ -19,12 +19,12 @@ use campfire_net_stepper::StepperSetup;
 use campfire_net_sync::InputDelaySetup;
 use campfire_net_sync::LocalTimelineSync;
 use campfire_net_sync::TimelineSync;
-use campfire_net_timeline::Rollback;
 
 use super::*;
 use crate::fixtures::prediction_stack::PredictionStack;
 use crate::fixtures::protocol::CompCorr;
 use crate::fixtures::steps::trigger_state_rollback;
+use crate::fixtures::steps::{RollbackObserved, record_rollback};
 use crate::prediction_registry::PredictionRegistry;
 use crate::rollback_setup::RollbackSetup;
 use crate::rollback_systems::RollbackSystems;
@@ -170,8 +170,7 @@ fn a_prediction_history_is_pruned_to_its_rollback_horizon() {
 fn confirmed_through(tick: NetTick) -> ConfirmedTickMap {
     let mut confirmed_ticks = ConfirmedTickMap::default();
     let replicon_tick = RepliconTick::new(1);
-    confirmed_ticks.bridge_record(replicon_tick, tick);
-    confirmed_ticks.bridge_record_last_confirmed_tick(replicon_tick);
+    confirmed_ticks.bridge_complete(replicon_tick, tick);
     confirmed_ticks
 }
 
@@ -274,6 +273,7 @@ fn a_late_predicted_marker_backfills_a_confirmation_older_than_the_window() {
         );
     }
     world.insert_resource(confirmed_ticks);
+    world.init_resource::<UnseededHistories<TestValue>>();
     world.add_observer(PredictionHistory::<TestValue>::backfill_confirmed);
     let entity = world
         .spawn((TestValue(5.0), ConfirmHistory::new(RepliconTick::new(4))))
@@ -286,6 +286,47 @@ fn a_late_predicted_marker_backfills_a_confirmation_older_than_the_window() {
     assert_eq!(
         history.newest_present(),
         Some(Ticked::new(NetTick(100), &TestValue(5.0)))
+    );
+}
+
+/// A late `Predicted` on an entity whose confirmation resolves to no tick yet, as the map holds
+/// none, seeds nothing and waits; once replicon tick 10 maps to tick 100, the next survey seeds the
+/// live value there, and the live value stays predicted.
+#[test]
+fn a_late_predicted_marker_seeds_again_once_its_confirmation_resolves() {
+    let mut world = World::new();
+    world.insert_resource(ConfirmedTickMap::default());
+    world.init_resource::<UnseededHistories<TestValue>>();
+    world.add_observer(PredictionHistory::<TestValue>::backfill_confirmed);
+    let entity = world
+        .spawn((TestValue(5.0), ConfirmHistory::new(RepliconTick::new(10))))
+        .id();
+
+    world.entity_mut(entity).insert(Predicted);
+    world.flush();
+    assert!(world.get::<ConfirmedHistory<TestValue>>(entity).is_none());
+    assert_eq!(
+        world.resource::<UnseededHistories<TestValue>>().entities,
+        [entity]
+    );
+
+    world
+        .resource_mut::<ConfirmedTickMap>()
+        .bridge_record(RepliconTick::new(10), NetTick(100));
+    world
+        .run_system_once(PredictionHistory::<TestValue>::seed_unseeded)
+        .unwrap();
+    let history = world.get::<ConfirmedHistory<TestValue>>(entity).unwrap();
+    assert_eq!(
+        history.newest_present(),
+        Some(Ticked::new(NetTick(100), &TestValue(5.0)))
+    );
+    assert_eq!(world.get::<TestValue>(entity), Some(&TestValue(5.0)));
+    assert!(
+        world
+            .resource::<UnseededHistories<TestValue>>()
+            .entities
+            .is_empty()
     );
 }
 
@@ -627,16 +668,6 @@ fn a_manual_predicted_marker_with_its_component_seeds_no_confirmed_history() {
     );
 }
 
-#[derive(Debug, Resource, Default)]
-struct RollbackObserved(bool);
-
-fn observe_rollback(
-    rollback: Option<Res<'_, Rollback>>,
-    mut observed: ResMut<'_, RollbackObserved>,
-) {
-    observed.0 |= rollback.is_some();
-}
-
 /// A Full-mode component inserted by the server after the predicted entity was
 /// spawned should be detected as a mismatch and applied through rollback.
 #[test]
@@ -647,7 +678,7 @@ fn a_server_insert_on_a_predicted_entity_starts_a_rollback() {
         .init_resource::<RollbackObserved>();
     stepper.client_app_mut(0).add_systems(
         PreUpdate,
-        observe_rollback
+        record_rollback
             .after(RollbackSystems::Check)
             .before(RollbackSystems::Prepare),
     );
@@ -714,7 +745,7 @@ fn two_server_inserts_are_both_applied_by_one_rollback() {
         .init_resource::<RollbackObserved>();
     stepper.client_app_mut(0).add_systems(
         PreUpdate,
-        observe_rollback
+        record_rollback
             .after(RollbackSystems::Check)
             .before(RollbackSystems::Prepare),
     );

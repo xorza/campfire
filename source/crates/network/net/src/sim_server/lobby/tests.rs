@@ -209,7 +209,7 @@ impl Joining {
             session_key: TestKey::of(session).x_only_public_key().0,
             ..self.granted
         };
-        Delegation::sign(&TestKey::signer(TestKey::of(main)), &terms, TestKey::NOW)
+        TestKey::delegation(TestKey::of(main), &terms)
     }
 
     /// A join of `json`, whose answer the session key of byte `session` signs over the

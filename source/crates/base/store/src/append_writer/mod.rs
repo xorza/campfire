@@ -223,7 +223,13 @@ impl AppendShared {
                 });
             *self.running.lock() = None;
             if let Err(error) = written {
-                self.stop(&mut self.pending.lock(), error);
+                let mut pending = self.pending.lock();
+                self.stop(&mut pending, error);
+                // Stopped, it waits for its writer to close, so its worker ends only then, as
+                // `Worker::check` holds every worker to.
+                while !pending.closing {
+                    pending = self.pending.wait(&self.wake, pending);
+                }
                 return;
             }
             {

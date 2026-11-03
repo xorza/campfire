@@ -2289,6 +2289,7 @@ dependencies = [
  "campfire-console",
  "campfire-declarations",
  "campfire-geometry",
+ "campfire-harness",
  "campfire-host",
  "campfire-interaction",
  "campfire-items",
@@ -2881,7 +2882,6 @@ dependencies = [
 name = "campfire-net-channels"
 version = "0.1.0"
 dependencies = [
- "bevy_platform",
  "bytes",
  "campfire-measure",
  "campfire-net-bytes",

@@ -106,7 +106,8 @@ pub(crate) enum HandshakePacket {
 
 impl HandshakePacket {
     /// Reads `datagram`, whose first bit is the IO's; `None` for one that is not a handshake
-    /// packet of this version.
+    /// packet of this version, or whose body is not its type's exactly, an `Initial`'s padding
+    /// zeros (05-protocol-spec.md, The sealed UDP).
     pub(crate) fn read(datagram: BytesMut) -> Option<Self> {
         let [first, version, ..] = datagram[..] else {
             return None;
@@ -129,6 +130,10 @@ impl HandshakePacket {
                     _ => return None,
                 };
                 let frame = Self::frame(rest)?;
+                // The padding after the frame's data, which makes an `Initial` its least size.
+                if rest[FRAME_LEN + frame.len..].iter().any(|&byte| byte != 0) {
+                    return None;
+                }
                 let start = datagram.len() - rest.len() + FRAME_LEN;
                 Self::Initial {
                     id,
@@ -139,7 +144,7 @@ impl HandshakePacket {
             }
             PacketType::Retry => Self::Retry {
                 id,
-                token: body.get(..TOKEN_LEN)?.try_into().ok()?,
+                token: body.try_into().ok()?,
             },
             PacketType::Handshake => {
                 let number = u16::from_be_bytes(body.get(..NUMBER_LEN)?.try_into().ok()?);
@@ -152,11 +157,14 @@ impl HandshakePacket {
                     datagram,
                 }
             }
-            PacketType::Refuse => Self::Refuse { id },
-            PacketType::Alert => Self::Alert {
-                id,
-                alert: *body.first()?,
-            },
+            PacketType::Refuse if body.is_empty() => Self::Refuse { id },
+            PacketType::Alert => {
+                let [alert] = body[..] else {
+                    return None;
+                };
+                Self::Alert { id, alert }
+            }
+            PacketType::Refuse => return None,
         })
     }
 

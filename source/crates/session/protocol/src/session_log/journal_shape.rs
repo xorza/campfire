@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use crate::session_log::error::{PublishError, PublishWriteError, WalkStopped};
+use crate::session_log::error::{PublishError, WalkStopped};
 use crate::session_log::journal_kinds::{
     JOURNAL_CHECKPOINT_BEGUN, JOURNAL_CHECKPOINT_DONE, JOURNAL_HEADER, JOURNAL_LOADED,
     JOURNAL_PACKET, JOURNAL_RESULT, JOURNAL_SEALED, JOURNAL_SERVER,
@@ -56,24 +56,6 @@ impl Default for JournalShape {
 }
 
 impl JournalShape {
-    /// The shape of the journal whose records `walk` gives, read in one walk, as of a journal no
-    /// live log keeps; an error for a record that does not read.
-    pub fn read(walk: &mut JournalWalk<'_>) -> Result<Self, PublishWriteError> {
-        let mut shape = Self::default();
-        let mut failed = None;
-        walk(&mut |record| {
-            if failed.is_none()
-                && let Err(error) = shape.take(record)
-            {
-                failed = Some(error);
-            }
-        })?;
-        match failed {
-            Some(error) => Err(error.into()),
-            None => Ok(shape),
-        }
-    }
-
     /// Takes the journal's next record, `record`; an error for a record of no kind, or that does
     /// not read.
     pub(crate) fn take(&mut self, record: &[u8]) -> Result<(), PublishError> {
@@ -140,5 +122,31 @@ impl JournalShape {
     /// Whether a load dropped the entry or the seal at place `at`.
     pub(crate) fn cut(&self, at: u64) -> bool {
         self.cuts.iter().any(|cut| cut.contains(&at))
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::session_log::error::PublishWriteError;
+    use crate::session_log::journal_shape::{JournalShape, JournalWalk};
+
+    impl JournalShape {
+        /// The shape of the journal whose records `walk` gives, read in one walk, as of a journal no
+        /// live log keeps; an error for a record that does not read.
+        pub fn read(walk: &mut JournalWalk<'_>) -> Result<Self, PublishWriteError> {
+            let mut shape = Self::default();
+            let mut failed = None;
+            walk(&mut |record| {
+                if failed.is_none()
+                    && let Err(error) = shape.take(record)
+                {
+                    failed = Some(error);
+                }
+            })?;
+            match failed {
+                Some(error) => Err(error.into()),
+                None => Ok(shape),
+            }
+        }
     }
 }

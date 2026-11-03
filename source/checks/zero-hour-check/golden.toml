@@ -4,7 +4,7 @@ drive_ticks = 1711
 
 [fingerprints]
 game = "4c31cf587f38a45a0657afc58beb81692942ae3f817d1a19d04a93d01693d363"
-rules = "c228bb42f46331208ea7d7d52edf84d7268fd97db5fc68de8f4914e05bdf9b32"
+rules = "39c8d55f6e4b4282e04fd30a99f519e2369a70ce3a91993fc15650ad0e212d80"
 
 [map]
 heights = [270, 340]
@@ -37,7 +37,7 @@ four_ways = 1
 ys = 5
 hs = 2
 joins = 16
-dropped = [0, 0, 0]
+dropped = [0, 0, 0, 0, 0]
 
 [looks]
 varied = 894
@@ -115,7 +115,7 @@ dropped = [2, 7, 0, 0, 32, 0, 7, 11, 168, 0]
 
 [fought]
 weapons = 107
-dropped = [0, 0, 9, 0, 0, 1, 2, 10, 8, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 2, 0, 29]
+dropped = [0, 0, 9, 0, 0, 1, 2, 10, 8, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 2, 0, 29, 0]
 armors = 53
 kinds = 38
 unliving = 20
@@ -223,7 +223,7 @@ ended = 9681
 standing = [0, 9]
 ranks = [2, 5]
 perks = [3, 8]
-think_ops = 18776
+think_ops = 18906
 stalls = 737
 
 [base.result]
@@ -289,7 +289,7 @@ ended = 14272
 standing = [4, 0]
 ranks = [1, 1]
 perks = [2, 2]
-think_ops = 9410
+think_ops = 9444
 stalls = 69
 
 [attack.result]

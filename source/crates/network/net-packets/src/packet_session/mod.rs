@@ -13,7 +13,7 @@ use campfire_net_payload::{
 
 use crate::bandwidth_limiter::BandwidthLimiter;
 use crate::connection_id::ConnectionId;
-use crate::header::{AckFields, Header, PacketType};
+use crate::header::{AckFields, CHALLENGE_LEN, CLOSE_LEN, Header, PacketType};
 use crate::new_reno::NewReno;
 use crate::packet_numbers;
 use crate::packet_session_setup::PacketSessionSetup;
@@ -23,9 +23,6 @@ use crate::rtt_estimator::RttEstimator;
 use crate::seal::TAG_LEN;
 use crate::sent_packets::{Ack, SentPackets};
 use crate::transmit::{Path, Transmit};
-
-/// The bytes of a path packet's challenge.
-pub(crate) const CHALLENGE_LEN: usize = 8;
 
 /// The bytes a packet session splits its control packets from, about 20 of the largest: a pass
 /// sends a few, the IO drops each once it sent it, and so the arena is whole again by the next
@@ -451,6 +448,9 @@ impl PacketSession {
                 len
             }
         };
+        if (header.packet_type.body_len()).is_some_and(|len| len != content_len) {
+            return Received::Dropped;
+        }
         let largest = self.received.is_largest(number);
         self.received.opened(number);
         self.last_received = now;
@@ -480,9 +480,7 @@ impl PacketSession {
             PacketType::Ping => self.received.accept(number, now, true),
             PacketType::PathChallenge => {
                 self.received.accept(number, now, true);
-                if datagram.len() == CHALLENGE_LEN {
-                    self.send_control(now, PacketType::PathResponse, &datagram, path, out);
-                }
+                self.send_control(now, PacketType::PathResponse, &datagram, path, out);
             }
             PacketType::PathResponse => {
                 self.received.accept(number, now, true);
@@ -495,9 +493,8 @@ impl PacketSession {
                 }
             }
             PacketType::Close => {
-                let code = <[u8; 8]>::try_from(&*datagram).map_or(AppCode::ENDED, |code| {
-                    AppCode::from_wire(u64::from_be_bytes(code))
-                });
+                let code = <[u8; CLOSE_LEN]>::try_from(&*datagram).expect("a close is its code");
+                let code = AppCode::from_wire(u64::from_be_bytes(code));
                 self.state = State::Ended(UnlinkReason::of_peer_close(code));
             }
         }

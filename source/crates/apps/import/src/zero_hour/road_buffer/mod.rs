@@ -107,23 +107,31 @@ impl RoadBuffer {
         for at in self.drawing_order() {
             let (road, place) = (self.types[at], &places[at]);
             let of_type = || self.roads.iter().filter(move |piece| piece.road == road);
-            let place = match *place {
-                Ok(place) => place,
-                Err(cause) => {
-                    let segments = of_type().filter(|piece| piece.kind == PieceKind::Segment);
-                    dropped.push(DroppedRoads {
-                        road: types[road].name.clone(),
-                        cause,
-                        count: segments.count(),
-                    });
-                    continue;
-                }
-            };
-            for kind in PieceKind::ALL {
-                for piece in of_type().filter(|piece| piece.kind == kind) {
-                    mesh.lay(&piece.piece(), ground);
-                    decals.add(&mesh, place);
-                }
+            let mark = decals.mark();
+            let laid = place
+                .and_then(|place| {
+                    types[road]
+                        .lays()
+                        .then_some(place)
+                        .ok_or(RoadDropCause::Width)
+                })
+                .and_then(|place| {
+                    for kind in PieceKind::ALL {
+                        for piece in of_type().filter(|piece| piece.kind == kind) {
+                            mesh.lay(&piece.piece(), ground);
+                            decals.add(&mesh, place)?;
+                        }
+                    }
+                    Ok(())
+                });
+            if let Err(cause) = laid {
+                decals.truncate(mark);
+                let segments = of_type().filter(|piece| piece.kind == PieceKind::Segment);
+                dropped.push(DroppedRoads {
+                    road: types[road].name.clone(),
+                    cause,
+                    count: segments.count(),
+                });
             }
         }
         DrawnRoads {

@@ -3,6 +3,7 @@ use syn::ItemMod;
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 
+use crate::source_file::Gate;
 use crate::workspace::Workspace;
 
 /// The most lines an inline test module holds before it moves to a `tests.rs` of its own.
@@ -79,6 +80,51 @@ pub(crate) fn an_inline_test_module_holds_at_most_150_lines_and_40_percent_of_it
         })
         .collect();
     assert_eq!(fat, Vec::<String>::new());
+}
+
+/// The lines of each module of `text` named `internals` that `#[cfg(test)]` gates: `internals`
+/// is the gate of what other crates' tests and benches reach, and a crate's own tests' reach-ins
+/// are its `reach_in` or its `samples`.
+fn test_gated_internals(text: &str) -> Vec<usize> {
+    struct Found(Vec<usize>);
+    impl<'ast> Visit<'ast> for Found {
+        fn visit_item_mod(&mut self, item: &'ast ItemMod) {
+            let test = item
+                .attrs
+                .iter()
+                .any(|attribute| Gate::of(attribute) == Some(Gate::Test));
+            if test && item.ident == "internals" {
+                self.0.push(item.ident.span().start().line);
+            }
+            visit::visit_item_mod(self, item);
+        }
+    }
+    if !text.contains("mod internals") {
+        return Vec::new();
+    }
+    let parsed = syn::parse_file(text).expect("a workspace source parses");
+    let mut found = Found(Vec::new());
+    found.visit_file(&parsed);
+    found.0
+}
+
+pub(crate) fn no_test_gate_holds_a_module_named_internals(workspace: &Workspace) {
+    let found: Vec<String> = workspace
+        .sources()
+        .iter()
+        .flat_map(|file| {
+            (test_gated_internals(&file.text).into_iter())
+                .map(|line| format!("{}:{line}", file.path))
+        })
+        .collect();
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn a_test_gated_internals_is_found_and_a_feature_gated_one_is_not() {
+    let text = "#[cfg(test)]\nmod internals {}\n#[cfg(feature = \"internals\")]\npub(crate) mod internals \
+                {}\n#[cfg(test)]\nmod reach_in {}\n";
+    assert_eq!(test_gated_internals(text), [2]);
 }
 
 #[test]

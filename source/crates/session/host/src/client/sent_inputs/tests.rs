@@ -72,7 +72,8 @@ fn an_acknowledged_input_replays_where_the_server_applied_it() {
     // The server applied 10 at its stamp, logged 11 early, and applied 12 in tick 3, a tick past
     // its stamp: 11 never replays, 12 replays in 3, and 13 to 15, not acknowledged yet, stay at
     // their stamps, behind it.
-    sent.acknowledge(10, &[Some(Tick::new(1)), None, Some(Tick::new(3))]);
+    sent.acknowledge(10, &[Some(Tick::new(1)), None, Some(Tick::new(3))])
+        .unwrap();
     assert_eq!(at(&sent, 1), [payload(0)]);
     assert_eq!(at(&sent, 2), none);
     assert_eq!(at(&sent, 3), [payload(2)]);
@@ -82,17 +83,23 @@ fn an_acknowledged_input_replays_where_the_server_applied_it() {
     assert_eq!(sent.pending(Tick::new(4)), 3);
     // 13 applied in tick 6: 14 and 15, which the server applies after it in chain order, are
     // expected there too, past 15's stamp of 5.
-    sent.acknowledge(13, &[Some(Tick::new(6))]);
+    sent.acknowledge(13, &[Some(Tick::new(6))]).unwrap();
     assert_eq!(at(&sent, 4), none);
     assert_eq!(at(&sent, 5), none);
     assert_eq!(at(&sent, 6), [payload(3), payload(4), payload(5)]);
     // 14 never applies, and 15 in 7. A seq the client never sent, or one it no longer keeps,
     // changes nothing.
-    sent.acknowledge(14, &[None, Some(Tick::new(7)), Some(Tick::new(9))]);
-    sent.acknowledge(2, &[Some(Tick::new(9))]);
+    sent.acknowledge(14, &[None, Some(Tick::new(7)), Some(Tick::new(9))])
+        .unwrap();
+    sent.acknowledge(2, &[Some(Tick::new(9))]).unwrap();
     assert_eq!(at(&sent, 6), [payload(3)]);
     assert_eq!(at(&sent, 7), [payload(5)]);
     assert_eq!(at(&sent, 9), none);
+    // An ack that places 15 in tick 5, before 13's 6, puts the ticks out of order: it is refused,
+    // and the inputs stay as they were.
+    let back = sent.acknowledge(15, &[Some(Tick::new(5))]);
+    assert_eq!(back, Err(InputAckRefused { first: 15 }));
+    assert_eq!(at(&sent, 7), [payload(5)]);
     // Every seq sent is acknowledged: the server holds 13, of tick 6, and 15, of tick 7.
     assert_eq!(sent.pending(Tick::new(4)), 2);
     assert_eq!(sent.pending(Tick::new(7)), 1);

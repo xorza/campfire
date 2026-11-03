@@ -7,6 +7,7 @@ use campfire_net_bytes::ToBytes;
 use campfire_net_bytes::WriteInteger;
 
 use crate::message_id::MessageId;
+use crate::message_id_tag::MessageIdTag;
 
 #[derive(Clone, Debug, PartialEq)]
 /// The serialized bytes of one message: serialized once at send, cloned cheaply after, and sized
@@ -36,12 +37,11 @@ impl SingleBody {
         self.bytes.to_bytes(buffer);
     }
 
-    /// Reads a message of a channel whose messages carry an id when `has_id`.
-    pub(crate) fn read(buffer: &mut Reader, has_id: bool) -> Result<Self, SerializationError> {
-        let id = if has_id {
-            Some(MessageId::from_bytes(buffer)?)
-        } else {
-            None
+    /// Reads a message of a channel whose messages carry their id as `tag` says.
+    pub(crate) fn read(buffer: &mut Reader, tag: MessageIdTag) -> Result<Self, SerializationError> {
+        let id = match tag {
+            MessageIdTag::Tagged => Some(MessageId::from_bytes(buffer)?),
+            MessageIdTag::Untagged => None,
         };
         let bytes = Bytes::from_bytes(buffer)?;
         Ok(Self { id, bytes })

@@ -1,7 +1,7 @@
 use bevy::asset::AssetApp;
 use bevy::math::UVec2;
 use campfire_client_files::GroundQuad;
-use campfire_math::Num;
+use campfire_math::{Num, Vec3 as SimVec3};
 
 use super::*;
 use crate::test_app;
@@ -137,4 +137,21 @@ fn the_minimap_writes_its_image_only_as_what_it_draws_changes() {
     assert_eq!(written(&mut app), [0; 16]);
     app.world_mut().entity_mut(unit).remove::<Dead>();
     assert_eq!(written(&mut app), [200, 100, 50, 255].repeat(4));
+    // A unit that enters a container, which draws no rider, writes them all, as one that comes
+    // out does.
+    assert_eq!(written(&mut app), [0; 16]);
+    app.world_mut().entity_mut(unit).insert(Disabled);
+    assert_eq!(written(&mut app), [200, 100, 50, 255].repeat(4));
+    assert_eq!(written(&mut app), [0; 16]);
+    app.world_mut().entity_mut(unit).remove::<Disabled>();
+    assert_eq!(written(&mut app), [200, 100, 50, 255].repeat(4));
+    // A unit that leaves in the frame another lives again writes them once: the frame reads both,
+    // so the next writes none.
+    let placed = app.world_mut().spawn(Position::from(SimVec3::ZERO)).id();
+    app.world_mut().entity_mut(unit).insert(Dead);
+    assert_eq!(written(&mut app), [200, 100, 50, 255].repeat(4));
+    app.world_mut().entity_mut(placed).remove::<Position>();
+    app.world_mut().entity_mut(unit).remove::<Dead>();
+    assert_eq!(written(&mut app), [200, 100, 50, 255].repeat(4));
+    assert_eq!(written(&mut app), [0; 16]);
 }

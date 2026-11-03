@@ -1,5 +1,6 @@
 use bevy_ecs::world::EntityRef;
 use campfire_actions::{ActionProgress, InProgress};
+use campfire_common::NamedEnum;
 use campfire_units::{AtWork, Destination};
 
 use crate::builder::Builder;
@@ -10,7 +11,7 @@ use crate::gatherer::Gatherer;
 /// works while its building goes on, walks while it has a destination, works too while a gather
 /// or a build order waits, as at a blocked site, and else stands idle: a walker idle here is one
 /// steering takes as an idle friend.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, NamedEnum)]
 pub enum Activity {
     Idle,
     Walking,

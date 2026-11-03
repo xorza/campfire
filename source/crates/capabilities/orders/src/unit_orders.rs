@@ -1,16 +1,17 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Changed, Has, Without};
+use bevy_ecs::query::{Has, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::{
     ActionBook, ActionKind, ActionProgress, ActionSlots, ActionTarget, ProgressIndexes, TargetTest,
     Targets,
 };
+use campfire_common::Ticks;
 use campfire_declarations::{Role, Scratch};
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{GroupBox, Party, PartyKey, Route};
 use campfire_players::{OrderedUnits, TickCommands};
-use campfire_sim::{DueIndex, Position, SimTick, UnitDues};
+use campfire_sim::{DueIndex, DueUnit, Position, SimTick, UnitDues};
 use campfire_units::{BuildTarget, Dead, Destination, GroundPoint, MapBook, UnitOrdered};
 use campfire_values::{TagSet, Team, UnitTags};
 use campfire_vision::{SeenTargets, TeamSight};
@@ -19,7 +20,7 @@ use crate::attack_move::AttackMove;
 use crate::dropped_orders::{DroppedOrders, OrderDropCause};
 use crate::orders_directive::OrdersDirective;
 use crate::resetting::Resetting;
-use crate::unit_order::{OrderDues, OrderedUnit, UnitOrder};
+use crate::unit_order::{HeldOrder, OrderDues, OrderedUnit, UnitOrder};
 
 /// The orders the tick's inputs give, in input order, each checked as a player's order needs, for
 /// `apply_player_orders` to apply. Not state: it empties within the tick.
@@ -217,44 +218,55 @@ impl UnitOrders {
         dropped.close(checked.0.len());
     }
 
-    /// Gives each unit whose wind-down ended since the last run the order it holds, as every order
-    /// is given, and triggers it as `UnitOrdered`; a unit that died drops it. It runs before the
-    /// tick's orders, so one of them comes after it, as the last order wins.
+    /// Gives each unit whose wind-down ended the order it holds, as its index takes it due, by
+    /// tick, then stable id, as every order is given, and triggers it as `UnitOrdered`; a unit
+    /// that died drops it, and one whose wind-down has not ended yet is due again the next tick.
+    /// It runs before the tick's orders, so one of them comes after it, as the last order wins.
     pub(super) fn release_held(
         tick: Res<'_, SimTick>,
         map: Res<'_, MapBook>,
-        mut units: Query<'_, '_, (OrderedUnit, Has<Dead>), Changed<ActionProgress>>,
-        (mut indexes, mut asks, mut goals): (
+        mut units: Query<'_, '_, (OrderedUnit, Has<Dead>)>,
+        (mut indexes, mut asks, mut goals, mut holds): (
             ProgressIndexes<'_>,
             ResMut<'_, DueIndex<Route>>,
             ResMut<'_, DueIndex<AttackMove>>,
+            ResMut<'_, DueIndex<HeldOrder>>,
         ),
+        mut due: Local<'_, Vec<DueUnit>>,
         mut commands: Commands<'_, '_>,
     ) {
         let now = tick.start();
-        for (mut parts, dead) in &mut units {
+        due.clear();
+        holds.take_due(now, &mut due);
+        for &DueUnit { id, entity } in &*due {
+            let Ok((mut parts, dead)) = units.get_mut(entity) else {
+                continue;
+            };
             let Some(held) = parts.held.as_mut() else {
                 continue;
             };
             let Some(order) = held.get() else {
                 continue;
             };
-            let winds_down = parts
+            let until = parts
                 .underway
                 .as_deref()
-                .is_some_and(ActionProgress::winds_down);
-            if winds_down && !dead {
+                .and_then(ActionProgress::wind_down_until);
+            if let Some(until) = until
+                && !dead
+            {
+                holds.push(until.max(now.after(Ticks::ONE)), id, entity);
                 continue;
             }
             held.drop_order();
             if dead {
                 continue;
             }
-            let (id, entity) = (*parts.id, parts.entity);
             let mut dues = OrderDues {
                 progress: indexes.of(id, entity),
                 routes: UnitDues::new(&mut asks, id, entity),
                 goals: UnitDues::new(&mut goals, id, entity),
+                held: UnitDues::new(&mut holds, id, entity),
             };
             if let Some(order) = order.give(parts, &map.bounds, now, &mut dues) {
                 commands.trigger(UnitOrdered { entity, order });
@@ -269,10 +281,11 @@ impl UnitOrders {
         map: Res<'_, MapBook>,
         mut checked: ResMut<'_, OrderQueue>,
         mut units: Query<'_, '_, OrderedUnit>,
-        (mut indexes, mut asks, mut goals): (
+        (mut indexes, mut asks, mut goals, mut holds): (
             ProgressIndexes<'_>,
             ResMut<'_, DueIndex<Route>>,
             ResMut<'_, DueIndex<AttackMove>>,
+            ResMut<'_, DueIndex<HeldOrder>>,
         ),
         mut commands: Commands<'_, '_>,
     ) {
@@ -285,6 +298,7 @@ impl UnitOrders {
                 progress: indexes.of(id, entity),
                 routes: UnitDues::new(&mut asks, id, entity),
                 goals: UnitDues::new(&mut goals, id, entity),
+                held: UnitDues::new(&mut holds, id, entity),
             };
             if let Some(order) = order.give(parts, &map.bounds, now, &mut dues) {
                 commands.trigger(UnitOrdered { entity, order });

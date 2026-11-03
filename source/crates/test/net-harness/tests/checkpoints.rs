@@ -20,11 +20,11 @@ use campfire_net_emulator::LinkModel;
 use campfire_net_harness::{End, InProcessMatch, InProcessSetup};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Entropy, JournalFrames, Outcome, SeedChain, SessionLog, Signer};
-use campfire_runner::{Session, SessionWorld};
+use campfire_runner::SessionWorld;
 use campfire_store::internals::TestDir;
 use campfire_store::{EntryKind, InputFile};
 
-use crate::{PlayedMatch, published_replay, snapshots};
+use crate::{PlayedMatch, published_replay, session_log, snapshots};
 
 /// The chain of the scenario's sessions, of room for three checkpoints.
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::new(4).unwrap());
@@ -52,7 +52,7 @@ fn checkpointed(test_dir: &TestDir) -> PlayedMatch {
         local.server_mut().world_mut().settle_checkpoint();
     }
     // The live log holds its latest checkpoint alone, as its journal holds the first.
-    assert_eq!(log(&local).checkpoints().count(), 1);
+    assert_eq!(session_log(&local).checkpoints().count(), 1);
     let hashes = local
         .server()
         .world()
@@ -63,10 +63,6 @@ fn checkpointed(test_dir: &TestDir) -> PlayedMatch {
         game: local,
         hashes,
     }
-}
-
-fn log(local: &InProcessMatch) -> &SessionLog {
-    local.server().world().resource::<Session>().log()
 }
 
 #[test]
@@ -101,7 +97,7 @@ fn an_abort_resumes_from_the_latest_checkpoint_as_a_restart_does() {
     } = checkpointed(&test_dir);
     let cut = local.next_tick(End::Server);
     let snapshots = snapshots(&test_dir, &local);
-    let latest = log(&local).checkpoints().last().unwrap().snapshot;
+    let latest = session_log(&local).checkpoints().last().unwrap().snapshot;
     local.stop_server();
     let data = ServerDir::open(&test_dir.path("data")).unwrap();
     let abort = |data: &ServerDir| {
@@ -139,9 +135,12 @@ fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
         game: mut local,
         hashes: before,
     } = checkpointed(&test_dir);
-    let second = log(&local).checkpoint_at(Tick::new(160)).unwrap().clone();
+    let second = session_log(&local)
+        .checkpoint_at(Tick::new(160))
+        .unwrap()
+        .clone();
     let snapshots = snapshots(&test_dir, &local);
-    let id = log(&local).session_id();
+    let id = session_log(&local).session_id();
     local.stop_server();
 
     // A crash while the second checkpoint's snapshot was on its thread: the journal holds the
@@ -181,7 +180,7 @@ fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
     let world = local.server().world();
     let at = usize::try_from(cut.get()).unwrap();
     assert_eq!(world.resource::<TickHashes>().get(), &before[30..at]);
-    let again = log(&local).checkpoint_at(Tick::new(160)).unwrap();
+    let again = session_log(&local).checkpoint_at(Tick::new(160)).unwrap();
     assert_eq!(
         (again.state_hash, again.snapshot, &again.carry),
         (second.state_hash, second.snapshot, &second.carry)
@@ -207,14 +206,14 @@ fn a_checkpoint_past_the_seed_chain_or_a_full_log_ends_the_session() {
     for _ in 0..60 {
         local.step();
     }
-    let result = *log(&local).result().unwrap();
+    let result = *session_log(&local).result().unwrap();
     assert_eq!(
         (result.tick, result.outcome),
         (Tick::new(30), Outcome::Aborted)
     );
     assert_eq!(local.next_tick(End::Server), 30);
     assert_eq!(
-        local.log().take::<SeedsRanOut>(),
+        local.log_check().take::<SeedsRanOut>(),
         [SeedsRanOut {
             tick: Tick::new(30)
         }]
@@ -234,13 +233,13 @@ fn a_checkpoint_past_the_seed_chain_or_a_full_log_ends_the_session() {
     for _ in 0..30 {
         local.step();
     }
-    let result = *log(&local).result().unwrap();
+    let result = *session_log(&local).result().unwrap();
     assert_eq!(
         (result.tick, result.outcome),
         (Tick::new(11), Outcome::Aborted)
     );
     assert_eq!(
-        local.log().take::<LogFilled>(),
+        local.log_check().take::<LogFilled>(),
         [LogFilled {
             tick: Tick::new(11)
         }]
@@ -251,7 +250,7 @@ fn a_checkpoint_past_the_seed_chain_or_a_full_log_ends_the_session() {
         .session_mut()
         .close_journal()
         .unwrap();
-    let held = log(&local);
+    let held = session_log(&local);
     let revealed = held.revealed_seeds().unwrap();
     let last = revealed.seed(held.segment()).unwrap().clone();
     let data = local.server().world().resource::<ServerDir>();
@@ -285,7 +284,7 @@ fn a_snapshot_not_written_ends_the_server_with_its_exit_code() {
         Some(AppExit::Error(code))
     );
     assert_eq!(world.exit_due(StopRequest::NotAsked), None);
-    assert_eq!(log(&local).checkpoint_at(Tick::new(30)), None);
-    assert_eq!(local.log().take::<CheckpointFailed>().len(), 1);
+    assert_eq!(session_log(&local).checkpoint_at(Tick::new(30)), None);
+    assert_eq!(local.log_check().take::<CheckpointFailed>().len(), 1);
     assert_eq!(test_dir.kind(&place), Some(EntryKind::File));
 }

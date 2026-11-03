@@ -112,7 +112,8 @@ fn launch(tap: &LogTap) -> Result<ExitCode, ClientLaunchError> {
         .console
         .map(|ConsoleArg::Stdio| ConsoleStdio::open(GameRole::Client, tap));
     let seen = stdio.as_ref().map(ConsoleStdio::seen);
-    let mut connection = Connection::open(&args, role, &packages, seen)?;
+    let camera = args.server.camera().copied();
+    let mut connection = Connection::open(args.server, role, &packages, seen)?;
     let end = match script {
         Some(_) => ClientEnd::Bot,
         None => ClientEnd::Window {
@@ -120,7 +121,7 @@ fn launch(tap: &LogTap) -> Result<ExitCode, ClientLaunchError> {
             data: connection.data().map(|data| data.layout().clone()),
             mode_dir: path::absolute(&args.mode)
                 .expect("the mode loaded from its directory, so its path resolves"),
-            camera: args.server.camera().copied(),
+            camera,
         },
     };
     let sim_client = SimClientPlugin {

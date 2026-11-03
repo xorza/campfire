@@ -55,7 +55,7 @@ use campfire_values::{ActionId, ModifierId, NameId, ResourceId, TagSet, UnitTags
 
 use crate::command_panel::aimed_command::AimedCommand;
 use crate::command_panel::panel_looks::{CellFace, LookSources, PanelLooks, PlacedButton};
-use crate::engine_text::EngineText;
+use crate::engine_text::{EngineMessage, EngineText};
 use crate::input_map::{Act, InputMap};
 use crate::input_mode::InputMode;
 use crate::name_texts::NameTexts;
@@ -431,7 +431,7 @@ impl CommandPanelPlugin {
             Res<'_, Hovered>,
             ResMut<'_, Pressable>,
         ),
-        (tick, rate): (Res<'_, SimTick>, Res<'_, MatchRate>),
+        (tick, rate, text): (Res<'_, SimTick>, Res<'_, MatchRate>, Res<'_, EngineText>),
         (setup, requirements, cooldowns): (
             Res<'_, PanelSetup>,
             Option<Res<'_, RequirementBook>>,
@@ -602,7 +602,7 @@ impl CommandPanelPlugin {
                     key: button.key,
                     value,
                 };
-                write!(line, "{tip}").expect("a String takes any text");
+                tip.write(&text, &mut line);
             }
             ui_style::set_text(&mut texts, tooltip, &line);
             shows.set_if_neq(if line.is_empty() {
@@ -1216,34 +1216,37 @@ impl Making {
     }
 }
 
-impl fmt::Display for ButtonValue<'_> {
-    /// Each cost's amount, then the seconds, `N s`; a cooling cast's `ready in N s`; `done`; or
-    /// nothing.
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl ButtonValue<'_> {
+    /// Appends to `out` each cost's amount, then the seconds; a cooling cast's time until it is
+    /// ready; that its research is held; or nothing, in `text`'s words.
+    fn write(self, text: &EngineText, out: &mut String) {
         match self {
             Self::Costs { costs, seconds } => {
-                for cost in *costs {
-                    write!(f, "{}  ", cost.amount)?;
+                for cost in costs {
+                    write!(out, "{}  ", cost.amount).expect("a String takes any text");
                 }
-                write!(f, "{seconds} s")
+                text.write(EngineMessage::Seconds, &[("seconds", &seconds)], out);
             }
-            Self::Cooling { seconds } => write!(f, "ready in {seconds} s"),
-            Self::Done => f.write_str("done"),
-            Self::Nothing => Ok(()),
+            Self::Cooling { seconds } => {
+                text.write(EngineMessage::ReadyIn, &[("seconds", &seconds)], out);
+            }
+            Self::Done => text.write(EngineMessage::Done, &[], out),
+            Self::Nothing => {}
         }
     }
 }
 
-impl fmt::Display for ButtonTip<'_> {
-    /// Its name, its key's cap in brackets, then its cost, each after two spaces.
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.name)?;
+impl ButtonTip<'_> {
+    /// Appends to `out` its name, its key's cap in brackets, then its cost, each after two
+    /// spaces, in `text`'s words.
+    fn write(self, text: &EngineText, out: &mut String) {
+        out.push_str(self.name);
         if let Some(key) = self.key {
-            write!(f, "  [{}]", Chord::plain(key).label())?;
+            write!(out, "  [{}]", Chord::plain(key).label()).expect("a String takes any text");
         }
-        match self.value {
-            ButtonValue::Nothing => Ok(()),
-            value => write!(f, "  {value}"),
+        if !matches!(self.value, ButtonValue::Nothing) {
+            out.push_str("  ");
+            self.value.write(text, out);
         }
     }
 }

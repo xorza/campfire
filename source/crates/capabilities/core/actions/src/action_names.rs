@@ -1,5 +1,5 @@
 use campfire_common::DeclaredName;
-use campfire_names::{Filter, NameTables, TagNames, UnknownName};
+use campfire_names::{Filter, KindNames, TagNames, UnknownName};
 use campfire_units::PoolId;
 use campfire_values::{
     FilterData, NameId, NameKey, Named, Names, PackageIndex, ResourceId, TypeScope, UnitType,
@@ -13,7 +13,7 @@ use crate::delivery::{DeliveryAim, DeliveryAims};
 /// match's world; an error for a name the match does not have.
 #[derive(Debug, Clone, Copy)]
 pub struct ActionNames<'a> {
-    tables: &'a NameTables,
+    tables: &'a KindNames,
     tags: &'a TagNames,
     /// How each projectile type flies; none in a match with no projectiles.
     aims: Option<&'a DeliveryAims>,
@@ -21,7 +21,7 @@ pub struct ActionNames<'a> {
 
 impl<'a> ActionNames<'a> {
     pub const fn new(
-        tables: &'a NameTables,
+        tables: &'a KindNames,
         tags: &'a TagNames,
         aims: Option<&'a DeliveryAims>,
     ) -> Self {
@@ -38,7 +38,7 @@ impl<'a> ActionNames<'a> {
     }
 
     /// What a cost named `name` takes from; none for a name of neither.
-    pub fn cost_target(&self, name: &DeclaredName) -> Option<CostTarget> {
+    pub fn cost_target_named(&self, name: &DeclaredName) -> Option<CostTarget> {
         let none = Names::default();
         let pools = self
             .tables
@@ -60,7 +60,7 @@ impl<'a> ActionNames<'a> {
     }
 
     /// The unit type `name` in the scope that `package` names types in.
-    pub fn unit_type(
+    pub fn type_named(
         &self,
         package: PackageIndex,
         name: &DeclaredName,

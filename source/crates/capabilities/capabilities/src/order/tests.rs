@@ -1,8 +1,14 @@
 use std::slice;
 
 use campfire_actions::ActionTarget;
+use campfire_codec::Binary;
+use campfire_items::ItemsDirective;
 use campfire_math::{Num, Vec3};
-use campfire_production::RallyTarget;
+use campfire_orders::OrdersDirective;
+use campfire_players::CapabilityDirective;
+use campfire_production::{ProductionDirective, RallyTarget};
+use campfire_progression::ProgressionDirective;
+use campfire_sim::Capability;
 use campfire_units::{BuildTarget, GroundPoint};
 use campfire_values::{ItemId, PerkId};
 
@@ -216,32 +222,19 @@ fn a_select_names_its_units_in_increasing_stable_id_each_once() {
 }
 
 #[test]
-fn each_action_is_a_command_of_its_owner() {
-    let item = ItemId::nth(0);
-    let owned = [
-        (Directive::from(OrdersDirective::Stop), Capability::Orders),
-        (
-            Directive::from(ProgressionDirective::Learn { slot: 0 }),
-            Capability::Progression,
-        ),
-        (
-            Directive::from(ProductionDirective::CancelBuild),
-            Capability::Production,
-        ),
-        (
-            Directive::from(ItemsDirective::Buy { item, shop: id(1) }),
-            Capability::Items,
-        ),
-    ];
-    for (directive, capability) in owned {
-        assert_eq!(directive.capability(), capability, "{directive:?}");
+fn each_directive_decodes_through_its_owners_decoder_alone() {
+    // Every directive, one of each variant, decodes through the decoder of the capability that
+    // owns it, and a capability has a decoder exactly when a directive is its.
+    let directives = every_directive();
+    for &directive in &directives {
         let mut body = Vec::new();
         Order::one(id(1), directive).encode_into(&mut body);
-        let decode = Directive::decoder(capability).expect("a capability of orders decodes");
+        let decode =
+            Directive::decoder(directive.capability()).expect("a capability of orders decodes");
         assert_eq!(decode(&body), Some(directive));
     }
     for capability in Capability::ALL {
-        let owns = owned.iter().any(|&(_, owner)| owner == capability);
+        let owns = (directives.iter()).any(|directive| directive.capability() == capability);
         assert_eq!(
             Directive::decoder(capability).is_some(),
             owns,
@@ -292,6 +285,30 @@ fn the_largest_order_to_one_unit_is_51_bytes_within_the_least_payload_length() {
     // target's variant and three `Num`s. With a select of the one unit, 14 bytes with its command's
     // addressee and length, the directive's command of 36, and the count of commands, 51 bytes
     // (05-protocol-spec.md, A session's terms hold every input).
+    let unit: StableId = Binary::decode(&Binary::encode(&u64::MAX)).unwrap();
+    let directives = every_directive();
+    let mut payloads = OrderPayloads::default();
+    let lengths: Vec<usize> = directives
+        .into_iter()
+        .map(|directive| {
+            let order = Order::one(unit, directive);
+            assert!(order.write_payloads(u32::MAX, &mut payloads));
+            let [payload] = payloads.iter().collect::<Vec<_>>()[..] else {
+                panic!("one payload of {directive:?}");
+            };
+            payload.len()
+        })
+        .collect();
+    let largest = lengths.iter().copied().max().unwrap();
+    assert_eq!(largest, 51);
+    assert_eq!(lengths[2..4], [51, 51]);
+    assert!(largest <= usize::try_from(Release::LEAST_PAYLOAD_LEN).unwrap());
+}
+
+/// One directive of each variant, in the order of `variant`, each at its largest values: an id of
+/// `u64::MAX`, an item of `u32::MAX`, a perk of `u16::MAX`, a slot of `u8::MAX` and a `Num` of
+/// `i64::MIN`.
+fn every_directive() -> Vec<Directive> {
     let unit: StableId = Binary::decode(&Binary::encode(&u64::MAX)).unwrap();
     let item: ItemId = Binary::decode(&Binary::encode(&u32::MAX)).unwrap();
     let perk: PerkId = Binary::decode(&Binary::encode(&u16::MAX)).unwrap();
@@ -347,20 +364,5 @@ fn the_largest_order_to_one_unit_is_51_bytes_within_the_least_payload_length() {
     ];
     let listed: Vec<usize> = directives.iter().map(variant).collect();
     assert_eq!(listed, (0..19).collect::<Vec<_>>());
-    let mut payloads = OrderPayloads::default();
-    let lengths: Vec<usize> = directives
-        .into_iter()
-        .map(|directive| {
-            let order = Order::one(unit, directive);
-            assert!(order.write_payloads(u32::MAX, &mut payloads));
-            let [payload] = payloads.iter().collect::<Vec<_>>()[..] else {
-                panic!("one payload of {directive:?}");
-            };
-            payload.len()
-        })
-        .collect();
-    let largest = lengths.iter().copied().max().unwrap();
-    assert_eq!(largest, 51);
-    assert_eq!(lengths[2..4], [51, 51]);
-    assert!(largest <= usize::try_from(Release::LEAST_PAYLOAD_LEN).unwrap());
+    directives
 }

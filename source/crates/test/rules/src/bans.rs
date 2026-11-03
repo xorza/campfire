@@ -1,11 +1,13 @@
 use std::fmt::Write as _;
 
 use proc_macro2::TokenStream;
+use serde::Deserialize;
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::visit::Visit;
 use syn::{AttrStyle, Attribute, Meta, Path, Token};
 
+use campfire_codec::Toml;
 use campfire_store::InputFile;
 use campfire_store::internals::PinnedFile;
 
@@ -57,7 +59,7 @@ impl Proxy {
 
 /// The calls only `store` makes (02-engine-core.md, Storage): those that read, list, check, write,
 /// rename or remove a file or make a directory, and `Path`'s probes.
-const STORAGE_METHODS: [&str; 32] = [
+const STORAGE_METHODS: [&str; 28] = [
     "std::fs::read",
     "std::fs::read_to_string",
     "std::fs::read_dir",
@@ -86,10 +88,6 @@ const STORAGE_METHODS: [&str; 32] = [
     "std::path::Path::read_dir",
     "std::path::Path::read_link",
     "std::path::Path::canonicalize",
-    "tempfile::tempdir",
-    "tempfile::tempfile",
-    "tempfile::tempdir_in",
-    "tempfile::tempfile_in",
 ];
 
 /// The calls only `threads` makes (02-engine-core.md, Threads are a crate of their own): those that
@@ -110,31 +108,31 @@ const APP_THREAD_TYPES: [&str; 3] = [
     "bevy_tasks::TaskPoolBuilder",
 ];
 
-/// The calls that start Bevy's task pools, which only the plugin of `app-threads` makes.
-const APP_THREAD_METHODS: [&str; 4] = [
+/// The calls that start Bevy's task pools, which only the plugin of `app-threads` makes, a spawn
+/// among them, which starts each pool's thread as the plugin finishes.
+const APP_THREAD_METHODS: [&str; 5] = [
     "bevy_tasks::TaskPool::new",
     "bevy_tasks::ComputeTaskPool::get_or_init",
     "bevy_tasks::AsyncComputeTaskPool::get_or_init",
     "bevy_tasks::IoTaskPool::get_or_init",
+    "bevy_tasks::TaskPool::spawn",
 ];
 
 /// The types only `store` holds, each banned whole so every method of it is.
-const STORAGE_TYPES: [&str; 10] = [
+const STORAGE_TYPES: [&str; 6] = [
     "std::fs::File",
     "std::fs::OpenOptions",
     "std::fs::DirBuilder",
     "std::fs::ReadDir",
     "std::fs::DirEntry",
     "std::fs::Metadata",
-    "tempfile::TempDir",
-    "tempfile::NamedTempFile",
-    "tempfile::Builder",
-    "tempfile::SpooledTempFile",
 ];
 
-/// The calls only `codec` makes (02-engine-core.md, Serialization): each format's own encodes and
-/// decodes, and replicon's helpers over postcard.
-const CODEC_METHODS: [&str; 37] = [
+/// The calls only `codec` makes (02-engine-core.md, Serialization): postcard's and JSON's, which
+/// replicon and schemars re-export, and replicon's helpers over postcard. Only `codec` depends on
+/// the formats' crates, which the manifest rule holds, so no ban names a format no other crate
+/// re-exports.
+const CODEC_METHODS: [&str; 29] = [
     "postcard::to_allocvec",
     "postcard::to_allocvec_cobs",
     "postcard::to_stdvec",
@@ -149,10 +147,6 @@ const CODEC_METHODS: [&str; 37] = [
     "postcard::take_from_bytes",
     "postcard::take_from_bytes_cobs",
     "postcard::from_io",
-    "toml::from_str",
-    "toml::from_slice",
-    "toml::to_string",
-    "toml::to_string_pretty",
     "serde_json::from_str",
     "serde_json::from_slice",
     "serde_json::from_reader",
@@ -164,10 +158,6 @@ const CODEC_METHODS: [&str; 37] = [
     "serde_json::to_writer_pretty",
     "serde_json::from_value",
     "serde_json::to_value",
-    "base64::Engine::encode",
-    "base64::Engine::decode",
-    "toml::Value::try_into",
-    "toml::map::Map::try_into",
     "bevy_replicon::postcard_utils::to_extend_mut",
     "bevy_replicon::postcard_utils::from_buf",
     "bevy_replicon::postcard_utils::entity_to_extend_mut",
@@ -176,21 +166,12 @@ const CODEC_METHODS: [&str; 37] = [
 
 /// The types only `codec` holds, each banned whole so every method of it is: a value type among
 /// them, which is a deserializer of its own.
-const CODEC_TYPES: [&str; 14] = [
+const CODEC_TYPES: [&str; 5] = [
     "postcard::Serializer",
     "postcard::Deserializer",
-    "toml::Serializer",
-    "toml::Deserializer",
     "serde_json::Serializer",
     "serde_json::Deserializer",
     "serde_json::Value",
-    "toml::Value",
-    "toml::Table",
-    "png::Encoder",
-    "png::Decoder",
-    "base64::engine::GeneralPurpose",
-    "base64::write::EncoderWriter",
-    "base64::read::DecoderReader",
 ];
 
 /// The calls only `schedule` makes: those that set a schedule's build settings, which can switch
@@ -290,7 +271,7 @@ pub(crate) const PROXIES: [Proxy; 7] = [
     },
     Proxy {
         dir: "base/app-threads",
-        lints: &[LINTS[1]],
+        lints: &LINTS,
         methods: &APP_THREAD_METHODS,
         types: &APP_THREAD_TYPES,
         dependencies: &["bevy_app", "bevy_ecs", "bevy_tasks", "campfire-schedule"],
@@ -421,7 +402,7 @@ const CRATE_BANS: [CrateBans; 1] = [CrateBans {
 /// The bans with no proxy, which nothing may exempt: each lets two conflicting sim systems run in
 /// either order, runs a system's work on the compute pool, seeds a map at random, draws the OS's
 /// random bytes past the one source, or names the OS's temporary directory.
-const UNOWNED_METHODS: [&str; 23] = [
+const UNOWNED_METHODS: [&str; 30] = [
     "std::env::temp_dir",
     "bevy_ecs::schedule::IntoScheduleConfigs::ambiguous_with",
     "bevy_ecs::schedule::IntoScheduleConfigs::ambiguous_with_all",
@@ -445,6 +426,13 @@ const UNOWNED_METHODS: [&str; 23] = [
     "bevy_ecs::system::Query::par_iter_many_unique_mut",
     "bevy_ecs::query::QueryState::par_iter",
     "bevy_ecs::query::QueryState::par_iter_mut",
+    "bevy_ecs::message::MessageReader::par_read",
+    "bevy_ecs::message::MessageMutator::par_read",
+    "bevy_ecs::message::MessageCursor::par_read",
+    "bevy_ecs::message::MessageCursor::par_read_mut",
+    "bevy_tasks::TaskPool::scope",
+    "bevy_tasks::TaskPool::scope_with_executor",
+    "bevy_tasks::TaskPool::spawn_local",
 ];
 const UNOWNED_TYPES: [&str; 6] = [
     "ring::rand::SystemRandom",
@@ -476,16 +464,12 @@ const UNOWNED_NAMES: [&str; 10] = [
 const THREAD_LOCAL: &str = "std::thread::LocalKey";
 
 /// What names a banned type in source, other than the thread-local one.
-const TYPE_NAMES: [&str; 14] = [
+const TYPE_NAMES: [&str; 10] = [
     "SystemRandom",
     "std::fs",
-    "tempfile::",
     "TaskPool",
     "postcard::",
-    "toml::",
     "serde_json::",
-    "png::",
-    "base64::",
     "HashMap",
     "HashSet",
     "RandomState",
@@ -493,30 +477,62 @@ const TYPE_NAMES: [&str; 14] = [
     "bevy_utils::Parallel",
 ];
 
-/// The text of the list `list`, `disallowed-methods` or `disallowed-types`, of `clippy`, a
-/// `clippy.toml`.
-fn list_text<'a>(clippy: &'a str, list: &str) -> &'a str {
-    clippy
-        .split_once(&format!("{list} = ["))
-        .and_then(|(_, rest)| rest.split_once("\n]"))
-        .map_or("", |(list, _)| list)
+/// A `clippy.toml`'s two lists of bans, as `codec`'s TOML parses it, so a ban in a comment is none;
+/// each other key is clippy's own.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+struct ClippyBans {
+    #[serde(default)]
+    disallowed_methods: Vec<Ban>,
+    #[serde(default)]
+    disallowed_types: Vec<Ban>,
 }
 
-/// The paths of `rules` that the list `list` of `clippy` does not name.
-fn unlisted<'a>(clippy: &str, list: &str, rules: &[&'a str]) -> Vec<&'a str> {
-    let list = list_text(clippy, list);
-    let named = |path: &&str| list.contains(&format!("path = \"{path}\""));
-    rules.iter().copied().filter(|path| !named(path)).collect()
+/// A ban as clippy reads one: its path alone, or a table of its path and its reason.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum Ban {
+    Path(String),
+    Table { path: String },
 }
 
-/// The paths the list `list` of `clippy` names that `rules` does not hold, so a ban added to the
-/// file and to no group fails as one deleted does.
-fn ungrouped<'a>(clippy: &'a str, list: &str, rules: &[&str]) -> Vec<&'a str> {
-    let paths = list_text(clippy, list)
-        .split("path = \"")
-        .skip(1)
-        .filter_map(|entry| entry.split_once('"').map(|(path, _)| path));
-    paths.filter(|path| !rules.contains(path)).collect()
+/// Which of a `clippy.toml`'s lists a check reads.
+#[derive(Debug, Clone, Copy)]
+enum BanList {
+    Methods,
+    Types,
+}
+
+impl ClippyBans {
+    /// The bans of `text`, a `clippy.toml`.
+    fn of(text: &str) -> Self {
+        Toml::parse(text).unwrap_or_else(|error| panic!("a clippy.toml reads: {error}"))
+    }
+
+    /// The paths `list` names.
+    fn paths(&self, list: BanList) -> impl Iterator<Item = &str> {
+        let bans = match list {
+            BanList::Methods => &self.disallowed_methods,
+            BanList::Types => &self.disallowed_types,
+        };
+        bans.iter().map(|ban| match ban {
+            Ban::Path(path) | Ban::Table { path } => path.as_str(),
+        })
+    }
+
+    /// The paths of `rules` that `list` does not name.
+    fn unlisted<'a>(&self, list: BanList, rules: &[&'a str]) -> Vec<&'a str> {
+        let named = |path: &&str| self.paths(list).any(|listed| listed == *path);
+        rules.iter().copied().filter(|path| !named(path)).collect()
+    }
+
+    /// The paths `list` names that `rules` does not hold, so a ban added to the file and to no
+    /// group fails as one deleted does.
+    fn ungrouped(&self, list: BanList, rules: &[&str]) -> Vec<&str> {
+        self.paths(list)
+            .filter(|path| !rules.contains(path))
+            .collect()
+    }
 }
 
 /// The lines of `text`, the source at `path` under `source/`, whose attribute exempts code from
@@ -652,22 +668,23 @@ pub(crate) fn foreign_names(proxy: &Proxy, text: &str) -> Vec<&'static str> {
 }
 
 pub(crate) fn each_banned_call_goes_through_its_proxy_alone(workspace: &Workspace) {
-    let clippy = read(source().join("clippy.toml").to_str().unwrap());
+    let clippy = ClippyBans::of(&read(source().join("clippy.toml").to_str().unwrap()));
     let sources = workspace.sources();
     for proxy in &PROXIES {
-        let own: Vec<String> = (proxy.crates.iter())
+        let own: Vec<ClippyBans> = (proxy.crates.iter())
             .flat_map(|crates| crates.dirs)
             .map(|dir| crate_clippy(dir).expect("a proxy's crate has its own clippy.toml"))
+            .map(|text| ClippyBans::of(&text))
             .collect();
         let bans = if own.is_empty() {
-            vec![clippy.clone()]
+            std::slice::from_ref(&clippy)
         } else {
-            own
+            &own
         };
-        for bans in &bans {
-            let methods = unlisted(bans, "disallowed-methods", proxy.methods);
+        for bans in bans {
+            let methods = bans.unlisted(BanList::Methods, proxy.methods);
             assert_eq!(methods, Vec::<&str>::new(), "{}", proxy.dir);
-            let types = unlisted(bans, "disallowed-types", proxy.types);
+            let types = bans.unlisted(BanList::Types, proxy.types);
             assert_eq!(types, Vec::<&str>::new(), "{}", proxy.dir);
         }
         assert!(sources.iter().any(|file| file.path == proxy.root()));
@@ -683,12 +700,12 @@ pub(crate) fn each_banned_call_goes_through_its_proxy_alone(workspace: &Workspac
             .collect();
         assert_eq!(foreign, Vec::<String>::new());
     }
-    let methods = unlisted(&clippy, "disallowed-methods", &UNOWNED_METHODS);
+    let methods = clippy.unlisted(BanList::Methods, &UNOWNED_METHODS);
     assert_eq!(methods, Vec::<&str>::new());
-    let types = unlisted(&clippy, "disallowed-types", &UNOWNED_TYPES);
+    let types = clippy.unlisted(BanList::Types, &UNOWNED_TYPES);
     assert_eq!(types, Vec::<&str>::new());
     assert_eq!(
-        unlisted(&clippy, "disallowed-types", &[THREAD_LOCAL]),
+        clippy.unlisted(BanList::Types, &[THREAD_LOCAL]),
         Vec::<&str>::new()
     );
     let grouped = |list: fn(&Proxy) -> &'static [&'static str], unowned: &[&'static str]| {
@@ -703,13 +720,10 @@ pub(crate) fn each_banned_call_goes_through_its_proxy_alone(workspace: &Workspac
         &[&UNOWNED_TYPES[..], &[THREAD_LOCAL]].concat(),
     );
     assert_eq!(
-        ungrouped(&clippy, "disallowed-methods", &methods),
+        clippy.ungrouped(BanList::Methods, &methods),
         Vec::<&str>::new()
     );
-    assert_eq!(
-        ungrouped(&clippy, "disallowed-types", &types),
-        Vec::<&str>::new()
-    );
+    assert_eq!(clippy.ungrouped(BanList::Types, &types), Vec::<&str>::new());
     // A thread-local module's exemption covers every banned type, so each has a name it shows.
     let types = STORAGE_TYPES
         .iter()
@@ -796,33 +810,29 @@ pub(crate) fn a_crates_clippy_toml_is_the_workspaces_with_its_own_entries(worksp
         .collect();
     found.sort_unstable();
     assert_eq!(found, owned);
-    // The bans go at the end of their list, under their comment; a list the proxy bans nothing of
-    // stays the workspace's.
-    let workspace =
-        "a = 1\ndisallowed-types = [\n]\ndisallowed-methods = [\n    { path = \"x\" },\n]\n";
-    let bans = CrateBans {
-        dirs: &[],
-        comment: "c",
-        reason: "r",
-        methods: &["y", "z"],
-        types: &[],
-    };
-    assert_eq!(
-        with_crate_bans(workspace, &bans),
-        "a = 1\ndisallowed-types = [\n]\ndisallowed-methods = [\n    { path = \"x\" },\n    # c\n    { path = \"y\", reason = \"r\" },\n    { path = \"z\", reason = \"r\" },\n]\n"
-    );
 }
 
 #[test]
 fn the_ban_checks_fail_on_what_breaks_them() {
     // A list that misses a path, in the list it names and not in the other.
-    let one = "disallowed-methods = [\n    { path = \"std::fs::write\", reason = \"r\" },\n]\n";
-    let rules = ["std::fs::write", "std::fs::copy"];
-    assert_eq!(
-        unlisted(one, "disallowed-methods", &rules),
-        ["std::fs::copy"]
+    let one = ClippyBans::of(
+        "disallowed-methods = [\n    { path = \"std::fs::write\", reason = \"r\" },\n    \"std::fs::rename\",\n]\n",
     );
-    assert_eq!(unlisted(one, "disallowed-types", &rules), rules);
+    let rules = ["std::fs::write", "std::fs::copy", "std::fs::rename"];
+    assert_eq!(one.unlisted(BanList::Methods, &rules), ["std::fs::copy"]);
+    assert_eq!(one.unlisted(BanList::Types, &rules), rules);
+    // A ban in a comment is none, where a read of the text found it.
+    let commented = ClippyBans::of(
+        "disallowed-methods = [\n    # { path = \"std::fs::copy\" },\n    { path = \"std::fs::write\" },\n]\n",
+    );
+    assert_eq!(
+        commented.unlisted(BanList::Methods, &rules),
+        ["std::fs::copy", "std::fs::rename"]
+    );
+    assert_eq!(
+        commented.ungrouped(BanList::Methods, &rules),
+        Vec::<&str>::new()
+    );
     let [methods, types] = LINTS;
     let expect = |lint: &str| format!("#[expect({lint}, reason = \"r\")]\n");
     let inner = |lint: &str| format!("#!{}", &expect(lint)[1..]);
@@ -1128,4 +1138,23 @@ fn a_wall_clock_read_is_found_by_the_paths_code_names() {
     );
     assert!(wall_clock_reads("let t = clock.now(); let f: Res<Time<Fixed>>;").is_empty());
     assert!(wall_clock_reads("let s = \"Instant::now\";").is_empty());
+}
+
+#[test]
+fn a_crates_bans_go_at_the_end_of_their_list() {
+    // The bans go at the end of their list, under their comment; a list the proxy bans nothing of
+    // stays the workspace's.
+    let workspace =
+        "a = 1\ndisallowed-types = [\n]\ndisallowed-methods = [\n    { path = \"x\" },\n]\n";
+    let bans = CrateBans {
+        dirs: &[],
+        comment: "c",
+        reason: "r",
+        methods: &["y", "z"],
+        types: &[],
+    };
+    assert_eq!(
+        with_crate_bans(workspace, &bans),
+        "a = 1\ndisallowed-types = [\n]\ndisallowed-methods = [\n    { path = \"x\" },\n    # c\n    { path = \"y\", reason = \"r\" },\n    { path = \"z\", reason = \"r\" },\n]\n"
+    );
 }

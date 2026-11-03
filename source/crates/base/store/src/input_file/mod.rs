@@ -20,11 +20,16 @@ pub(crate) mod error;
 pub struct InputFile;
 
 /// A regular file open to read in pieces, as a walk hashes a file it does not keep: its stamp,
-/// as its handle's metadata gave it as it opened, and its bytes, as `Read` gives them.
+/// as its handle's metadata gave it as it opened, and its bytes, as `Read` gives them, at most
+/// `max`: a read past them, of a file that grew since it opened, fails as `Opened::read` does,
+/// its error one `ReadError::of_stream` gives `TooLarge` of.
 #[derive(Debug)]
 pub struct InputStream {
     stamp: FileStamp,
     file: File,
+    max: usize,
+    /// The bytes it may read still.
+    left: u64,
 }
 
 /// A regular file open to read ranges of, as an archive's entries are read: its stamp, as its
@@ -90,7 +95,7 @@ impl InputFile {
             if opened.longer_than(max_len) {
                 return Err(ReadError::TooLarge { max: max_len });
             }
-            InputStream::of(opened)
+            InputStream::of(opened, max_len)
         };
         open().map_err(PathError::at(path))
     }
@@ -159,13 +164,18 @@ impl InputFile {
 
 impl InputStream {
     /// The stream of the file `opened`, stamped by its metadata.
-    fn of(Opened { file, metadata }: Opened) -> Result<Self, ReadError> {
+    fn of(Opened { file, metadata }: Opened, max: usize) -> Result<Self, ReadError> {
         let modified = metadata.modified().map_err(ReadError::Read)?;
         let stamp = FileStamp {
             len: metadata.len(),
             modified,
         };
-        Ok(Self { stamp, file })
+        Ok(Self {
+            stamp,
+            file,
+            max,
+            left: u64::try_from(max).expect("a length fits u64"),
+        })
     }
 
     /// Its length as it opened.
@@ -261,8 +271,18 @@ impl InputRanges {
 }
 
 impl Read for InputStream {
+    /// Reads at most one byte past the bytes it may read still, which, read, fails the read.
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.file.read(buf)
+        let room = usize::try_from(self.left.saturating_add(1)).unwrap_or(usize::MAX);
+        let room = room.min(buf.len());
+        let read = self.file.read(&mut buf[..room])?;
+        let taken = u64::try_from(read).expect("a length fits u64");
+        if taken > self.left {
+            let too_large = ReadError::TooLarge { max: self.max };
+            return Err(io::Error::new(io::ErrorKind::FileTooLarge, too_large));
+        }
+        self.left -= taken;
+        Ok(read)
     }
 }
 

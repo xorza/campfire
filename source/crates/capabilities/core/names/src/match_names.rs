@@ -7,7 +7,7 @@ use campfire_values::{
     Scalar, Team, UnitType,
 };
 
-use crate::name_tables::{KindTexts, NameTables};
+use crate::kind_names::{KindNames, KindTexts};
 use crate::tag_names::TagNames;
 use crate::teams::Teams;
 
@@ -17,7 +17,7 @@ use crate::teams::Teams;
 /// names its scripts read from, as each batch reads it. Package data, not state.
 #[derive(Resource, Debug, Default, Clone)]
 pub struct MatchNames {
-    tables: NameTables,
+    tables: KindNames,
     tags: TagNames,
     /// The match's teams; none before a mode sets them.
     teams: Option<Arc<Teams>>,
@@ -44,7 +44,7 @@ impl MatchNames {
     }
 
     /// The tables of the names of each kind of id.
-    pub const fn tables(&self) -> &NameTables {
+    pub const fn tables(&self) -> &KindNames {
         &self.tables
     }
 
@@ -83,7 +83,7 @@ impl MatchNames {
     }
 
     /// The param `name` of `unit_type`, if its type declares one.
-    pub fn param(&self, unit_type: UnitType, name: &str) -> Option<Scalar> {
+    pub fn param_named(&self, unit_type: UnitType, name: &str) -> Option<Scalar> {
         let run = unit_type.index();
         let at = self.params.named(run, name)?;
         Some(self.params.values(run)[at])

@@ -105,31 +105,40 @@ impl JournalReplay {
     }
 }
 
-impl ReplayedJournal {
-    /// What the journal of `records`, in order, as the server took them, rebuilds, as
-    /// `JournalReplay` rebuilds it record by record; an error as `JournalReplay` gives one, and
-    /// for no record.
-    pub fn of<'a>(
-        records: impl IntoIterator<Item = &'a [u8]>,
-        release: Version,
-    ) -> Result<Self, JournalReplayError> {
-        let mut records = records.into_iter();
-        let first = records.next().ok_or(JournalReplayError::NoHeader)?;
-        let mut replay = JournalReplay::begin(first, release)?;
-        for record in records {
-            replay.apply(record)?;
-        }
-        replay.finish()
-    }
-}
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_common::Version;
 
-impl SessionLog {
-    /// The log of the session whose journal holds `records`, as `ReplayedJournal::of` rebuilds
-    /// it.
-    pub fn from_journal<'a>(
-        records: impl IntoIterator<Item = &'a [u8]>,
-        release: Version,
-    ) -> Result<Self, JournalReplayError> {
-        ReplayedJournal::of(records, release).map(|replayed| replayed.log)
+    use crate::session_log::SessionLog;
+    use crate::session_log::error::JournalReplayError;
+    use crate::session_log::journal_replay::{JournalReplay, ReplayedJournal};
+
+    impl ReplayedJournal {
+        /// What the journal of `records`, in order, as the server took them, rebuilds, as
+        /// `JournalReplay` rebuilds it record by record; an error as `JournalReplay` gives one, and
+        /// for no record.
+        pub fn of<'a>(
+            records: impl IntoIterator<Item = &'a [u8]>,
+            release: Version,
+        ) -> Result<Self, JournalReplayError> {
+            let mut records = records.into_iter();
+            let first = records.next().ok_or(JournalReplayError::NoHeader)?;
+            let mut replay = JournalReplay::begin(first, release)?;
+            for record in records {
+                replay.apply(record)?;
+            }
+            replay.finish()
+        }
+    }
+
+    impl SessionLog {
+        /// The log of the session whose journal holds `records`, as `ReplayedJournal::of` rebuilds
+        /// it.
+        pub fn from_journal<'a>(
+            records: impl IntoIterator<Item = &'a [u8]>,
+            release: Version,
+        ) -> Result<Self, JournalReplayError> {
+            ReplayedJournal::of(records, release).map(|replayed| replayed.log)
+        }
     }
 }

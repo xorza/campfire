@@ -111,10 +111,6 @@ pub(crate) fn no_crate_re_exports_another_crate(workspace: &Workspace) {
         })
         .collect();
     assert_eq!(found, Vec::<String>::new());
-    // A whole crate, an item, a scoped one, an indented group and an extern crate are found; the
-    // crate's own, a macro's own, a plain import and the path of a macro the file defines are not.
-    let sample = "pub use rhai;\npub use crate::a::B;\npub(crate) use ::toml::de::Error as E;\nmod m {\n    pub use other::{A, B};\n}\npub use self::x;\nuse other::C;\npub use super::y;\npub extern crate rhai;\nmacro_rules! local {\n    () => { pub use $crate::Item; };\n}\npub(crate) use local;\npub(crate) use toml;";
-    assert_eq!(foreign_re_exports(sample), [1, 3, 5, 10, 15]);
 }
 
 /// The lines of `text`, the source at `path`, that re-export an item of their own crate outside
@@ -136,7 +132,6 @@ pub(crate) fn no_module_re_exports_its_own_crates_item(workspace: &Workspace) {
     let found: Vec<String> = workspace
         .sources()
         .iter()
-        .filter(|file| file.path != "crates/test/rules/src/re_exports.rs")
         .flat_map(|file| {
             inner_re_exports(&file.path, &file.text)
                 .into_iter()
@@ -144,6 +139,18 @@ pub(crate) fn no_module_re_exports_its_own_crates_item(workspace: &Workspace) {
         })
         .collect();
     assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn each_foreign_re_export_is_found() {
+    // A whole crate, an item, a scoped one, an indented group and an extern crate are found; the
+    // crate's own, a macro's own, a plain import and the path of a macro the file defines are not.
+    let sample = "pub use rhai;\npub use crate::a::B;\npub(crate) use ::toml::de::Error as E;\nmod m {\n    pub use other::{A, B};\n}\npub use self::x;\nuse other::C;\npub use super::y;\npub extern crate rhai;\nmacro_rules! local {\n    () => { pub use $crate::Item; };\n}\npub(crate) use local;\npub(crate) use toml;";
+    assert_eq!(foreign_re_exports(sample), [1, 3, 5, 10, 15]);
+}
+
+#[test]
+fn each_inner_re_export_is_found() {
     // Each visibility of a re-export in a module is found, and a root's, a plain `use` and
     // another crate's path are not.
     let sample = "pub(crate) use crate::a::B;\npub use self::c::D;\n    pub(super) use super::E;\nuse crate::f::G;\npub use other::H;\n";

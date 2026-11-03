@@ -114,7 +114,7 @@ impl Builder {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod reach_in {
     use crate::builder::{BuildOrder, Builder};
 
     impl Builder {

@@ -210,6 +210,7 @@ impl Module for Combat {
     type Systems = CombatSystems;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.removals::<Dead>();
         d.scratch::<Due<GoingOff>>();
         d.section::<CombatData>();
         d.section::<TurretData>();

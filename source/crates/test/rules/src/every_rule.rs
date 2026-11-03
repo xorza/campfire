@@ -10,8 +10,9 @@ use campfire_threads::Parallel;
 
 use crate::workspace::Workspace;
 use crate::{
-    bans, capabilities, citations, cycles, dev_dependencies, errors, layers, manifests, platform,
-    re_exports, source_files, suffixes, test_homes, test_modules, test_support, type_names, world,
+    bans, capabilities, citations, cycles, dev_dependencies, errors, layers, manifests,
+    nextest_filters, platform, re_exports, source_files, suffixes, test_homes, test_modules,
+    test_support, trait_defaults, type_names, world,
 };
 
 /// A rule: its name, which is the path of its check, and the check, which panics on what breaks
@@ -29,27 +30,28 @@ macro_rules! rules {
     };
 }
 
-const RULES: [Rule; 48] = rules![
+const RULES: [Rule; 52] = rules![
     bans::each_banned_call_goes_through_its_proxy_alone,
     bans::a_crates_clippy_toml_is_the_workspaces_with_its_own_entries,
     bans::no_tick_reads_removals_that_age_with_the_app,
     bans::each_crate_a_match_runs_on_bans_floats,
     bans::no_crate_a_match_runs_on_reads_the_wall_clock,
     capabilities::genre_words::no_capability_names_a_genres_words,
-    capabilities::genre_words::no_capability_names_a_game_outside_its_module,
+    capabilities::genre_words::no_crate_names_a_game_outside_its_module,
     capabilities::lookups::a_name_is_looked_up_only_by_a_script_call_or_the_load,
     capabilities::part_names::a_parts_name_takes_its_declaring_modules_prefix,
     capabilities::roles::each_role_of_a_module_takes_the_modules_name,
-    capabilities::roles::a_book_and_a_data_table_take_their_suffix,
     capabilities::sets::a_module_names_another_modules_sets_only_where_its_sets_run,
     citations::a_citation_names_a_decision_its_document_holds,
     citations::a_documents_link_names_a_file,
     cycles::no_crates_modules_import_each_other_in_a_cycle,
+    cycles::no_production_path_starts_at_super,
     dev_dependencies::a_dev_dependency_adds_only_test_support,
     errors::every_error_the_workspace_writes_goes_through_its_report,
     layers::each_crate_requires_only_its_own_layer_or_lower,
     manifests::common_and_each_proxy_depend_on_their_listed_crates_alone,
     manifests::only_common_names_the_crate_of_its_derives,
+    manifests::only_a_proxy_depends_on_the_crates_it_proxies,
     manifests::the_design_marks_built_exactly_the_crates_of_the_workspace_with_their_kinds,
     manifests::each_crate_keeps_the_rule_of_its_kind,
     manifests::the_sim_reads_no_file_and_logs_nothing_and_the_protocol_reads_no_file,
@@ -63,6 +65,7 @@ const RULES: [Rule; 48] = rules![
     manifests::the_default_members_are_the_build_that_ships,
     manifests::each_optional_dependency_is_named_by_dep_and_has_no_implicit_feature,
     manifests::an_optional_dependency_is_named_by_library_code,
+    nextest_filters::each_nextest_filter_names_a_test,
     platform::only_the_platform_module_names_an_os,
     re_exports::no_crate_re_exports_another_crate,
     re_exports::no_module_re_exports_its_own_crates_item,
@@ -71,8 +74,10 @@ const RULES: [Rule; 48] = rules![
     suffixes::a_declared_name_keeps_its_suffix,
     suffixes::a_package_data_struct_refuses_a_field_it_does_not_hold,
     test_homes::a_test_lives_in_the_lowest_crate_that_can_hold_it,
+    test_modules::no_test_gate_holds_a_module_named_internals,
     test_modules::an_inline_test_module_holds_at_most_150_lines_and_40_percent_of_its_file,
     test_support::a_crate_has_one_bench_target_and_its_cases_live_in_bench_files,
+    trait_defaults::a_declaration_trait_has_no_default_method,
     type_names::a_type_name_keeps_one_meaning,
     type_names::a_stack_feature_names_no_campfire_crate,
     world::a_free_function_that_takes_a_world_first_is_a_system,

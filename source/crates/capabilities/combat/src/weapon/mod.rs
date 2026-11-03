@@ -201,8 +201,8 @@ impl Pitch {
     /// when `sin(φ − θ) ≥ 0`, so `y cos θ ≥ r sin θ`, the run to the nearest bit and each product
     /// exact.
     pub fn reaches(&self, from: Vec3, target: &Volume) -> bool {
-        let bottom = target.base.position;
-        let top = i128::from((bottom.y + target.height).to_bits());
+        let bottom = target.base().position;
+        let top = i128::from((bottom.y + target.height()).to_bits());
         let run = i128::from(from.ground_offset(bottom).length().to_bits());
         let side = |bound: SinCos, height: i128| {
             let rise = height - i128::from(from.y.to_bits());

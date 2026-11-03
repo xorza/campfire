@@ -24,13 +24,22 @@ use campfire_units::{
 };
 use campfire_values::{EngineTag, PathId, TagProperties, UnitType};
 
+use crate::aside_depth::AsideDepth;
+use crate::body_index::BodyIndex;
+use crate::braked_step::BrakedStep;
+use crate::crowd_book::CrowdBook;
 use crate::crowd_costs::CrowdCosts;
 use crate::fliers::Fliers;
+use crate::forced_moves::ForcedMoves;
 use crate::landing_book::LandingBook;
 use crate::movement_model::MovementModel;
+use crate::navigation_api::NavigationApi;
 use crate::navigation_column::RowReads;
+use crate::path_following::PathFollowing;
 use crate::pathing_grid::PathingGrid;
+use crate::room_making::RoomMaking;
 use crate::route_planner::Walkable;
+use crate::static_tracking::StaticTracking;
 use crate::terrain::WallGrid;
 use crate::wings::Wings;
 
@@ -102,14 +111,9 @@ mod zero_hour;
 
 pub use crate::altitude::Altitude;
 pub use crate::arrived_at::ArrivedAt;
-pub use crate::aside_depth::AsideDepth;
-pub use crate::body_index::{BodyIndex, IndexedBody};
-pub use crate::braked_step::BrakedStep;
-pub use crate::collider::Collider;
-pub use crate::crowd_book::CrowdBook;
+pub use crate::body_index::IndexedBody;
 pub use crate::error::{MapProblem, NavigationDataError, NavigationRefusal};
 pub use crate::flight_data::{FlightData, WingsData};
-pub use crate::forced_moves::ForcedMoves;
 pub use crate::gait::Gait;
 pub use crate::group_box::GroupBox;
 pub use crate::held_place::HeldPlace;
@@ -121,29 +125,26 @@ pub use crate::map_paths_data::{MapPathsData, PathData};
 pub use crate::mode_navigation_data::ModeNavigationData;
 pub use crate::move_effect_data::MoveEffectData;
 pub use crate::moves::Moves;
-pub use crate::navigation_api::NavigationApi;
 pub use crate::navigation_book::NavigationBook;
 pub use crate::navigation_column::{NavigationColumn, RoomAsk, RoomSearch};
 pub use crate::navigation_effect::NavigationEffect;
 pub use crate::on_path::OnPath;
 pub use crate::party::{Party, PartyKey, PartyOrder};
 pub use crate::path_arrivals::{OnPathEnd, PathArrival, PathArrivals};
-pub use crate::path_following::PathFollowing;
 pub use crate::path_walk::PathWalk;
 pub use crate::path_walker::{PathEnd, PathWalker};
 pub use crate::paths::Paths;
 pub use crate::progress::Progress;
-pub use crate::room_making::{RoomMaking, RoomMakingRun};
+pub use crate::room_making::RoomMakingRun;
 pub use crate::route::{
     Route, RouteAsk, RouteCursor, RouteMut, RouteMutItem, RouteMutReadOnlyItem, RouteRead,
     RouteReadItem, RouteRef,
 };
 pub use crate::route_planner::RoutePlanner;
 pub use crate::routing::Routing;
-pub use crate::segment::Segment;
 pub use crate::stalled_walkers::StalledWalkers;
 pub use crate::static_bodies::StaticBodies;
-pub use crate::static_tracking::{StaticTracking, StaticTrackingRun};
+pub use crate::static_tracking::StaticTrackingRun;
 pub use crate::unit_navigation_data::{UnitNavigationData, UnitNavigationPatch};
 pub use crate::unparted_pairs::UnpartedPairs;
 pub use crate::walk_check::{MarkerPoint, PlacedBody, WalkCheck};
@@ -313,7 +314,7 @@ impl Module for Navigation {
     fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         cx.add(
             NavigationSystems::TrackStatics,
-            StaticTracking::track_static_bodies,
+            (RoutePlanner::begin, StaticTracking::track_static_bodies).chain(),
         );
         cx.by_role(
             NavigationSystems::FollowPaths,
@@ -456,7 +457,6 @@ pub mod internals {
     use crate::arrived_at::ArrivedAt;
     use crate::aside_depth::AsideDepth;
     use crate::braked_step::BrakedStep;
-    pub use crate::broadphase::internals::scene;
     use crate::crowd_book::CrowdBook;
     use crate::flight_data::FlightData;
     use crate::hemmed::Hemmed;

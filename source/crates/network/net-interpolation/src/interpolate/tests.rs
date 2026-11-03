@@ -260,8 +260,7 @@ impl InterpolationTestAppBuilder {
 fn confirm_server_tick(app: &mut App, replicon_tick: u32, server_tick: NetTick) {
     let replicon_tick = RepliconTick::new(replicon_tick);
     let mut confirmed_ticks = app.world_mut().resource_mut::<ConfirmedTickMap>();
-    confirmed_ticks.bridge_record(replicon_tick, server_tick);
-    confirmed_ticks.bridge_record_last_confirmed_tick(replicon_tick);
+    confirmed_ticks.bridge_complete(replicon_tick, server_tick);
 }
 
 fn set_interpolation_tick(app: &mut App, tick: NetTick) {
@@ -1025,7 +1024,7 @@ fn a_diff_history_waits_while_the_diff_of_its_completed_tick_is_pending() {
     let mut receiver = HistoryDiffReceiver::<TestComp>::default();
     receiver.bridge_record_cursor(NetTick(0), Some(idx(0)));
     receiver
-        .bridge_queue_diffs(NetTick(5), idx(4), vec![4.0, 5.0])
+        .queue_diffs(NetTick(5), idx(4), vec![4.0, 5.0])
         .unwrap();
 
     let entity = app.world_mut().spawn((Interpolated, history)).id();
@@ -1177,13 +1176,13 @@ fn diff_history_drains_below_a_later_pending_diff() {
     let mut receiver = HistoryDiffReceiver::<TestComp>::default();
     receiver.bridge_record_cursor(NetTick(0), Some(idx(0)));
     receiver
-        .bridge_queue_diffs(NetTick(40), idx(4), vec![4.0, 5.0])
+        .queue_diffs(NetTick(40), idx(4), vec![4.0, 5.0])
         .unwrap();
     let held_history = keyframes();
     let mut held_receiver = HistoryDiffReceiver::<TestComp>::default();
     held_receiver.bridge_record_cursor(NetTick(0), Some(idx(0)));
     held_receiver
-        .bridge_queue_diffs(NetTick(15), idx(4), vec![4.0, 5.0])
+        .queue_diffs(NetTick(15), idx(4), vec![4.0, 5.0])
         .unwrap();
 
     let entity = app
@@ -1239,7 +1238,7 @@ fn a_confirmed_diff_history_waits_for_an_older_pending_diff() {
     let mut receiver = HistoryDiffReceiver::<TestComp>::default();
     receiver.bridge_record_cursor(NetTick(0), Some(idx(0)));
     receiver
-        .bridge_queue_diffs(NetTick(5), idx(4), vec![4.0, 5.0])
+        .queue_diffs(NetTick(5), idx(4), vec![4.0, 5.0])
         .unwrap();
 
     let entity = app.world_mut().spawn((Interpolated, history)).id();
@@ -1282,7 +1281,7 @@ fn a_confirmed_diff_history_waits_for_an_older_pending_diff() {
         let mut entity_mut = app.world_mut().entity_mut(entity);
         let mut history = entity_mut.get_mut::<ConfirmedHistory<TestComp>>().unwrap();
         receiver
-            .bridge_queue_diffs(NetTick(3), idx(1), vec![1.0, 2.0, 3.0])
+            .queue_diffs(NetTick(3), idx(1), vec![1.0, 2.0, 3.0])
             .unwrap();
         while let Some(Ticked { tick, value }) =
             receiver.bridge_take_ready_update(&history).unwrap()

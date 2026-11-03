@@ -32,9 +32,10 @@ pub use crate::match_probe::probe_spec::{ProbeSpec, ProbeUnitsSpec};
 pub use crate::match_probe::{
     MatchProbe, ProbeColumns, ProbePage, ProbeRows, ProbeState, ProbeUnits,
 };
+pub use crate::order::directive::Directive;
 pub use crate::order::location::{GroundLocation, Location, MarkerLocation, NearLocation};
 pub use crate::order::named_refs::NamedRefs;
-pub use crate::order::{Directive, Order, OrderPayloads, OrderPayloadsIter};
+pub use crate::order::{Order, OrderPayloads, OrderPayloadsIter};
 pub use crate::release::Release;
 pub use crate::release::error::{CapabilityError, CheckedBooksError};
 pub use crate::release::r#match::Match;

@@ -204,7 +204,7 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `radius` | read | core | since 1.0 | its body's radius, 0 with no body, `()` for a box |
 | `recent_attackers` | `(ms: ms)` | combat | since 1.0 | the living units that struck it within the last `ms`, rounded up to whole ticks |
 | `site_progress` | read | production | since 1.0 | the share of its build's time its site reached, from 0 to 1, `()` when it is no site |
-| `spawn_pos` | read | core | since 1.0 | where it spawned, where it respawns; `()` with none |
+| `spawn_position` | read | core | since 1.0 | where it spawned, where it respawns; `()` with none |
 | `stat` | `(name: text)`, `name` a stat | stats | since 1.0 | its value of a stat the mode declares |
 | `state` | read | core | since 1.0 | its script state, by name, which a call may write and read back |
 | `team` | read, gives a team | core | since 1.0 | its team's name |
@@ -224,7 +224,7 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `direction_to` | `(position: Vector)` | core | since 1.0 | the unit vector towards `position` in the map's metric, `()` for the same point |
 | `distance_to` | `(position: Vector)` | core | since 1.0 | the distance to `position` in the map's metric |
 | `is_within` | `(position: Vector, radius: Num)` | core | since 1.0 | whether `position` is within `radius` in the map's metric, exactly: the reach rule between two points, which have no bodies |
-| `rotated_deg` | `(degrees: Num)` | core | since 1.0 | the vector turned by `degrees` about the vertical, counter-clockwise seen from above |
+| `rotated` | `(degrees: Num)` | core | since 1.0 | the vector turned by `degrees` about the vertical, counter-clockwise seen from above |
 | `x` | read | core | since 1.0 | its first component, across the ground |
 | `y` | read | core | since 1.0 | its height |
 | `z` | read | core | since 1.0 | its third component, across the ground |

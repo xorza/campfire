@@ -34,8 +34,8 @@ mod toml_value;
 pub use crate::base64::Base64;
 pub use crate::binary::{Binary, Decoded};
 pub use crate::error::{
-    Base64Error, BinaryError, JsonError, Malformed, PngError, TaggedError, TomlError,
-    TomlWriteError,
+    Base64Error, BinaryError, JsonError, Malformed, PngError, RgbaImageError, TaggedError,
+    TomlError, TomlWriteError,
 };
 pub use crate::json::Json;
 pub use crate::json_value::JsonValue;

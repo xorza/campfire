@@ -17,6 +17,7 @@ use crate::fragment_body::FragmentBody;
 use crate::fragment_receiver::{FragmentCx, FragmentOutcome, FragmentReceiver, PartialExpiry};
 use crate::gap_store::GapStore;
 use crate::message_id::MessageId;
+use crate::message_id_tag::MessageIdTag;
 use crate::receive_budget::{ReceiveBudget, Reservation};
 use crate::reliable_send_state::SEND_WINDOW;
 use crate::single_body::SingleBody;
@@ -166,8 +167,8 @@ impl ChannelReceiver {
     }
 
     /// Whether each single message of this channel carries its id.
-    pub(crate) const fn single_has_id(&self) -> bool {
-        self.setup.mode.single_has_id()
+    pub(crate) const fn single_tag(&self) -> MessageIdTag {
+        self.setup.mode.single_tag()
     }
 
     /// The bytes this channel holds against the receive budget: its partial messages, and what
@@ -176,7 +177,7 @@ impl ChannelReceiver {
         self.fragments.held() + self.state.held()
     }
 
-    /// Stores a received whole message, of an id when [`Self::single_has_id`], charging what it
+    /// Stores a received whole message, of an id when [`Self::single_tag`] tags it, charging what it
     /// leaves undelivered to `budget`; a message the budget has no room for is not stored, and its
     /// packet must not be acked. A message no honest peer sends breaks the protocol.
     pub(crate) fn receive_single(

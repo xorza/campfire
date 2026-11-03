@@ -5,7 +5,7 @@ use bevy_app::{
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, QueryState};
 use bevy_ecs::resource::Resource;
-use bevy_ecs::schedule::common_conditions::resource_exists;
+use bevy_ecs::schedule::common_conditions::{not, resource_exists};
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
@@ -226,6 +226,13 @@ impl Plugin for SimServerPlugin {
             )
                 .chain()
                 .distributive_run_if(resource_exists::<MatchConsole>)
+                .in_set(ServerFrameSystems::Console),
+        );
+        app.add_systems(
+            Update,
+            ServerConsole::refuse_links
+                .run_if(not(ServerConsole::is_local))
+                .before(ServerConsole::take_stdio)
                 .in_set(ServerFrameSystems::Console),
         );
         app.add_systems(

@@ -4,7 +4,7 @@ use campfire_actions::CostTarget;
 use campfire_common::DeclaredName;
 use campfire_declarations::{BookCx, BookError, NameSets, NamedScripts, NamedTexts, StateFields};
 use campfire_mode::{ChoiceId, MapData, ModeData, TimerId};
-use campfire_names::{Filter, NameTables};
+use campfire_names::{Filter, KindNames, NameHeld};
 use campfire_units::{PoolId, TypeParamsData};
 use campfire_values::{ActionId, ModifierId, NameKind, Named, Names, Param, ResourceId, TextId};
 
@@ -15,7 +15,7 @@ use campfire_values::{ActionId, ModifierId, NameKind, Named, Names, Param, Resou
 /// checks the rules of its own data). A kind of no module the match runs has none.
 #[derive(Debug)]
 pub struct LoadNames {
-    tables: NameTables,
+    tables: KindNames,
     sets: NameSets,
     scripts: NamedScripts,
     texts: NamedTexts,
@@ -29,7 +29,7 @@ impl LoadNames {
     /// The names of the build `cx`, each built by its owner as the build asks for it; an error
     /// for the first a builder refuses.
     pub(crate) fn of(cx: &mut BookCx<'_>) -> Result<Self, BookError> {
-        let tables = cx.name_tables()?;
+        let tables = cx.kind_names()?;
         let map = cx
             .given::<MapData>()
             .expect("the load gives the mode's map");
@@ -81,8 +81,11 @@ impl LoadNames {
     /// a kind whose names are a package's own, as its modifiers and abilities, which the load
     /// reads of the package itself. A kind of no module the match runs has no name.
     pub fn has(&self, kind: NameKind, name: &str) -> Option<bool> {
-        if let Some(has) = self.tables.has(kind, name) {
-            return has;
+        match self.tables.has(kind, name) {
+            NameHeld::Held => return Some(true),
+            NameHeld::Missing => return Some(false),
+            NameHeld::PackageOwn => return None,
+            NameHeld::NoTable => {}
         }
         if let Some(has) = self.sets.has(kind, name) {
             return Some(has);

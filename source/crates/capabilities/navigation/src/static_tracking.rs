@@ -18,7 +18,7 @@ use crate::walker::Walker;
 /// The static bodies the static index and the pathing grid hold, and the walkers' routes they
 /// change.
 #[derive(Debug)]
-pub struct StaticTracking;
+pub(crate) struct StaticTracking;
 
 /// The tracking of the static bodies as a system of its own, which a spawn runs out of the
 /// schedule, as `Navigation::make_room` does.

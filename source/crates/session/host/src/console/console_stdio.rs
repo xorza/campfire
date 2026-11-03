@@ -3,6 +3,7 @@ use std::io::{self, BufRead, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
+use std::{mem, str};
 
 use bevy_ecs::resource::Resource;
 use campfire_codec::Json;
@@ -26,7 +27,7 @@ use crate::console::log_seen::LogSeen;
 /// stops as its console's input ends).
 #[derive(Resource, Debug)]
 pub struct ConsoleStdio {
-    lines: Mutex<Receiver<String>>,
+    lines: Mutex<Receiver<Vec<u8>>>,
     ended: AtomicBool,
     seen: Arc<Mutex<LogSeen>>,
     _reader: Worker,
@@ -55,13 +56,29 @@ impl ConsoleStdio {
             }
         });
         let (queue, lines) = mpsc::channel();
+        // Lines are read as bytes, so one that is not UTF-8 is refused as its line, and only
+        // the input's end or an error of the stream ends the reader.
         let reader = Worker::start_left(Job::Console, move || {
-            for line in io::stdin().lock().lines() {
-                let Ok(line) = line else {
-                    break;
-                };
-                if queue.send(line).is_err() {
-                    break;
+            let mut input = io::stdin().lock();
+            let mut line = Vec::new();
+            loop {
+                match input.read_until(b'\n', &mut line) {
+                    Ok(0) => break,
+                    Ok(_) => {
+                        if line.last() == Some(&b'\n') {
+                            line.pop();
+                        }
+                        if line.last() == Some(&b'\r') {
+                            line.pop();
+                        }
+                        if queue.send(mem::take(&mut line)).is_err() {
+                            break;
+                        }
+                    }
+                    Err(error) => {
+                        warn!(error = %ErrorReport::of(&error), "the console's input does not read");
+                        break;
+                    }
                 }
             }
         });
@@ -94,7 +111,7 @@ impl ConsoleStdio {
         loop {
             match lines.try_recv() {
                 Ok(line) => {
-                    if let Some(request) = Self::read(&line) {
+                    if let Some(request) = Self::read_bytes(&line) {
                         requests.push(request);
                     }
                 }
@@ -110,6 +127,18 @@ impl ConsoleStdio {
     /// Writes `reply` to the standard output.
     pub fn send(&self, reply: Reply) {
         Self::write(&Output::Reply(reply));
+    }
+
+    /// The request the bytes of `line` hold, as `read` reads its text; none for a line that is
+    /// not UTF-8, which is logged, as it names no id it can be refused by.
+    fn read_bytes(line: &[u8]) -> Option<Request> {
+        match str::from_utf8(line) {
+            Ok(line) => Self::read(line),
+            Err(error) => {
+                warn!(error = %ErrorReport::of(&error), "a line of the console is not UTF-8");
+                None
+            }
+        }
     }
 
     /// The request `line` holds; none for a line that reads as no request, which is refused,
@@ -266,5 +295,11 @@ mod tests {
         );
         assert_eq!(ConsoleStdio::read(r#"{"id":3,"ask":"what"}"#), None);
         assert_eq!(ConsoleStdio::read("no request"), None);
+        // A line of bytes that are not UTF-8 reads as none, and one that are reads as its text.
+        assert_eq!(ConsoleStdio::read_bytes(&[b'{', 0xff, b'}']), None);
+        assert_eq!(
+            ConsoleStdio::read_bytes(br#"{"id":1,"ask":"status"}"#),
+            ConsoleStdio::read(r#"{"id":1,"ask":"status"}"#)
+        );
     }
 }

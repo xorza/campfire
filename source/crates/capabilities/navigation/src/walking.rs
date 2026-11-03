@@ -5,7 +5,7 @@ use bevy_ecs::system::{Commands, If, Local, ParamSet, Query, Res, ResMut};
 use campfire_actions::ActionProgress;
 use campfire_declarations::{ById, RoleForm};
 use campfire_deliveries::DashDelivering;
-use campfire_math::{Direction, Num, SinCos, Vec3};
+use campfire_math::{Direction, Num, Vec3};
 use campfire_sim::{
     DueIndex, EntityIndex, Keyed, MatchRate, Ordered, Position, SimTick, StableId, UnitDues,
     Unpredicted,
@@ -658,24 +658,18 @@ impl Walking {
             };
             BrakedStep::set(&mut last, braked);
             position.set_if_neq(Position::from(at));
-            if route.read().ahead().is_empty() && route.asked().is_none() {
-                Destination::route_to(&mut destination, None);
-                ArrivedAt::set(&mut arrived, route.goal());
+            if let Some(end) = route.end_walk(&mut destination, &mut arrived, &mut progress) {
                 let mut depth = depth.expect("a walker carries how deep its walk is");
                 // A step aside that ends short of its place where it began found no place it
                 // reaches, so its unit is firm, as one whose search found none, and the walker
                 // that moved it asks it no more; one that went on its way and ends short is asked
                 // again from there (04-capabilities/navigation.md, A friend that cannot yield is
                 // firm, and a stuck walker's route walls it).
-                if !route.is_reached() && depth.went_nowhere(at, step.get()) {
+                if !end.reached && depth.went_nowhere(at, step.get()) {
                     let mut hemmed = hemmed.expect("a walker carries whether it is hemmed in");
                     Hemmed::set(&mut hemmed, true);
                 }
                 AsideDepth::set(&mut depth, AsideDepth::default());
-                if route.is_reached() {
-                    route.clear();
-                    progress.restart();
-                }
             }
         }
     }
@@ -922,8 +916,7 @@ impl Walking {
 
     /// The way `facing` points on the ground plane, in bits along x and z.
     fn way(facing: Facing) -> Option<Direction<2>> {
-        let SinCos { sin, cos } = SinCos::of_degrees(facing.degrees());
-        Direction::of([i128::from(cos.to_bits()), -i128::from(sin.to_bits())])
+        Direction::of(facing.way().map(|axis| i128::from(axis.to_bits())))
     }
 
     /// Whether a unit walks this tick: it has a destination, and neither its tags nor its `motion`,

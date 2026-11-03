@@ -332,7 +332,7 @@ fn a_failed_script_call_logs_its_tick_unit_hook_and_why() {
         error: "script call raised \"no think\"".to_owned(),
     };
     assert_eq!(
-        fixed.log().take::<ScriptCallFailed>(),
+        fixed.log_check().take::<ScriptCallFailed>(),
         [
             failed(0, west),
             failed(1, east),
@@ -581,15 +581,15 @@ fn a_probe_prints_the_units_it_selects_at_its_period() {
         "\
 tick 0, 0 s
 player slot 0: 0 idle, 1 walking (0 stuck), 0 working, 0 fighting, 0 acting
-id  type         slot  team   x      z  doing  target  destination  goal  stuck       life
- 0  tower           -     0  -8     -3  idle   -       -            -         -  1500/1500
- 2  hero-walker     0     0   0  -1.75  walk   -       0, 8         0, 8      0    600/600
+id  type         slot  team   x      z  doing    target  destination  goal  stuck       life
+ 0  tower           -     0  -8     -3  idle     -       -            -         -  1500/1500
+ 2  hero-walker     0     0   0  -1.75  walking  -       0, 8         0, 8      0    600/600
 
 tick 30, 1 s
 player slot 0: 0 idle, 1 walking (0 stuck), 0 working, 0 fighting, 0 acting
-id  type         slot  team   x     z  doing  target  destination  goal  stuck       life
- 0  tower           -     0  -8    -3  idle   -       -            -         -  1500/1500
- 2  hero-walker     0     0   0  5.75  walk   -       0, 8         0, 8      0    600/600
+id  type         slot  team   x     z  doing    target  destination  goal  stuck       life
+ 0  tower           -     0  -8    -3  idle     -       -            -         -  1500/1500
+ 2  hero-walker     0     0   0  5.75  walking  -       0, 8         0, 8      0    600/600
 
 "
     );
@@ -672,9 +672,9 @@ id  type         slot  team   x     z  doing  target  destination  goal  stuck  
         probe.text(),
         "\
 tick 31, 1 s and 1 ticks
-id  type   slot        x  z  doing     life
- 4  creep     -  -11.775  0  walk   300/300
- 5  creep     -   11.775  0  walk   300/300
+id  type   slot        x  z  doing       life
+ 4  creep     -  -11.775  0  walking  300/300
+ 5  creep     -   11.775  0  walking  300/300
 
 "
     );

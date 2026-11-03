@@ -1,6 +1,6 @@
 use campfire_actions::{ActionSlots, ActionsColumn, SlotKind, SlotKindData};
 use campfire_common::PlayerSlot;
-use campfire_geometry::GridSearch;
+use campfire_geometry::{GridReach, GridSearch};
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{IndexedBody, NavigationColumn, PathEnd, RoomAsk, RoomSearch};
 use campfire_players::{PlayerResources, PlayerSlotHolder, PlayersCall};
@@ -729,17 +729,13 @@ impl ModeApi {
     ) -> Checked<ScriptValue> {
         let book = ctx.mode_spec_or_fail()?;
         let unit_type = Self::spawnable(&book, unit_type)?;
-        let steps = u32::try_from(steps)
+        let reach = u32::try_from(steps)
             .ok()
-            .filter(|&steps| steps <= GridSearch::MAX_STEPS && gap > Num::ZERO)
+            .and_then(|steps| GridReach::new(gap, steps).ok())
             .ok_or_else(|| ModeRefusal::RoomSearch.fail())?;
         let body = book.body(unit_type).map(|form| form.at(Num::ZERO));
         let search = RoomSearch {
-            grid: GridSearch {
-                position,
-                gap,
-                steps,
-            },
+            grid: GridSearch { position, reach },
             shape: Body::shape_of(body.as_ref()),
             layer: Body::layer_of(body.as_ref()),
         };

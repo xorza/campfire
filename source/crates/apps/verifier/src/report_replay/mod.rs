@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use campfire_capabilities::{MatchProbe, ProbeSpec, ProbeUnits};
 use campfire_common::Ticks;
-use campfire_host::{ReportDir, ReportFile};
+use campfire_host::{ReadReport, ReportDir, ReportFile};
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
 use campfire_protocol::SessionLog;
@@ -69,8 +69,7 @@ impl ReportReplay {
     /// The report in `dir`; an error when its facts or its log do not read, or its mode does not
     /// load.
     pub(crate) fn open(dir: &ReportDir) -> Result<Self, ReportReplayError> {
-        let facts = dir.read_facts().map_err(ReportReplayError::Facts)?;
-        let log = dir.read_log().map_err(ReportReplayError::Log)?;
+        let ReadReport { facts, log } = dir.read().map_err(ReportReplayError::Report)?;
         let packages = ModePackages::at(&PackageDir::new(&facts.mode_dir), Some(&facts.map))
             .map_err(ReportReplayError::Packages)?;
         Ok(Self {

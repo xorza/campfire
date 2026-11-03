@@ -296,11 +296,14 @@ pub(crate) mod internals {
             self.record(replicon_tick, authoritative_tick);
         }
 
-        /// Completes `replicon_tick`, as the bridge's `record_last_confirmed_tick` does.
-        pub fn bridge_record_last_confirmed_tick(
+        /// Maps `replicon_tick` to `authoritative_tick` and completes it, as the bridge does
+        /// when the tick's userdata and its completion arrive.
+        pub fn bridge_complete(
             &mut self,
             replicon_tick: RepliconTick,
+            authoritative_tick: NetTick,
         ) -> Option<ConfirmedTick> {
+            self.record(replicon_tick, authoritative_tick);
             self.record_last_confirmed_tick(replicon_tick)
         }
     }

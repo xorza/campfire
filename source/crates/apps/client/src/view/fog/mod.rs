@@ -77,12 +77,12 @@ impl MatchFog {
     /// Puts the fog of the match's grid, each cell shrouded, or explored of a map that starts
     /// known, until its player's cells come, and the frame that places it.
     fn load(
-        (load, vision): (Res<'_, ClientLoad>, Option<Res<'_, VisionBook>>),
+        (load, vision): (Res<'_, ClientLoad>, Res<'_, VisionBook>),
         mut images: ResMut<'_, Assets<Image>>,
         mut buffers: ResMut<'_, Assets<ShaderBuffer>>,
         mut commands: Commands<'_, '_>,
     ) {
-        let Some(grid) = vision.as_deref().and_then(VisionBook::grid) else {
+        let Some(grid) = vision.grid() else {
             return;
         };
         let rows = grid.grid.rows();
@@ -213,7 +213,7 @@ impl MatchFog {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod reach_in {
     use campfire_client_files::FogFile;
 
     use crate::view::fog::MatchFog;

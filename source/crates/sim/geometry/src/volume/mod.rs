@@ -10,14 +10,22 @@ use crate::shape::Shape;
 /// height).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Volume {
-    pub base: Placed,
-    pub height: Num,
+    base: Placed,
+    height: Num,
 }
 
 impl Volume {
     pub fn new(base: Placed, height: Num) -> Self {
         debug_assert!(height >= Num::ZERO, "a volume's height is at least 0");
         Self { base, height }
+    }
+
+    pub const fn base(&self) -> Placed {
+        self.base
+    }
+
+    pub const fn height(&self) -> Num {
+        self.height
     }
 
     /// Its center: its base raised by half its height, to the nearest bit.

@@ -1,6 +1,6 @@
 use campfire_common::DeclaredName;
 use campfire_declarations::{BookCx, BookError, BookPlace, Fact, Section};
-use campfire_names::{NameTables, TagNames, UnknownName};
+use campfire_names::{KindNames, TagNames, UnknownName};
 use campfire_units::{ScriptBook, StatId, UnitTypes};
 use campfire_values::{ActionId, Named, PackageIndex, Param};
 
@@ -161,7 +161,7 @@ struct Loaded<'d> {
 #[derive(Debug)]
 struct LoadNames<'c> {
     scripts: &'c ScriptBook,
-    tables: NameTables,
+    tables: KindNames,
     tags: &'c TagNames,
     aims: Option<&'c DeliveryAims>,
 }
@@ -170,7 +170,7 @@ impl<'c> LoadNames<'c> {
     fn of(cx: &'c BookCx<'c>) -> Result<Self, BookError> {
         Ok(Self {
             scripts: cx.book::<ScriptBook>()?,
-            tables: cx.name_tables()?,
+            tables: cx.kind_names()?,
             tags: cx.fact::<UnitTypes>()?.tags(),
             aims: cx.fact_if::<DeliveryAims>()?,
         })

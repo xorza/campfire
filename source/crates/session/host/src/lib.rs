@@ -29,7 +29,7 @@ pub use crate::client::known_commanded::KnownCommanded;
 pub use crate::client::player_signer::PlayerSigner;
 pub use crate::client::receipt_writer::ReceiptWriter;
 pub use crate::client::received_tick::ReceivedTick;
-pub use crate::client::report_dir::ReportDir;
+pub use crate::client::report_dir::{ReadReport, ReportDir};
 pub use crate::client::report_file::{ReportCamera, ReportFile};
 pub use crate::client::sent_inputs::SentInputs;
 pub use crate::client::server_pin::ServerPin;
@@ -39,12 +39,13 @@ pub use crate::console::console_stdio::ConsoleStdio;
 pub use crate::console::log_seen::LogSeen;
 pub use crate::console::match_console::MatchConsole;
 pub use crate::error::{
-    JoinError, JournalRefusal, OrderFileError, ReceiptRefusal, ReportLogError, ReportReadError,
-    ReportWriteError,
+    JoinError, JournalRefusal, OrderFileError, ReceiptRefusal, ReportError, ReportLogError,
+    ReportReadError, ReportWriteError,
 };
 pub use crate::events::bot_order_unsent::BotOrderUnsent;
 pub use crate::events::checkpoint_failed::CheckpointFailed;
 pub use crate::events::client_frame::ClientFrame;
+pub use crate::events::input_ack_refused::InputAckRefused;
 pub use crate::events::input_logged::InputLogged;
 pub use crate::events::input_message_refused::InputMessageRefused;
 pub use crate::events::input_message_unfit::InputMessageUnfit;

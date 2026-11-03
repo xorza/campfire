@@ -814,8 +814,8 @@ impl InProcessMatch {
     }
 
     /// The events at Warn and Error that the match logged and no test took yet.
-    pub const fn log(&self) -> &LogCheck {
-        self.stepper.log()
+    pub const fn log_check(&self) -> &LogCheck {
+        self.stepper.log_check()
     }
 
     /// The packages of the session's mode.

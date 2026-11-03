@@ -25,7 +25,7 @@ impl Amount {
                     .to_num()
                     .expect("an effect list's book holds each number a sim number"),
             ),
-            Number::Param(reference) => Self::Param(names.param(&reference.param)?),
+            Number::Param(reference) => Self::Param(names.param_named(&reference.param)?),
         })
     }
 

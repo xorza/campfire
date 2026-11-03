@@ -12,7 +12,8 @@ use campfire_values::{
     FilterData, ModifierId, NameId, Named, Names, Number, Param, Ranked, Scalar, Stat,
 };
 
-use crate::stats::{name, param};
+use crate::param;
+use crate::stats::name;
 
 #[test]
 fn a_spec_resolves_every_name_of_its_modifier_at_load() {

@@ -132,6 +132,7 @@ impl Module for Orders {
         d.observer(NextThink::revived);
         d.part::<BodyUnit, NextThink>(|at| at.of_type::<Ai>().map(|_| NextThink::FIRST));
         d.component::<HeldOrder>();
+        d.timed::<HeldOrder>();
         d.require::<ActionSlots, HeldOrder>();
         d.part_with::<ActionSlots, HeldOrder>();
         d.component::<Resetting>();

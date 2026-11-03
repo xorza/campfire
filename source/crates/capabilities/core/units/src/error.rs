@@ -1,4 +1,5 @@
 use campfire_common::DeclaredName;
+use campfire_values::NamesError;
 use thiserror::Error;
 
 /// Why the match's unit types or tags do not load. Packages are untrusted, so each is an expected
@@ -14,6 +15,16 @@ pub enum TypesError {
     /// Two unit types of one scope by one name, as an avatar named as one of the mode's types.
     #[error("unit type {0} twice")]
     Repeated(String),
+}
+
+impl TypesError {
+    /// Why the table of types refused `name`.
+    pub(crate) fn of_names(error: NamesError, name: &str) -> Self {
+        match error {
+            NamesError::Full => Self::TooManyTypes,
+            NamesError::Repeated => Self::Repeated(name.to_owned()),
+        }
+    }
 }
 
 /// Why a unit type breaks a rule of the units. Packages are untrusted, so each is an expected

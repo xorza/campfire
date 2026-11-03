@@ -183,7 +183,7 @@ impl NavigationColumn {
                 position,
                 shape,
                 layer,
-                gap: grid.gap,
+                gap: grid.reach.gap(),
             };
             Self::room_for(view, ask, spawning)
         };
@@ -235,13 +235,13 @@ struct SearchFlood {
 impl SearchFlood {
     /// The flood of `grid`'s points where `room` holds, from those at its edge.
     fn of(grid: GridSearch, room: impl Fn(Vec3) -> bool) -> Self {
-        let steps = i64::from(grid.steps);
+        let steps = i64::from(grid.reach.steps());
         let side = usize::try_from(2 * steps + 1).expect("a search's side fits usize");
         let most = steps * steps;
         let inside = |[i, j]: [i64; 2]| i * i + j * j <= most;
         let at = |[i, j]: [i64; 2]| {
             let step = |count: i64| {
-                i64::try_from(i128::from(count) * i128::from(grid.gap.to_bits()))
+                i64::try_from(i128::from(count) * i128::from(grid.reach.gap().to_bits()))
                     .ok()
                     .map(Num::from_bits)
             };
@@ -286,7 +286,7 @@ impl SearchFlood {
 
     /// Whether `position`, a point of `grid`, the search it flooded, is reached.
     fn holds(&self, grid: GridSearch, position: Vec3) -> bool {
-        let gap = i128::from(grid.gap.to_bits());
+        let gap = i128::from(grid.reach.gap().to_bits());
         let step = |at: Num, center: Num| {
             let bits = i128::from(at.to_bits()) - i128::from(center.to_bits());
             i64::try_from(bits / gap).expect("a point of the search")
@@ -307,6 +307,8 @@ impl SearchFlood {
 
 #[cfg(test)]
 mod tests {
+    use campfire_geometry::GridReach;
+
     use super::*;
 
     #[test]
@@ -317,8 +319,7 @@ mod tests {
         // (04-capabilities/navigation.md, A room near a point connects).
         let grid = GridSearch {
             position: Vec3::ZERO,
-            gap: Num::ONE,
-            steps: 3,
+            reach: GridReach::new(Num::ONE, 3).unwrap(),
         };
         let ring = |at: Vec3| {
             let [x, z] = [at.x, at.z].map(|axis| axis.to_int().unwrap().abs());

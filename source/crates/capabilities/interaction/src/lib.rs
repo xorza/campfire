@@ -39,7 +39,7 @@ mod using;
 
 pub use crate::enter_action_data::EnterActionData;
 pub use crate::enter_data::{EnterData, FireData, PayloadData, RiderCount};
-pub use crate::enter_spec::{EnterSpec, FireSpec, RiderPayload};
+pub use crate::enter_spec::{EnterSpec, EnterSpecBuilder, FireSpec, RiderPayload};
 pub use crate::error::{EnterError, UseError};
 pub use crate::interaction_api::InteractionApi;
 pub use crate::rider_size::RiderSize;

@@ -1,5 +1,6 @@
 use bevy_ecs::world::World;
 use bevy_state::state::{NextState, State, States};
+use campfire_console::SessionPhase;
 
 /// Where the server's session is in its life, as Bevy's states hold it, so a system of one
 /// phase names it in its run condition. A phase changes at the next state transition, in the
@@ -34,5 +35,18 @@ impl ServerPhase {
     /// Goes to it at the next transition.
     pub fn go(self, world: &mut World) {
         world.resource_mut::<NextState<Self>>().set(self);
+    }
+}
+
+/// The console's phase of a session, the server's.
+impl From<ServerPhase> for SessionPhase {
+    fn from(phase: ServerPhase) -> Self {
+        match phase {
+            ServerPhase::Opening => Self::Opening,
+            ServerPhase::Lobby => Self::Lobby,
+            ServerPhase::Restoring => Self::Restoring,
+            ServerPhase::Running => Self::Running,
+            ServerPhase::Replaying => Self::Replaying,
+        }
     }
 }

@@ -1,7 +1,9 @@
 use std::num::{NonZeroU64, ParseIntError};
 
-use campfire_common::DeclaredName;
+use campfire_common::{DeclaredName, NamedEnum};
 use thiserror::Error;
+
+use crate::match_probe::ProbeState;
 
 /// Why a probe's text does not read.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -27,8 +29,8 @@ pub enum ProbeSpecError {
     /// A type's name is no name a package declares.
     #[error("a probe's type is no name a package declares")]
     Name,
-    /// A state is none of `idle`, `walking`, `stuck`, `working`, `fighting` and `acting`.
-    #[error("a probe's state is `idle`, `walking`, `stuck`, `working`, `fighting` or `acting`")]
+    /// A state is no name of `ProbeState`'s.
+    #[error("a probe's state is one of {:?}", ProbeState::NAMES)]
     State,
 }
 

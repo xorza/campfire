@@ -150,5 +150,31 @@ impl<M: Message> ListedEndpoint for MessageReceiver<M> {
     }
 }
 
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_net_channels::{Channel, ChannelTypeId};
+    use campfire_net_core::NetTick;
+
+    use crate::message::Message;
+    use crate::message_receive_cx::ReceivedMessageHeader;
+    use crate::message_receiver::MessageReceiver;
+    use crate::received_message::ReceivedMessage;
+
+    impl<M: Message> MessageReceiver<M> {
+        /// Holds `data` as received on the channel `C` at tick 0, for another crate's test of
+        /// what reads it.
+        pub fn bridge_push<C: Channel>(&mut self, data: M) {
+            self.push_received(ReceivedMessage {
+                data,
+                header: ReceivedMessageHeader {
+                    remote_tick: NetTick(0),
+                    channel_type_id: ChannelTypeId::of::<C>(),
+                    message_id: None,
+                },
+            });
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;

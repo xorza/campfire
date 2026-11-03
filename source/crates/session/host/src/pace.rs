@@ -2,6 +2,7 @@ use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 use campfire_common::EnumAll;
+use campfire_console::GameSpeed;
 use campfire_math::TickRate;
 
 /// The pause and the speed of a local match, which its player sets and its client and its local
@@ -22,6 +23,30 @@ pub enum PaceSpeed {
     Normal,
     Double,
     Quadruple,
+}
+
+/// The console's speed of a local match, the pace's.
+impl From<PaceSpeed> for GameSpeed {
+    fn from(speed: PaceSpeed) -> Self {
+        match speed {
+            PaceSpeed::Half => Self::Half,
+            PaceSpeed::Normal => Self::Normal,
+            PaceSpeed::Double => Self::Double,
+            PaceSpeed::Quadruple => Self::Quadruple,
+        }
+    }
+}
+
+/// The pace's speed of the console's.
+impl From<GameSpeed> for PaceSpeed {
+    fn from(speed: GameSpeed) -> Self {
+        match speed {
+            GameSpeed::Half => Self::Half,
+            GameSpeed::Normal => Self::Normal,
+            GameSpeed::Double => Self::Double,
+            GameSpeed::Quadruple => Self::Quadruple,
+        }
+    }
 }
 
 impl Default for Pace {
@@ -122,5 +147,20 @@ mod tests {
         );
         pace.end_run(PaceSpeed::Half);
         assert_eq!((pace.is_paused(), pace.speed()), (true, PaceSpeed::Half));
+    }
+
+    #[test]
+    fn each_speed_is_the_consoles_speed_of_its_name_and_back() {
+        let console = PaceSpeed::ALL.map(GameSpeed::from);
+        assert_eq!(
+            console,
+            [
+                GameSpeed::Half,
+                GameSpeed::Normal,
+                GameSpeed::Double,
+                GameSpeed::Quadruple
+            ]
+        );
+        assert_eq!(console.map(PaceSpeed::from), PaceSpeed::ALL);
     }
 }

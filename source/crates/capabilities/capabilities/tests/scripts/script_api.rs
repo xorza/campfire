@@ -1,4 +1,5 @@
 use std::any::TypeId;
+use std::collections::BTreeSet;
 use std::env;
 use std::num::NonZeroU64;
 use std::panic::{self, AssertUnwindSafe};
@@ -33,8 +34,8 @@ use campfire_projectiles::{ProjectileData, ProjectileDeliveryData};
 use campfire_script::*;
 use campfire_sim::Capability;
 use campfire_stats::{AuraData, ModifierData, ModifierHandle};
-use campfire_store::InputFile;
 use campfire_store::internals::PinnedFile;
+use campfire_store::{DirEntries, EntryKind, InputFile};
 use campfire_units::{CollisionData, PoolId, TagData};
 use campfire_values::{ActionId, DamageKind, Named, PathId, TagProperty, Team, UnitType};
 use campfire_vision::VisionData;
@@ -649,4 +650,116 @@ fn the_data_fields_are_the_schemas() {
         recorded.sort_unstable();
         assert_eq!(recorded, schema, "{table:?}");
     }
+}
+
+/// The names the registry binds that no package's script uses yet, in the registry's order: each
+/// is a capability's rule an engine test's script proves, which a mode of the genre it serves
+/// calls, as a mode's end, a player's resources and supply, or a unit's pools and level.
+const UNUSED: [&str; 37] = [
+    "Ctx.add_player_modifier",
+    "Ctx.cancel_timer",
+    "Ctx.kill",
+    "Ctx.land",
+    "Ctx.origin",
+    "Ctx.range",
+    "Ctx.relation",
+    "Ctx.remove_player_modifier",
+    "Ctx.set_bounty_share",
+    "Ctx.set_out",
+    "Ctx.set_relation",
+    "Ctx.take_resource",
+    "Damage.action",
+    "Damage.hit",
+    "Heal.action",
+    "Heal.is_leech",
+    "Hit.direction",
+    "Marker.name",
+    "MatchResult.is_draw",
+    "MatchResult.winner",
+    "Player.is_out",
+    "Player.resource",
+    "Player.supply_cap",
+    "Player.supply_used",
+    "Player.units",
+    "Unit.load",
+    "Unit.modifier",
+    "Unit.node_amount",
+    "Unit.points",
+    "Unit.pool",
+    "Unit.radius",
+    "Unit.track_level",
+    "Unit.unit_type",
+    "Unit.xp",
+    "Vector.direction_to",
+    "Vector.rotated",
+    "Vector.y",
+];
+
+/// The most bytes a test reads of one package script: far past the largest.
+const SCRIPT_LEN: usize = 1 << 20;
+
+/// Every package script under `source/packages/`, by its path from there.
+fn package_scripts() -> Vec<(String, String)> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../packages");
+    let mut found = Vec::new();
+    let mut dirs = vec![String::new()];
+    while let Some(dir) = dirs.pop() {
+        for entry in DirEntries::read(&root.join(&dir)).unwrap() {
+            let name = entry
+                .name
+                .to_str()
+                .expect("a package's file is named in UTF-8");
+            let path = if dir.is_empty() {
+                name.to_owned()
+            } else {
+                format!("{dir}/{name}")
+            };
+            match entry.kind {
+                EntryKind::Dir => dirs.push(path),
+                EntryKind::File if Path::new(name).extension().is_some_and(|ext| ext == "rhai") => {
+                    let text = InputFile::read_text(&root.join(&path), SCRIPT_LEN).unwrap();
+                    found.push((path, text));
+                }
+                _ => {}
+            }
+        }
+    }
+    found.sort_unstable();
+    found
+}
+
+#[test]
+fn each_name_the_registry_binds_is_one_a_package_uses() {
+    // The API holds what packages need (06-script-api.md, Derived from what packages need): each
+    // member that runs is one a package's script uses, on `ctx` or on a value, but the listed.
+    let mut host = ScriptHost::new(NonZeroU64::new(1000).unwrap());
+    let api = Release::bind_script_api(&mut host);
+    let scripts = package_scripts();
+    assert!(scripts.len() > 20, "{} scripts", scripts.len());
+    let mut used = BTreeSet::new();
+    for (path, source) in &scripts {
+        let facts = ScriptFacts::read(&host, source, &api).unwrap_or_else(|error| {
+            panic!("{path}: {error:?}");
+        });
+        used.extend(facts.ctx_names.iter().map(|ctx| (true, ctx.name.clone())));
+        used.extend(
+            facts
+                .members
+                .iter()
+                .map(|member| (false, member.name.clone())),
+        );
+    }
+    let unused: Vec<String> = api
+        .members()
+        .iter()
+        .filter(|member| matches!(member.status, Status::Runs(_)))
+        .filter(|member| member.decl.kind != MemberKind::Operator)
+        .filter(|member| {
+            let on_ctx = member.decl.holder == ApiHolder::CTX;
+            !used.contains(&(on_ctx, member.decl.name.to_owned()))
+        })
+        .map(|member| format!("{}.{}", member.decl.holder.name(), member.decl.name))
+        .collect();
+    // The list holds exactly the unused, so a name a package starts to use leaves it.
+    assert_eq!(unused, UNUSED);
 }

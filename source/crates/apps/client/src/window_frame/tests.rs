@@ -1,6 +1,8 @@
 use bevy::asset::RenderAssetUsages;
 use bevy::render::render_resource::{Extent3d, TextureDimension};
 
+use campfire_codec::RgbaImageError;
+
 use super::*;
 
 /// The report's test reads a BGRA frame's exact pixels; each format reads as Bevy reads it,
@@ -16,7 +18,11 @@ fn a_frame_of_bgra_or_rgba_reads_as_bevy_converts_it() {
         let usage = RenderAssetUsages::MAIN_WORLD;
         let frame = Image::new(size, TextureDimension::D2, pixels, format, usage);
         let bevy = frame.clone().try_into_dynamic().unwrap().into_rgba8();
-        assert_eq!(rgba(&frame).unwrap().pixels, bevy.into_raw(), "{format:?}");
+        assert_eq!(
+            rgba(&frame).unwrap().pixels(),
+            bevy.into_raw(),
+            "{format:?}"
+        );
         let refused = |data| {
             rgba(&Image {
                 data,
@@ -27,9 +33,27 @@ fn a_frame_of_bgra_or_rgba_reads_as_bevy_converts_it() {
         let short = refused(Some(vec![1, 2, 3, 4]));
         assert!(matches!(
             short,
-            IntoDynamicImageError::UnknownConversionError(_)
+            FrameError::Convert(IntoDynamicImageError::UnknownConversionError(_))
         ));
         let none = refused(None);
-        assert!(matches!(none, IntoDynamicImageError::UninitializedImage));
+        assert!(matches!(
+            none,
+            FrameError::Convert(IntoDynamicImageError::UninitializedImage)
+        ));
+        // A frame of no pixel, as a window shrunk to none renders, is no image.
+        let empty = Image::new(
+            Extent3d {
+                width: 0,
+                ..Extent3d::default()
+            },
+            TextureDimension::D2,
+            Vec::new(),
+            format,
+            usage,
+        );
+        assert!(matches!(
+            rgba(&empty),
+            Err(FrameError::Image(RgbaImageError::Empty))
+        ));
     }
 }

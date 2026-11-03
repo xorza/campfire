@@ -35,6 +35,7 @@ use crate::prediction_counts::PredictionCounts;
 use crate::prediction_despawn_commands_ext::PredictionDespawnCommandsExt;
 use crate::prediction_despawned::PredictionDespawned;
 use crate::prediction_history::PredictionHistory;
+use crate::rollback_check_state::RollbackCheckState;
 
 #[test]
 fn distinct_salts_give_distinct_hashes_on_one_tick() {
@@ -268,8 +269,8 @@ fn a_matched_pre_spawn_is_despawned_on_a_rollback_before_its_spawn_tick() {
     assert!(
         stepper
             .client_world(0)
-            .resource::<PreSpawnedReceiver>()
-            .rollback()
+            .resource::<RollbackCheckState>()
+            .replay_despawn
             .iter()
             .any(|(tick, entity)| *tick == spawn_tick && *entity == client_pre_spawn),
         "matched pre-spawn should retain its spawn tick for rollback"

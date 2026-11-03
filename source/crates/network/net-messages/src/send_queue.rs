@@ -75,11 +75,6 @@ impl<M: 'static> SendQueue<M> {
         });
     }
 
-    #[cfg(test)]
-    pub(crate) const fn len(&self) -> usize {
-        self.queued.len()
-    }
-
     /// Serializes each value queued in the `S` among `senders`, after its net id, into `link`. A
     /// sender with nothing queued is read alone, so it stays unchanged.
     pub(crate) fn send<S: QueuedSender<M>>(
@@ -140,5 +135,17 @@ impl<M: 'static> SendQueue<M> {
             sender.queue_mut().queued.clear();
         }
         dropped
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::send_queue::SendQueue;
+
+    impl<M> SendQueue<M> {
+        /// How many values it holds.
+        pub(crate) const fn len(&self) -> usize {
+            self.queued.len()
+        }
     }
 }

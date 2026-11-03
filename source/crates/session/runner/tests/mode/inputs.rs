@@ -142,13 +142,33 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
         .map(|instance| {
             (
                 instance.source,
-                instance.lifetime.held_by(Hold::Passive),
+                instance.lifetime.held_by(Hold::Type),
                 instance.lifetime.until(),
                 instance.stacks,
             )
         })
         .collect();
     assert_eq!(held, [(Some(hero_y), true, None, 1)]);
+    // Removed, it comes back by the next grant pass, as its type's hold keeps it
+    // (04-capabilities/stats.md, Passives by one pass).
+    let blessing = modifiers.iter().next().unwrap().id;
+    let entity = game.unit_entity(hero_y);
+    let mut unit = game.entity_mut(entity);
+    let (mut modifiers, mut clocks) = unit
+        .get_components_mut::<(&mut Modifiers, &mut ModifierClocks)>()
+        .unwrap();
+    modifiers.remove(&mut clocks, blessing, Some(hero_y));
+    assert!(
+        game.part::<Modifiers>(hero_y)
+            .get(blessing, Some(hero_y))
+            .is_none()
+    );
+    Mode::tick_inputs(&mut game, &[]);
+    assert!(
+        game.part::<Modifiers>(hero_y)
+            .get(blessing, Some(hero_y))
+            .is_some()
+    );
     // A dead grunt is still one the mode sees.
     let grunt = Mode::entity_by_id(&game, 3);
     game.entity_mut(grunt).insert(Dead);

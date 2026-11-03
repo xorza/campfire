@@ -217,7 +217,7 @@ fn rect(icon: &PanelIcon) -> Rect {
 }
 
 #[cfg(test)]
-pub(super) mod internals {
+pub(super) mod reach_in {
     use std::collections::BTreeMap;
 
     use campfire_client_files::{PanelCommand, PanelGrid};

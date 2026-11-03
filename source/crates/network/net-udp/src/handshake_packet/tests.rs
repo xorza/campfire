@@ -101,4 +101,14 @@ fn a_datagram_that_is_no_handshake_packet_is_refused() {
     assert_eq!(HandshakePacket::read(unknown), None);
     let cut = BytesMut::from(&retry(ID, &[0; TOKEN_LEN])[..12]);
     assert_eq!(HandshakePacket::read(cut), None);
+    // A byte after a Retry's token, a Refuse's header or an Alert's code is refused, as is a
+    // padded Initial whose padding is not all zeros; its zeros read.
+    for packet in [retry(ID, &[0; TOKEN_LEN]), refuse(ID), alert(ID, 49)] {
+        let longer = [&*packet, &[0]].concat();
+        assert_eq!(HandshakePacket::read(BytesMut::from(&*longer)), None);
+    }
+    let mut padded = BytesMut::from(&*initial(ID, None, 0, b"hi", Padding::Padded));
+    assert!(HandshakePacket::read(padded.clone()).is_some());
+    *padded.last_mut().unwrap() = 1;
+    assert_eq!(HandshakePacket::read(padded), None);
 }

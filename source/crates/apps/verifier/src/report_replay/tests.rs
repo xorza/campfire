@@ -1,6 +1,7 @@
 use campfire_common::{Tick, Version};
 use campfire_harness::FixedSession;
-use campfire_host::{ClientLayout, ReportCamera};
+use campfire_host::{ClientLayout, ReportCamera, ReportError};
+use campfire_protocol::SessionId;
 use campfire_runner::SessionWorld;
 use campfire_store::internals::TestDir;
 use campfire_test_packages::TestMode;
@@ -99,5 +100,20 @@ fn a_report_tables_the_units_its_match_held_at_its_tick() {
         refused,
         Err(ReportReplayError::PastLog { tick, end })
             if (tick, end) == (Tick::new(60), Tick::new(60))
+    ));
+
+    // Facts that name another session than the log's, as a log copied from another report
+    // gives, do not open.
+    let other = SessionId::new([1; 32]);
+    dir.write_facts(&ReportFile {
+        session: other,
+        ..past
+    })
+    .unwrap();
+    let refused = ReportReplay::open(&dir).err();
+    assert!(matches!(
+        refused,
+        Some(ReportReplayError::Report(ReportError::OtherSession { facts, log }))
+            if (facts, log) == (other, session)
     ));
 }

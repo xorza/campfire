@@ -1009,7 +1009,7 @@ impl ParticleRun {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod reach_in {
     use std::collections::BTreeMap;
 
     use bevy::math::Vec3;

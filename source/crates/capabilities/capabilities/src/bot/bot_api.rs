@@ -8,7 +8,7 @@ use campfire_sim::Capability;
 use campfire_values::UnitType;
 
 use crate::bot::bot_call::{BotCall, ThinkOrder};
-use crate::order::Directive;
+use crate::order::directive::Directive;
 use crate::order::named_refs::NamedRefs;
 
 /// The script API of a bot's think, which only a bot's calls use: its own player, its own units,

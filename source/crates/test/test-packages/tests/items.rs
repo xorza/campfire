@@ -5,7 +5,6 @@ use std::num::{NonZeroU8, NonZeroU32};
 use campfire_actions::{SlotError, SlotKind};
 use campfire_capabilities::Release;
 use campfire_codec::{Toml, TomlTable};
-use campfire_common::DeclaredName;
 use campfire_declarations::{UnitDefaults, UnitTypeData};
 use campfire_items::{InventoryData, ItemError, ItemsDataError, ShopData};
 use campfire_math::Num;
@@ -19,6 +18,7 @@ use campfire_values::{ActionId, ItemId, ModifierId, NameKind, Named, ResourceId,
 use crate::flaws::{Flaw, fails_each};
 use crate::moba::{edited, load};
 use crate::module_rules::{entry, rule, rule_at, rule_of};
+use crate::{fountain, name};
 
 const MANIFEST: &str = "moba/modes/3v3/manifest.toml";
 const MODE_DATA: &str = "moba/modes/3v3/data/mode.toml";
@@ -28,10 +28,6 @@ const UNITS: &str = "moba/modes/3v3/data/units.toml";
 /// The 3v3 with `more` edits.
 fn with_items(more: &[(&'static str, Edit<'static>)]) -> Result<ModePackages, LoadError> {
     load(&edited(more.iter().copied()))
-}
-
-fn name(text: &str) -> DeclaredName {
-    DeclaredName::new(text).unwrap()
 }
 
 #[test]
@@ -100,11 +96,6 @@ fn item(id: &str) -> Place {
         table: "items",
         name: name(id),
     }
-}
-
-/// The 3v3's fountain, its shop type.
-fn fountain() -> Place {
-    Place::UnitType(name("fountain"))
 }
 
 const FLAWS: [Flaw; 23] = [

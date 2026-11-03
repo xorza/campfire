@@ -23,6 +23,7 @@
 - **An instance lives while something keeps it.** A passive's rank, an aura, an area, a player and an application each keep it; it ends only when nothing does.
 - **An instance ends with its last stack.** An instance left with no stack ends, with its clock, its hooks and intervals, whether its stacks ran out or a script wrote `m.stacks = 0`, so the two ways to none end alike; a passive stays with none, as its rank keeps it. Refused: an instance of no stack that `has_modifier` reported and whose intervals ran on.
 - **Passives by one pass.** Each source pushes what its units want into one list, and one pass applies it and releases the rest, visiting only the units whose source or modifiers changed.
+- **The holds of an instance agree on its rank.** An instance from one source has one rank, the highest any of its holds asks: a grant above it raises it, renewing its shares and keeping its stacks; a grant of a hold that asks a rank of its own, an action's passive or toggle, lowers it once no other such hold keeps it; every other grant joins the instance and changes nothing else, so no hold runs the modifier's `reapply`; and the last of those holds gone, the rest keep it at the first rank. Refused: a grant that applied at its own rank whenever it differed, under which a passive at rank 2 and an item at rank 1 renewed the instance at each stage, three times a tick, so an interval never fired and a `stack` modifier gained a stack each time; the passive's rank winning while others join, which left an item's hold at the rank of a passive gone.
 - **Stats builds what the actions read of it.** The param book of every action and modifier, the modifier effects, `modifier`, `purge` and `restore`, the ways each modifier is applied and the grants of the actions' passives and holds are stats', as it sits above `actions`; it builds each from the actions' data once their load checked it, and pushes the passives' grants right before each grant pass, ordered against the actions' sets ([Actions](actions.md#mechanism)).
 - **Auras with no linger.** Every unit within an aura's radius holds its modifier, and loses it the tick it leaves; the sim has no flicker to hide.
 - **An area holds as an aura does.** An area's `inside` projects each of its modifiers, on its source, on the source's other allies or on the others that may be attacked, and the one pass that holds auras selects both, by the filter and the living test, as a Dota thinker carries an aura. Refused: a walk in each capability, which disagreed on a unit of no life and on the tags a filter selects only when it names them.
@@ -43,7 +44,7 @@
 
 ## Levels
 
-- **A level is state; stats follow it at once.** `progression` changes it.
+- **A level is state, and stats follow it at once.** `progression` changes it.
 
 ## State and derived
 

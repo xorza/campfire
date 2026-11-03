@@ -97,11 +97,6 @@ impl TgaHeader {
         Ok(header)
     }
 
-    /// Its width and height, in texels.
-    pub(crate) const fn size(&self) -> UVec2 {
-        UVec2::new(self.width, self.height)
-    }
-
     /// The length of its texels as stored.
     fn texels_len(&self) -> usize {
         usize::try_from(self.width).expect("a u32 fits usize")
@@ -162,6 +157,11 @@ impl TgaFile {
         })
     }
 
+    /// Its width and height, in texels.
+    pub(crate) const fn size(&self) -> UVec2 {
+        UVec2::new(self.width, self.height)
+    }
+
     /// Its KTX2 file: 8-bit RGBA, with its full chain of levels.
     pub(crate) fn ktx2(self) -> Vec<u8> {
         let chain = MipChain::of(self.width, self.height, self.rgba);
@@ -212,7 +212,10 @@ mod tests {
         // and grey 128 of alpha 100, as `MipChain`'s test lays them out from the top.
         let (b, w, g) = ([0, 0, 0, 0], [255, 255, 255, 255], [128, 128, 128, 100]);
         let file = tga(4, 2, 32, 0, &[w, b, g, g, b, w, g, g].concat());
-        assert_eq!(TgaHeader::read(&file).unwrap().size(), UVec2::new(4, 2));
+        assert_eq!(
+            TgaFile::read(&file, TgaAlpha::Always).unwrap().size(),
+            UVec2::new(4, 2)
+        );
         let ktx2 = TgaFile::read(&file, TgaAlpha::Always).unwrap().ktx2();
         // The header counts no alpha bits: read by the count, each texel is opaque; read always,
         // its fourth byte. Counted 8 bits, the count reads that byte too.

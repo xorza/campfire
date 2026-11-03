@@ -9,3 +9,11 @@ command-attack-move = Attack move
 command-rally = Set rally point
 command-exit = Exit
 command-evacuate = Evacuate
+# The panels' values: a time, a cast's cooldown, a research held, a player's rank and points, and
+# a perk held.
+time-seconds = { $seconds } s
+button-ready = ready in { $seconds } s
+button-done = done
+perk-rank = rank { $level } · { $xp } xp
+perk-points = { $points } points
+perk-held = held

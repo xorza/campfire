@@ -1,4 +1,5 @@
-use bevy_ecs::query::{QueryState, Without};
+use bevy_ecs::entity_disabling::Disabled;
+use bevy_ecs::query::{Allow, QueryState, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
@@ -7,7 +8,7 @@ use campfire_declarations::{Book, BookCx, BookError, BookPlace, Section};
 use campfire_names::{MatchNames, UnknownName};
 use campfire_players::{HeldOut, PlayersWorld};
 use campfire_sim::{Capability, SimResource, SimTick, StableId};
-use campfire_units::{Dead, Owner, UnitTypes, UnitsWorld};
+use campfire_units::{Dead, Life, Owner, UnitTypes, UnitsWorld, lives};
 use campfire_values::{Named, PackageIndex, Tag, Team, UnitTags};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -29,13 +30,19 @@ pub(crate) struct Victory {
     defeat: Defeat,
 }
 
-/// What the pass reads of a living unit: its id, its tags, its owner and its team.
+/// What the pass reads of a unit that is not dead: its id, its tags, its owner, its team and its
+/// life.
 type LivingUnit = (
     &'static StableId,
     &'static UnitTags,
     &'static Owner,
     &'static Team,
+    Option<&'static Life>,
 );
+
+/// The units that are not dead, riders among them, which leave the world but not their player
+/// (04-capabilities/games.md, Victory by the last unit of a tag).
+type NotDead = (Without<Dead>, Allow<Disabled>);
 
 /// The players that held a living unit of the tag that counts at the victory's last count, by
 /// player slot, which a player falls from once it holds none.
@@ -92,7 +99,7 @@ impl Victory {
         let Some(Self { counts, .. }) = world.resource::<VictoryBook>().victory() else {
             return;
         };
-        let mut units = world.query_filtered::<LivingUnit, Without<Dead>>();
+        let mut units = world.query_filtered::<LivingUnit, NotDead>();
         let mut holding = Vec::new();
         Self::count(world, &mut units, counts, &mut holding);
         let player_slots = holding.iter().map(|holds| holds.player_slot).collect();
@@ -103,13 +110,13 @@ impl Victory {
     /// player slot.
     fn count(
         world: &World,
-        units: &mut QueryState<LivingUnit, Without<Dead>>,
+        units: &mut QueryState<LivingUnit, NotDead>,
         counts: Tag,
         holding: &mut Vec<Holding>,
     ) {
         holding.clear();
-        for (_, tags, owner, &team) in units.iter(world) {
-            if tags.tags.contains(counts) {
+        for (_, tags, owner, &team, life) in units.iter(world) {
+            if tags.tags.contains(counts) && lives(false, life) {
                 holding.push(Holding {
                     player_slot: owner.player_slot(),
                     team,
@@ -131,7 +138,7 @@ impl Victory {
         mut fallen: Local<'_, Vec<PlayerSlot>>,
         mut holding: Local<'_, Vec<Holding>>,
         mut doomed: Local<'_, Vec<StableId>>,
-        mut units: Local<'_, QueryState<LivingUnit, Without<Dead>>>,
+        mut units: Local<'_, QueryState<LivingUnit, NotDead>>,
     ) {
         let victory = world.resource::<VictoryBook>().victory();
         let Self { counts, defeat } = victory.expect("the pass installs with a victory");
@@ -164,7 +171,7 @@ impl Victory {
                 doomed.clear();
                 let of = units
                     .iter(world)
-                    .filter(|(.., owner, _)| owner.player_slot() == player_slot);
+                    .filter(|(.., owner, _, _)| owner.player_slot() == player_slot);
                 doomed.extend(of.map(|(&id, ..)| id));
                 for &unit in &*doomed {
                     world.drain_life(unit);

@@ -10,11 +10,11 @@ use crate::collision_data::CollisionData;
 use crate::tag_data::TagData;
 use crate::unit_state_access::UnitStateAccess;
 
-/// The script API of vectors, `Vector`, with `rotated_deg`, and `distance_to`, `within` and
+/// The script API of vectors, `Vector`, with `rotated`, and `distance_to`, `is_within` and
 /// `direction_to` between two places; and the fields of `Unit` that read the core's
 /// units beside the view's row: `is_avatar` and `state`.
 #[derive(Debug)]
-pub struct UnitsApi;
+pub(crate) struct UnitsApi;
 
 impl UnitsApi {
     /// `Vector`, and `Unit`'s `is_avatar` and `state`.
@@ -59,7 +59,7 @@ impl UnitsApi {
             "the unit vector towards `position` in the map's metric, `()` for the same point",
         );
         let rotated = vector(
-            "rotated_deg",
+            "rotated",
             &[&["degrees"]],
             "the vector turned by `degrees` about the vertical, counter-clockwise seen from above",
         );

@@ -715,8 +715,10 @@ fn receive_input_acks(
 ) {
     for mut receiver in &mut receivers {
         for ack in receiver.receive() {
-            sent.acknowledge(ack.first, &ack.applied);
-            known.acknowledge(ack.first, &ack.applied);
+            match sent.acknowledge(ack.first, &ack.applied) {
+                Ok(()) => known.acknowledge(ack.first, &ack.applied),
+                Err(refused) => refused.log(),
+            }
         }
     }
 }

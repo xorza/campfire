@@ -15,7 +15,7 @@ use campfire_package::ModePackages;
 use campfire_sim::MatchRate;
 use campfire_store::DataDirError;
 
-use crate::command_line::{Args, PlayedServer};
+use crate::command_line::PlayedServer;
 use crate::error::ClientLaunchError;
 
 /// The server the client plays on, once it is open, with the client's data directory: a remote
@@ -36,16 +36,16 @@ pub(crate) enum Connection {
 }
 
 impl Connection {
-    /// The server `args` names, its data directory open; a local one starts, of the mode
+    /// The server `server` names, its data directory open; a local one starts, of the mode
     /// `packages` holds, for a client of `role`, its data in that directory, at a pace of its
     /// own; an error when the directory does not open or a local server does not start.
     pub(crate) fn open(
-        args: &Args,
+        server: PlayedServer,
         role: JoinRole,
         packages: &Arc<ModePackages>,
         console: Option<&Arc<Mutex<LogSeen>>>,
     ) -> Result<Self, ClientLaunchError> {
-        match &args.server {
+        match server {
             PlayedServer::Remote {
                 address,
                 tls_key,
@@ -54,11 +54,11 @@ impl Connection {
                 data,
             } => Ok(Self::Remote {
                 pin: ServerPin {
-                    key: *key,
-                    tls_key: *tls_key,
-                    tick_hz: *tick_hz,
+                    key,
+                    tls_key,
+                    tick_hz,
                 },
-                address: *address,
+                address,
                 data: data.as_deref().map(Self::open_dir).transpose()?,
             }),
             PlayedServer::Local {
@@ -67,7 +67,7 @@ impl Connection {
                 player_slot_picks,
                 data,
             } => {
-                let data = Self::open_dir(data)?;
+                let data = Self::open_dir(&data)?;
                 let bots = bots
                     .iter()
                     .map(PlayerSlotBotArg::read)
@@ -75,23 +75,16 @@ impl Connection {
                 let session = LocalSession::New(LocalLobby {
                     bots,
                     role,
-                    options: options.clone(),
-                    player_slot_picks: player_slot_picks.clone(),
+                    options,
+                    player_slot_picks,
                 });
                 Ok(Self::open_local(&data, packages, session, console)?)
             }
             PlayedServer::Replay {
-                report,
-                through,
-                data,
-                ..
+                log, through, data, ..
             } => {
-                let data = Self::open_dir(data)?;
-                let log = report.read_log()?;
-                let session = LocalSession::Replay(Box::new(LocalReplay {
-                    log,
-                    through: *through,
-                }));
+                let data = Self::open_dir(&data)?;
+                let session = LocalSession::Replay(Box::new(LocalReplay { log: *log, through }));
                 Ok(Self::open_local(&data, packages, session, console)?)
             }
         }

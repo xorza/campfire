@@ -2,14 +2,25 @@
 # A run lists every failure, so one fix pass takes them all: a stuck test still ends at its bound.
 fail-fast = false
 # SLOW names a test past 1 s, the bound of AGENTS.md; in a full run the tests share the cores, so
-# the bound holds for a test alone, `--test-threads 1`. One that runs 5 s is stuck in a loop or a
-# wait, and nextest ends it, as libtest can end no test.
-slow-timeout = { period = "1s", terminate-after = 5 }
+# the bound holds for a test alone, `--test-threads 1`. One that runs 30 s is stuck in a loop or a
+# wait, and nextest ends it, as libtest can end no test: a full run on shared cores took a test of
+# 1.9 s alone past 5 s, and CI's runners, 3.5 to 6 times slower, keep 30 s.
+slow-timeout = { period = "1s", terminate-after = 30 }
 
 # Each test's outcome and time, in `target/nextest/default/junit.xml`, so a run names the test that
 # ran past its bound.
 [profile.default.junit]
 path = "junit.xml"
+
+# A test that takes every core, or several, runs first, at priority 100: nextest starts no test
+# past one that waits for cores, so one queued behind a long test held every other test back.
+#
+# The 3v3's scripted match plays on one thread, then replays its 16 segments in parallel on the
+# cores the run leaves it (02-engine-core.md, A match's replay test replays its segments). As the
+# longest test, it starts once the tests that take every core end, so the rest run beside it.
+[[profile.default.overrides]]
+filter = 'package(campfire-harness) & test(/^runner::match_3v3::scripted_match::/)'
+priority = 90
 
 # A mode's scripted match is the one test exempt from the bound of 1 s: it gathers every rule of
 # its mode into one run (02-engine-core.md, One scripted match for each mode). Each sits in a
@@ -19,48 +30,46 @@ path = "junit.xml"
 filter = 'test(/(^|::)scripted_match::/)'
 slow-timeout = { period = "15s", terminate-after = 4 }
 
-# The 3v3's scripted match replays its 16 segments in parallel, one on each core
-# (02-engine-core.md, A match's replay test replays its segments).
-[[profile.default.overrides]]
-filter = 'package(campfire-harness) & test(/^runner::match_3v3::scripted_match::/)'
-threads-required = "num-cpus"
-
 # The swarm and the canary run their seeds in parallel, one thread for each core
 # (11-net-stack/testing.md, A test runs in 1 s or less): each takes every core while it runs, so no
 # two of them, nor other tests, share the cores they count on.
 [[profile.default.overrides]]
 filter = 'package(campfire-net-stack) & test(/^scenario::tests::(each_seed_of_the_swarm|one_seed_repeats)/)'
 threads-required = "num-cpus"
+priority = 100
 
 # The proving match's sweeps of flawed snapshots run their cases on every core, as the swarm does
 # (02-engine-core.md, A sweep runs on every core).
 [[profile.default.overrides]]
 filter = 'package(campfire-harness) & test(/^runner::proving_match::sweep::/)'
 threads-required = "num-cpus"
+priority = 100
 
 # The log file's sweep of every cut and flip runs its bytes on every core, as the proving match's
 # sweeps do.
 [[profile.default.overrides]]
 filter = 'package(campfire-protocol) & test(=session_log::tests::every_truncation_and_every_flip_of_a_log_file_is_refused)'
 threads-required = "num-cpus"
+priority = 100
 
 # The structural rules run as one test, each rule on a thread of its own over one parse of the
 # workspace's sources (02-engine-core.md, The rules are one test).
 [[profile.default.overrides]]
 filter = 'package(campfire-rules) & test(=every_rule::the_workspace_keeps_every_rule)'
 threads-required = "num-cpus"
+priority = 100
 
 # The wire cost cases run in parallel, a thread for each of its five.
 [[profile.default.overrides]]
 filter = 'package(campfire-net-stack) & test(=scenario::wire_cost::tests::each_case_puts_exact_counts_on_the_wire)'
 threads-required = 5
+priority = 100
 
 # CI's runners run the suite 3.5 to 6 times slower than an M5, and share their cores: a test of
-# 0.79 s alone on an M5, the 3v3's resume of then, took 4.5 s on Windows. So a test ends at 30 s
-# there, and a scripted match at 3 min. The profile inherits the rest from `default`, whose
-# overrides apply after its own.
+# 0.79 s alone on an M5, the 3v3's resume of then, took 4.5 s on Windows. So a scripted match ends
+# at 3 min there. The profile inherits the rest from `default`, whose overrides apply after its
+# own.
 [profile.ci]
-slow-timeout = { period = "1s", terminate-after = 30 }
 
 [[profile.ci.overrides]]
 filter = 'test(/(^|::)scripted_match::/)'
@@ -71,9 +80,11 @@ slow-timeout = { period = "15s", terminate-after = 12 }
 [[profile.default.overrides]]
 filter = 'package(campfire-capabilities) & test(/every_pair_of_capabilities/)'
 threads-required = "num-cpus"
+priority = 100
 
 # The test packages' tables of flaws load their flaws on every core (02-engine-core.md, A sweep
 # runs on every core).
 [[profile.default.overrides]]
 filter = 'package(campfire-test-packages) & test(/every_flaw_of_/)'
 threads-required = "num-cpus"
+priority = 100

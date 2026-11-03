@@ -6,6 +6,7 @@ pub(crate) mod bot_think_failed;
 pub(crate) mod checkpoint_failed;
 pub(crate) mod checkpoint_taken;
 pub(crate) mod client_frame;
+pub(crate) mod input_ack_refused;
 pub(crate) mod input_logged;
 pub(crate) mod input_message_refused;
 pub(crate) mod input_message_unfit;

@@ -4,7 +4,6 @@
 use std::time::Duration;
 
 use bevy_app::AppExit;
-use bevy_ecs::query::With;
 use campfire_bots::OrderScript;
 use campfire_common::{AfterLeave, PlayerSlot};
 use campfire_host::internals::TickHashes;
@@ -24,7 +23,9 @@ use campfire_protocol::{Controller, LeaveReason, ServerInput};
 use campfire_runner::Session;
 use campfire_sim::StableId;
 use campfire_store::internals::TestDir;
-use campfire_units::{Destination, GroundPoint, Owner};
+use campfire_units::{Destination, GroundPoint};
+
+use crate::destination;
 
 /// Steps a client and the server may take to link, offer, join and play again.
 const REJOIN_STEPS: usize = 300;
@@ -72,17 +73,6 @@ fn slot_of(local: &InProcessMatch, client: usize) -> PlayerSlot {
 fn controller(local: &InProcessMatch, player_slot: PlayerSlot) -> Option<Controller<'_>> {
     let session = local.server().world().resource::<Session>();
     session.log().controller(player_slot)
-}
-
-/// Where the server's hero of `player_slot` walks to.
-fn destination(local: &mut InProcessMatch, player_slot: PlayerSlot) -> Destination {
-    let world = local.server_mut().world_mut();
-    let mut heroes = world.query_filtered::<(&Owner, &Destination), With<StableId>>();
-    let (_, destination) = heroes
-        .iter(world)
-        .find(|(owner, _)| owner.player_slot() == player_slot)
-        .unwrap();
-    *destination
 }
 
 /// Whether the server's hero of `player_slot` walks somewhere other than it walked to as the call
@@ -134,7 +124,7 @@ fn a_client_whose_link_is_cut_comes_back_within_the_grace_period() {
         [disconnected, ServerInput::Connected { player_slot }]
     );
     assert_eq!(
-        local.log().take::<InputsDiscarded>(),
+        local.log_check().take::<InputsDiscarded>(),
         [InputsDiscarded {
             player_slot,
             count: 1
@@ -171,7 +161,7 @@ fn a_second_login_takes_the_slot_and_ends_the_first_link() {
     local.step_until(5, |local| loss(local).is_some());
     assert_eq!(loss(&local), Some(Loss::Superseded));
     assert_eq!(
-        local.log().take::<LinkLost>(),
+        local.log_check().take::<LinkLost>(),
         [LinkLost {
             cause: LinkLossCause::ClientClosed(CloseCode::Superseded)
         }]
@@ -233,7 +223,10 @@ fn of_two_logins_in_one_frame_the_later_takes_the_slot() {
     let superseded = LinkLost {
         cause: LinkLossCause::ClientClosed(CloseCode::Superseded),
     };
-    assert_eq!(local.log().take::<LinkLost>(), [superseded, superseded]);
+    assert_eq!(
+        local.log_check().take::<LinkLost>(),
+        [superseded, superseded]
+    );
     assert_eq!(placed(&local, winner), Some(slot));
     assert_eq!(placed(&local, loser), None);
     assert!(local.server_inputs().is_empty());
@@ -265,7 +258,7 @@ fn a_superseded_client_hears_of_it_though_the_first_notice_is_lost() {
     local.step_until(20, |local| loss(local).is_some());
     assert_eq!(loss(&local), Some(Loss::Superseded));
     assert_eq!(
-        local.log().take::<LinkLost>(),
+        local.log_check().take::<LinkLost>(),
         [LinkLost {
             cause: LinkLossCause::ClientClosed(CloseCode::Superseded)
         }]
@@ -397,7 +390,7 @@ fn a_player_gone_past_the_grace_period_leaves_as_the_mode_says_and_a_late_joiner
     }
     // The server refuses the new player's join, and tells their client, which stops.
     let refused: Vec<JoinError> = local
-        .log()
+        .log_check()
         .take::<JoinRefused>()
         .iter()
         .map(|refused| refused.error)
@@ -407,7 +400,7 @@ fn a_player_gone_past_the_grace_period_leaves_as_the_mode_says_and_a_late_joiner
     let state = local.client(late).world().resource::<JoinState>();
     assert_eq!(state.loss(), Some(Loss::JoinRefused));
     assert_eq!(
-        local.log().take::<LinkLost>(),
+        local.log_check().take::<LinkLost>(),
         [LinkLost {
             cause: LinkLossCause::ClientClosed(CloseCode::JoinRefused)
         }]
@@ -434,7 +427,7 @@ fn a_player_gone_past_the_grace_period_leaves_as_the_mode_says_and_a_late_joiner
     let late = local.add_client(2);
     local.step_until(REJOIN_STEPS, |local| is_playing(local, late));
     assert_eq!(slot_of(&local, late), slot);
-    assert!(local.log().take::<LinkLost>().len() <= 1);
+    assert!(local.log_check().take::<LinkLost>().len() <= 1);
 }
 
 #[test]

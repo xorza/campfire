@@ -10,7 +10,7 @@ use crate::typed_list::{TypedItem, TypedList};
 /// load resolves the packages' names by, each module adding the tables of its own ids, and what
 /// the match's `MatchNames` holds for its scripts.
 #[derive(Debug, Default)]
-pub struct NameTables(TypedList<dyn AnyTable>);
+pub struct KindNames(TypedList<dyn AnyTable>);
 
 /// The names of the ids of type `I`.
 #[derive(Debug)]
@@ -33,7 +33,18 @@ trait AnyTable: TypedItem + fmt::Debug + Send + Sync {
     fn has(&self, name: &str) -> Option<bool>;
 }
 
-/// The names of the ids of one kind, by their places, as `NameTables::texts` gives them.
+/// What the tables say of a name of one kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NameHeld {
+    /// No table is of its kind.
+    NoTable,
+    /// Its kind's names are each a package's own, which no table of the match holds.
+    PackageOwn,
+    Held,
+    Missing,
+}
+
+/// The names of the ids of one kind, by their places, as `KindNames::texts` gives them.
 pub struct KindTexts<'a> {
     /// The type of the ids.
     pub id_type: TypeId,
@@ -76,7 +87,7 @@ where
     }
 }
 
-impl Clone for NameTables {
+impl Clone for KindNames {
     fn clone(&self) -> Self {
         let mut tables = TypedList::default();
         for table in &self.0 {
@@ -86,7 +97,7 @@ impl Clone for NameTables {
     }
 }
 
-impl NameTables {
+impl KindNames {
     /// Puts in the names of the ids of type `I`, in place of those it held.
     pub fn set<I: NameId + Named + 'static>(&mut self, names: Arc<Names<I>>)
     where
@@ -111,12 +122,16 @@ impl NameTables {
         self.table::<I>()?.named(key)
     }
 
-    /// Whether a table of kind `kind` holds `name` in the scope of the match's own names: none
-    /// for a kind it holds no table of, an inner none for a kind whose names are each a
-    /// package's own.
-    pub fn has(&self, kind: NameKind, name: &str) -> Option<Option<bool>> {
-        let table = self.0.iter().find(|table| table.kind() == kind)?;
-        Some(table.has(name))
+    /// Whether a table of kind `kind` holds `name` in the scope of the match's own names.
+    pub fn has(&self, kind: NameKind, name: &str) -> NameHeld {
+        let Some(table) = self.0.iter().find(|table| table.kind() == kind) else {
+            return NameHeld::NoTable;
+        };
+        match table.has(name) {
+            None => NameHeld::PackageOwn,
+            Some(true) => NameHeld::Held,
+            Some(false) => NameHeld::Missing,
+        }
     }
 
     /// Each table's names, by the type of its ids, in the order they were put in, as the script

@@ -1,27 +1,40 @@
-use super::{NamedCode, Naming, capability, named_code};
+use proc_macro2::Ident;
+use syn::punctuated::Punctuated;
+use syn::visit::{self, Visit};
+use syn::{Expr, ExprCall, ExprMethodCall, ExprPath, Macro, Token};
+
+use crate::capabilities::{NamedCode, Naming, capability, named_code};
 use crate::workspace::Workspace;
 
-/// Every lookup by name that the production code of the capabilities and the network calls, by
-/// file: a method or function whose name ends in `named`, as each lookup of an id by its name is
-/// spelled, a table's `named` the most. Each runs in a script call, which resolves the names it is
+/// Every lookup by name that the production code of the capability crates and the bots' crate
+/// calls, by file: a method or function whose last segment ends in `named`, with its generic
+/// arguments or none, as each lookup of an id by its name is spelled, a table's `named` the most. Each runs in a script call, which resolves the names it is
 /// given once, as its arguments' types take them, in the load, which resolves the packages' names
 /// once, or as a bot starts. The test fails when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 89] = [
+const LOOKUPS: [(&str, &str); 109] = [
     // The load, each module's books by their builders.
     ("actions/action_load.rs", "named"),
     ("actions/action_names.rs", "named"),
+    ("actions/action_parts.rs", "cost_target_named"),
+    ("actions/action_parts.rs", "named"),
+    ("actions/action_parts.rs", "type_named"),
     ("actions/action_rules.rs", "named"),
     ("actions/action_slots/mod.rs", "named"),
+    ("actions/amount.rs", "param_named"),
     ("actions/cost_target.rs", "named"),
+    ("actions/effect_names.rs", "named"),
     ("actions/listed_effect/effect_data.rs", "named"),
     ("actions/loaded_action.rs", "named"),
     ("actions/slot_claims.rs", "named"),
     ("actions/slot_kinds.rs", "named"),
+    ("actions/spawn_effect_data.rs", "named"),
     ("areas/area_spec.rs", "named"),
+    ("areas/land_effect_data.rs", "named"),
     ("books/load_names.rs", "named"),
     ("combat/armor.rs", "named"),
     ("combat/barrels/mod.rs", "named"),
     ("combat/combat_books.rs", "named"),
+    ("combat/damage_effect_data.rs", "named"),
     ("combat/mode_combat_data.rs", "named"),
     ("combat/second_life.rs", "named"),
     ("combat/turret/mod.rs", "named"),
@@ -29,6 +42,8 @@ const LOOKUPS: [(&str, &str); 89] = [
     ("combat/weapon_names.rs", "named"),
     ("declarations/book_cx/mod.rs", "named"),
     ("interaction/enter_spec.rs", "named"),
+    ("interaction/enter_spec.rs", "type_named"),
+    ("interaction/interaction_rules.rs", "type_named"),
     ("interaction/use_slot.rs", "named"),
     ("interaction/use_spec.rs", "named"),
     ("items/inventory.rs", "named"),
@@ -38,21 +53,30 @@ const LOOKUPS: [(&str, &str); 89] = [
     ("mode/game_map.rs", "named"),
     ("mode/mode_data.rs", "named"),
     ("mode/mode_map/mod.rs", "named"),
+    ("mode/mode_map/mod.rs", "type_named"),
     ("mode/mode_units.rs", "named"),
     ("navigation/navigation_books.rs", "named"),
     ("production/book_builders.rs", "named"),
+    ("production/book_builders.rs", "type_named"),
+    ("production/build_book.rs", "type_named"),
     ("production/requirement_book.rs", "named"),
+    ("production/requirement_book.rs", "type_named"),
     ("production/research_spec.rs", "named"),
+    ("production/train_spec.rs", "type_named"),
     ("progression/experience_book.rs", "named"),
     ("progression/perk_book/mod.rs", "named"),
     ("progression/track_modifier_book.rs", "named"),
     ("progression/type_tracks.rs", "named"),
-    ("script/scripts/script_facts/mod.rs", "hook_named"),
+    ("progression/xp_effect_data.rs", "named"),
+    ("script/scripts/script_facts.rs", "hook_named"),
     ("stats/action_params.rs", "named"),
     ("stats/modifier_book.rs", "named"),
+    ("stats/modifier_effect_data.rs", "named"),
     ("stats/modifier_spec.rs", "named"),
     ("stats/modifiers_data.rs", "named"),
     ("stats/param_book.rs", "named"),
+    ("stats/purge_effect_data.rs", "named"),
+    ("stats/restore_effect_data.rs", "named"),
     ("stats/stat_book.rs", "named"),
     ("stats/type_passive.rs", "named"),
     ("stats/type_pools.rs", "named"),
@@ -75,7 +99,7 @@ const LOOKUPS: [(&str, &str); 89] = [
     // The load, and a filter a script names.
     ("names/filter.rs", "named"),
     ("names/match_names.rs", "named"),
-    ("names/name_tables.rs", "named"),
+    ("names/kind_names.rs", "named"),
     ("values/filter_data.rs", "named"),
     // A probe's unit type, as a command line or a test names it.
     ("match_probe/probe_spec.rs", "named"),
@@ -100,6 +124,7 @@ const LOOKUPS: [(&str, &str); 89] = [
     ("script/scripts/script_api/api_builder.rs", "named"),
     ("script/scripts/script_api/mod.rs", "hook_named"),
     ("script/scripts/state_decl/state_schema.rs", "named"),
+    ("script/scripts/view_api.rs", "param_named"),
     ("names/tag_names.rs", "named"),
     ("stats/param_table.rs", "named"),
     ("stats/stats_call.rs", "named"),
@@ -115,17 +140,15 @@ pub(crate) fn a_name_is_looked_up_only_by_a_script_call_or_the_load(workspace: &
     });
     let mut found = Vec::new();
     for NamedCode { path, code } in sources {
-        for line in code.lines() {
-            for (at, _) in line.match_indices("named(") {
-                let start = line[..at]
-                    .rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-                    .map_or(0, |before| before + 1);
-                let lookup = &line[start..at + "named".len()];
-                if !line[..start].trim_end().ends_with("fn") {
-                    found.push((path.clone(), lookup.to_owned()));
-                }
-            }
+        // A file that names no lookup calls none, and its parse is skipped.
+        if !code.contains("named") {
+            continue;
         }
+        found.extend(
+            lookups(&code)
+                .into_iter()
+                .map(|lookup| (path.clone(), lookup)),
+        );
     }
     found.sort();
     found.dedup();
@@ -135,4 +158,71 @@ pub(crate) fn a_name_is_looked_up_only_by_a_script_call_or_the_load(workspace: &
         .collect();
     known.sort();
     assert_eq!(found, known, "lookups by name");
+}
+
+/// The lookups `code` calls: each method and each function whose last segment ends in `named`,
+/// with its generic arguments or none, as `syn` parses the calls.
+fn lookups(code: &str) -> Vec<String> {
+    let file = syn::parse_file(code).expect("a workspace source parses");
+    let mut calls = Lookups::default();
+    calls.visit_file(&file);
+    calls.0
+}
+
+/// The lookups a walk of one file found.
+#[derive(Debug, Default)]
+struct Lookups(Vec<String>);
+
+impl Lookups {
+    fn take(&mut self, name: &Ident) {
+        let name = name.to_string();
+        if name.ends_with("named") {
+            self.0.push(name);
+        }
+    }
+}
+
+impl<'ast> Visit<'ast> for Lookups {
+    fn visit_expr_method_call(&mut self, call: &'ast ExprMethodCall) {
+        self.take(&call.method);
+        visit::visit_expr_method_call(self, call);
+    }
+
+    /// A macro's arguments, where they parse as expressions, as a script argument's lookup is
+    /// written in one.
+    fn visit_macro(&mut self, mac: &'ast Macro) {
+        if let Ok(args) = mac.parse_body_with(Punctuated::<Expr, Token![,]>::parse_terminated) {
+            let mut inner = Self::default();
+            for arg in &args {
+                inner.visit_expr(arg);
+            }
+            self.0.extend(inner.0);
+        }
+    }
+
+    fn visit_expr_call(&mut self, call: &'ast ExprCall) {
+        if let Expr::Path(ExprPath { path, .. }) = &*call.func
+            && let Some(last) = path.segments.last()
+        {
+            self.take(&last.ident);
+        }
+        visit::visit_expr_call(self, call);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_lookup_is_each_call_whose_last_segment_ends_in_named() {
+        // A method, a turbofish's, a path's, and a wrapper of another name than `named` are each
+        // a lookup; a function's own name, and a call of no such name, are none.
+        let code = "fn named(x: u8) { a.named(\"x\"); b.named::<T>(\"y\"); Names::type_named(c); \
+                    d.unit_type(e); f(named); arg!(Id, |ctx, name| ctx.param_named(name)); }";
+        assert_eq!(
+            lookups(code),
+            ["named", "named", "type_named", "param_named"]
+        );
+    }
 }

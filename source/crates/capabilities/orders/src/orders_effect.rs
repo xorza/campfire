@@ -7,7 +7,7 @@ use campfire_units::{MapBook, UnitOrdered};
 
 use crate::attack_move::AttackMove;
 use crate::resetting::Resetting;
-use crate::unit_order::{OrderDues, OrderedUnit, UnitOrder};
+use crate::unit_order::{HeldOrder, OrderDues, OrderedUnit, UnitOrder};
 
 /// An order an AI call queued for the unit that thinks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,16 +32,19 @@ impl Effect for OrdersEffect {
         let order = ProgressDues::with(world, id, entity, |world, progress| {
             UnitDues::<Route>::with(world, id, entity, |world, routes| {
                 UnitDues::<AttackMove>::with(world, id, entity, |world, goals| {
-                    let mut unit = world.entity_mut(entity);
-                    let parts = unit
-                        .get_components_mut::<OrderedUnit>()
-                        .expect("an ordered unit stands");
-                    let mut dues = OrderDues {
-                        progress: progress.reborrow(),
-                        routes: routes.reborrow(),
-                        goals: goals.reborrow(),
-                    };
-                    self.0.give(parts, &bounds, now, &mut dues)
+                    UnitDues::<HeldOrder>::with(world, id, entity, |world, holds| {
+                        let mut unit = world.entity_mut(entity);
+                        let parts = unit
+                            .get_components_mut::<OrderedUnit>()
+                            .expect("an ordered unit stands");
+                        let mut dues = OrderDues {
+                            progress: progress.reborrow(),
+                            routes: routes.reborrow(),
+                            goals: goals.reborrow(),
+                            held: holds.reborrow(),
+                        };
+                        self.0.give(parts, &bounds, now, &mut dues)
+                    })
                 })
             })
         });

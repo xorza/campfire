@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use bevy_ecs::change_detection::{DetectChanges, DetectChangesMut};
+use bevy_ecs::change_detection::{DetectChanges, DetectChangesMut, Mut};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::observer::On;
@@ -14,10 +14,11 @@ use campfire_sim::{
     Unpredicted,
 };
 use campfire_states::{Replication, SentPredicted};
-use campfire_units::{ArrivedShort, Body, Facing, UnitEntity, WalkGoal};
+use campfire_units::{ArrivedShort, Body, Destination, Facing, UnitEntity, WalkGoal};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
+use crate::arrived_at::ArrivedAt;
 use crate::party::Party;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
@@ -372,9 +373,43 @@ impl RouteMutReadOnlyItem<'_, '_> {
     }
 }
 
+/// How a walk ended: the goal its walker arrived at, at its end or short of it, and whether the
+/// route reached the goal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct WalkEnd {
+    pub(crate) goal: Option<Vec3>,
+    pub(crate) reached: bool,
+}
+
 impl RouteMutItem<'_, '_> {
     pub fn read(&self) -> RouteRef<'_> {
         RouteRef::new(&self.route, &self.cursor)
+    }
+
+    /// Ends the walk once no waypoint is ahead and no ask waits, as every mover ends one: its
+    /// walker drops its destination and notes the goal as the one it arrived at, and a route that
+    /// reached its goal clears, its progress starting again; how it ended, or none while the
+    /// walk goes on.
+    pub(crate) fn end_walk(
+        &mut self,
+        destination: &mut Mut<'_, Destination>,
+        arrived: &mut Mut<'_, ArrivedAt>,
+        progress: &mut Progress,
+    ) -> Option<WalkEnd> {
+        if !self.read().ahead().is_empty() || self.asked().is_some() {
+            return None;
+        }
+        let end = WalkEnd {
+            goal: self.goal(),
+            reached: self.is_reached(),
+        };
+        Destination::route_to(destination, None);
+        ArrivedAt::set(arrived, end.goal);
+        if end.reached {
+            self.clear();
+            progress.restart();
+        }
+        Some(end)
     }
 
     /// Whether the route changed since the reading system's last run.

@@ -1358,15 +1358,6 @@ fn an_expired_window_clears_the_state_of_a_missing_component() {
 
 #[test]
 fn a_switch_saves_no_visual_on_an_interpolated_entity() {
-    fn histories(value: f32) -> (PredictionHistory<SimPos>, ConfirmedHistory<SimPos>) {
-        let mut predicted = PredictionHistory::<SimPos>::default();
-        predicted.add(NetTick(5), Some(SimPos(value)));
-        let mut confirmed = ConfirmedHistory::<SimPos>::default();
-        confirmed.insert(NetTick(5), HistoryState::Updated(SimPos(value)));
-        (predicted, confirmed)
-    }
-
-    use crate::prediction_history::PredictionHistory;
     use crate::prediction_setup::PredictionSetup;
     use campfire_net_replication::ComponentRegistry;
     use campfire_net_timeline::Rollback;
@@ -1377,7 +1368,7 @@ fn a_switch_saves_no_visual_on_an_interpolated_entity() {
     app.world_mut().insert_resource(Rollback(NetTick(5)));
     app.world_mut().resource_mut::<LocalTimeline>().shift(10);
 
-    let (predicted_history, predicted_confirmed) = histories(5.0);
+    let (predicted_history, predicted_confirmed) = history_at(5, 5.0);
     let predicted = app
         .world_mut()
         .spawn((
@@ -1388,7 +1379,7 @@ fn a_switch_saves_no_visual_on_an_interpolated_entity() {
             predicted_confirmed,
         ))
         .id();
-    let (interp_history, interp_confirmed) = histories(5.0);
+    let (interp_history, interp_confirmed) = history_at(5, 5.0);
     let interp = app
         .world_mut()
         .spawn((

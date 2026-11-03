@@ -76,6 +76,12 @@ fn add_sub_neg() {
     // Saturating, a sum past either end stops at it, and one within is exact.
     assert_eq!(Num::MAX.saturating_add(Num::EPSILON), Num::MAX);
     assert_eq!(Num::MIN.saturating_add(-Num::EPSILON), Num::MIN);
+    // A distance from 0: of −3, 3; of `MAX`, itself; `MIN` has none of its size, so only the
+    // checked form takes it.
+    assert_eq!(Num::int(-3).abs(), Num::int(3));
+    assert_eq!(Num::MAX.abs(), Num::MAX);
+    assert_eq!(Num::int(-3).checked_abs(), Some(Num::int(3)));
+    assert_eq!(Num::MIN.checked_abs(), None);
     assert_eq!(
         n(ONE + HALF).saturating_add(n(2 * ONE + QUARTER)),
         n(3 * ONE + HALF + QUARTER)

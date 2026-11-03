@@ -105,7 +105,19 @@ pub struct Base64Error(#[from] base64::DecodeError);
 pub enum PngError {
     #[error(transparent)]
     Decode(#[from] png::DecodingError),
+    #[error(transparent)]
+    Image(#[from] RgbaImageError),
     /// It holds pixels other than 8-bit RGBA.
     #[error("the PNG's pixels are not 8-bit RGBA")]
     NotRgba,
+}
+
+/// Why an image of 8-bit RGBA pixels is refused: a size of no pixel, or pixels of another
+/// length than four bytes of each of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum RgbaImageError {
+    #[error("an image of no pixel")]
+    Empty,
+    #[error("an image of {expected} bytes of pixels holds {found}")]
+    Pixels { expected: u64, found: usize },
 }

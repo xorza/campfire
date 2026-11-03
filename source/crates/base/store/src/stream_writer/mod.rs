@@ -148,8 +148,12 @@ impl StreamShared {
                 let mut pending = self.pending.lock();
                 pending.stopped = true;
                 pending.bytes.clear();
-                drop(pending);
                 self.emptied.notify_all();
+                // Stopped, it waits for its writer to close, so its worker ends only then, as
+                // `Worker::check` holds every worker to.
+                while !pending.closing {
+                    pending = self.pending.wait(&self.filled, pending);
+                }
                 return;
             }
         }

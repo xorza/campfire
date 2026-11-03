@@ -547,7 +547,12 @@ fn a_tooltip_shows_a_buttons_name_key_costs_and_whole_seconds_and_a_dimmed_one_i
         costs: &costs,
         seconds: seconds(150),
     };
-    let tip = |name, key, value| ButtonTip { name, key, value }.to_string();
+    let text = EngineText::english();
+    let tip = |name, key, value| {
+        let mut shown = String::new();
+        ButtonTip { name, key, value }.write(&text, &mut shown);
+        shown
+    };
     assert_eq!(
         tip("Dozer", Some(Key::KeyD), paid),
         "Dozer  [D]  100  25  5 s"
@@ -650,10 +655,9 @@ fn a_cast_shows_while_its_when_passes_and_dims_while_it_cools() {
         seconds: 0,
     };
     assert!(button.enabled(costs, |_| true));
-    assert_eq!(
-        ButtonValue::Cooling { seconds: 240 }.to_string(),
-        "ready in 240 s"
-    );
+    let mut shown = String::new();
+    ButtonValue::Cooling { seconds: 240 }.write(&EngineText::english(), &mut shown);
+    assert_eq!(shown, "ready in 240 s");
 }
 
 #[test]

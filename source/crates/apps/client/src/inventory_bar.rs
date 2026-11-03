@@ -21,6 +21,7 @@ use campfire_net::PendingOrders;
 use campfire_sim::{MatchRate, SimTick, Unpredicted};
 use campfire_values::ItemId;
 
+use crate::engine_text::{EngineMessage, EngineText};
 use crate::input_map::{ChordRow, InputMap};
 use crate::name_texts::NameTexts;
 use crate::own_player::OwnPlayer;
@@ -103,7 +104,7 @@ impl InventoryBarPlugin {
             Res<'_, SimTick>,
             Res<'_, MatchRate>,
         ),
-        input: Res<'_, InputMap>,
+        (input, text): (Res<'_, InputMap>, Res<'_, EngineText>),
         (slots, mut texts): (Query<'_, '_, (Entity, &BarSlot)>, Query<'_, '_, &mut Text>),
         mut line: Local<'_, String>,
     ) {
@@ -131,7 +132,7 @@ impl InventoryBarPlugin {
                     carried,
                     ready,
                 };
-                write_slot(&mut line, slot, clock);
+                write_slot(&mut line, slot, clock, &text);
             }
             ui_style::set_text(&mut texts, entity, &line);
         }
@@ -198,8 +199,9 @@ struct BarClock {
 }
 
 /// Writes after a slot's key the item `slot` carries: its name, its stack past one, its uses
-/// left, and, by `clock`, the whole seconds until its action is ready, rounded up.
-fn write_slot(line: &mut String, slot: ShownSlot<'_>, clock: BarClock) {
+/// left, and, by `clock`, the whole seconds until its action is ready, rounded up, in `text`'s
+/// words.
+fn write_slot(line: &mut String, slot: ShownSlot<'_>, clock: BarClock, text: &EngineText) {
     let ShownSlot {
         name,
         carried,
@@ -218,7 +220,8 @@ fn write_slot(line: &mut String, slot: ShownSlot<'_>, clock: BarClock) {
     {
         let left = ready.get() - now.get();
         let seconds = left.div_ceil(u64::from(hz));
-        write!(line, "\n{seconds} s").expect("a String takes any text");
+        line.push('\n');
+        text.write(EngineMessage::Seconds, &[("seconds", &seconds)], line);
     }
 }
 
@@ -237,7 +240,7 @@ mod tests {
                 carried,
                 ready,
             };
-            write_slot(&mut line, slot, clock);
+            write_slot(&mut line, slot, clock, &EngineText::english());
             line
         };
         let potions = ItemStack {

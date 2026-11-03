@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 /// runs over ticks here, each step aside a walk of its own tick, so its depth is a part.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct AsideDepth(Option<StepAside>);
+pub(crate) struct AsideDepth(Option<StepAside>);
 
 /// A step aside: how deep it is, and where its unit stood as it began.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -31,7 +31,7 @@ impl AsideDepth {
     pub(crate) const MOST: u8 = 2;
 
     /// How deep the walk is: 0 for a walk of its own.
-    pub const fn get(self) -> u8 {
+    pub(crate) const fn get(self) -> u8 {
         match self.0 {
             Some(step) => step.depth,
             None => 0,

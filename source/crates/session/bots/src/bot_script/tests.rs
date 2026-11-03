@@ -16,6 +16,8 @@ use campfire_values::{ActionId, FilterData, Team};
 
 use campfire_harness::{FixedMatch, FixedSession, MatchUnits};
 
+use campfire_geometry::GridReach;
+
 use super::*;
 use crate::bot_view::HeldBotView;
 
@@ -199,8 +201,7 @@ fn a_bot_resolves_each_name_of_its_script_as_it_starts_or_refuses_the_first_the_
     };
     let searched = LoadedPlace::Near {
         near: ground(0, 0),
-        gap: Num::ONE,
-        steps: 128,
+        reach: GridReach::new(Num::ONE, 128).unwrap(),
     };
     assert_eq!(
         target,

@@ -8,7 +8,7 @@ use campfire_math::TickRate;
 use campfire_net_core::NetTick;
 use campfire_net_frame_interpolation::{
     AppFrameInterpolationExt, FrameInterpolate, FrameInterpolationHistory,
-    FrameInterpolationPlugin, FrameRegistryPlugin, FrameRule, InterpolationSampleCx, linear_lerp,
+    FrameInterpolationPlugin, FrameRegistryPlugin, FrameRule, linear_lerp,
 };
 use campfire_net_interpolation::InterpolationMarkerPlugin;
 use campfire_net_replication::internals::shared_replicon_app;
@@ -16,12 +16,11 @@ use campfire_net_replication::{AppComponentExt, Predicted};
 use campfire_net_stepper::Stepper;
 use campfire_net_stepper::StepperSetup;
 use campfire_net_timeline::SetTickRate;
-use serde::{Deserialize, Serialize};
 
 use super::*;
 use crate::correction_ease::CorrectionEase;
 use crate::fixtures::prediction_stack::PredictionStack;
-use crate::fixtures::protocol::{CompCorr, CompPredictionOnly, ShownCorr, linear_correction};
+use crate::fixtures::protocol::{CompCorr, CompPredictionOnly, ShownCorr, show_corr};
 use crate::fixtures::steps::trigger_state_rollback;
 use crate::prediction_marker_plugin::PredictionMarkerPlugin;
 use crate::prediction_plugins::PredictionPlugins;
@@ -38,43 +37,29 @@ fn app_with_replication_markers() -> App {
     app
 }
 
-/// A predicted component, which shows through `ShownA`.
-#[derive(Component, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-struct CorrectionA(f32);
-
-/// The visual of `CorrectionA`, which a correction offsets.
-#[derive(Component, Clone, Debug, Default, PartialEq)]
-struct ShownA(f32);
-
-linear_correction!(ShownA);
-
-/// An entity whose archetype the frame rule of `CorrectionA` leaves out.
+/// An entity whose archetype the frame rule of `CompCorr` leaves out.
 #[derive(Component, Debug)]
 struct LeftOut;
 
-fn show_a(start: &CorrectionA, end: &CorrectionA, cx: InterpolationSampleCx) -> ShownA {
-    ShownA(start.0 + (end.0 - start.0) * cx.t)
-}
-
-/// An app that shows `CorrectionA` through `ShownA` on each entity but those with `LeftOut`, at an
+/// An app that shows `CompCorr` through `ShownCorr` on each entity but those with `LeftOut`, at an
 /// overstep of 0, and corrects its rollbacks by `correct`; its plugins finished.
-fn correction_app(correct: LerpFn<ShownA>) -> App {
+fn correction_app(correct: LerpFn<ShownCorr>) -> App {
     let mut app = app_with_replication_markers();
     app.init_resource::<PredictionRegistry>();
     app.insert_resource(PredictionSetup::default());
     app.insert_resource(Time::<Fixed>::default());
     app.add_plugins((FrameRegistryPlugin, FrameInterpolationPlugin));
-    app.register_component::<CorrectionA>()
+    app.register_component::<CompCorr>()
         .replicate()
         .predict()
-        .correct_with::<ShownA, ShownA>(correct);
-    app.register_frame_rule::<CorrectionA, ShownA, Without<LeftOut>>(FrameRule::new(show_a));
+        .correct_with::<ShownCorr, ShownCorr>(correct);
+    app.register_frame_rule::<CompCorr, ShownCorr, Without<LeftOut>>(FrameRule::new(show_corr));
     app.finish();
     app
 }
 
 fn linear_app() -> App {
-    correction_app(linear_lerp::<ShownA>)
+    correction_app(linear_lerp::<ShownCorr>)
 }
 
 /// Runs a frame's `PostUpdate`: the frame writes each visual from the live value, as the entities
@@ -85,14 +70,14 @@ fn show(app: &mut App) {
 
 fn error(app: &App, entity: Entity) -> Option<f32> {
     app.world()
-        .get::<VisualCorrection<ShownA>>(entity)
+        .get::<VisualCorrection<ShownCorr>>(entity)
         .and_then(|slot| slot.0.as_ref())
         .map(|correction| correction.error.0)
 }
 
 fn update(app: &mut App) {
     app.world_mut()
-        .run_system_once(CorrectionFn::<CorrectionA, ShownA, ShownA>::update_visual_correction)
+        .run_system_once(CorrectionFn::<CompCorr, ShownCorr, ShownCorr>::update_visual_correction)
         .unwrap();
 }
 
@@ -100,10 +85,10 @@ fn update(app: &mut App) {
 fn prediction_adds_the_frame_interpolation_whose_visual_a_correction_offsets() {
     let mut server = app_with_replication_markers();
     server
-        .register_component::<CorrectionA>()
+        .register_component::<CompCorr>()
         .replicate()
         .predict()
-        .correct_linear::<ShownA, ShownA>();
+        .correct_linear::<ShownCorr, ShownCorr>();
     assert!(
         !server.is_plugin_added::<FrameInterpolationPlugin>(),
         "an app that does not predict runs no correction"
@@ -111,11 +96,11 @@ fn prediction_adds_the_frame_interpolation_whose_visual_a_correction_offsets() {
 
     // The protocol registers before the plugin, which a protocol may.
     let mut app = app_with_replication_markers();
-    app.register_component::<CorrectionA>()
+    app.register_component::<CompCorr>()
         .replicate()
         .predict()
-        .correct_linear::<ShownA, ShownA>();
-    app.register_frame_rule::<CorrectionA, ShownA, ()>(FrameRule::new(show_a));
+        .correct_linear::<ShownCorr, ShownCorr>();
+    app.register_frame_rule::<CompCorr, ShownCorr, ()>(FrameRule::new(show_corr));
     app.add_plugins((
         FrameRegistryPlugin,
         PredictionRegistryPlugin,
@@ -127,7 +112,7 @@ fn prediction_adds_the_frame_interpolation_whose_visual_a_correction_offsets() {
 
     let entity = app
         .world_mut()
-        .spawn((CorrectionA(1.0), PreviousVisual(Some(ShownA(2.0)))))
+        .spawn((CompCorr(1.0), PreviousVisual(Some(ShownCorr(2.0)))))
         .id();
     app.world_mut().flush();
     assert!(app.world().get::<FrameInterpolate>(entity).is_some());
@@ -165,8 +150,8 @@ fn a_blend_first_frame_gives_up_part_of_the_gap() {
 }
 
 /// Keeps half of the error whatever the ratio, so a test tells it from the linear decay.
-fn halve_error(_converged: &ShownA, error: &ShownA, _ratio: f32) -> ShownA {
-    ShownA(error.0 * 0.5)
+fn halve_error(_converged: &ShownCorr, error: &ShownCorr, _ratio: f32) -> ShownCorr {
+    ShownCorr(error.0 * 0.5)
 }
 
 /// `correct_with` decays the error by the registered function: an error of 4 keeps 2, and the
@@ -179,23 +164,23 @@ fn correct_with_decays_the_error_by_its_function_where_the_frame_writes() {
     let entity = app
         .world_mut()
         .spawn((
-            CorrectionA(10.0),
-            VisualCorrection::active(ShownA(4.0), Duration::ZERO),
+            CompCorr(10.0),
+            VisualCorrection::active(ShownCorr(4.0), Duration::ZERO),
             FrameInterpolate,
         ))
         .id();
     let left_out = app
         .world_mut()
         .spawn((
-            CorrectionA(10.0),
-            ShownA(-1.0),
+            CompCorr(10.0),
+            ShownCorr(-1.0),
             LeftOut,
-            VisualCorrection::active(ShownA(4.0), Duration::ZERO),
+            VisualCorrection::active(ShownCorr(4.0), Duration::ZERO),
             FrameInterpolate,
         ))
         .id();
     show(&mut app);
-    assert_eq!(app.world().get::<ShownA>(entity), Some(&ShownA(10.0)));
+    assert_eq!(app.world().get::<ShownCorr>(entity), Some(&ShownCorr(10.0)));
     app.world_mut()
         .resource_mut::<Time<Virtual>>()
         .advance_by(Duration::from_millis(16));
@@ -203,13 +188,16 @@ fn correct_with_decays_the_error_by_its_function_where_the_frame_writes() {
     update(&mut app);
 
     assert_eq!(error(&app, entity), Some(2.0));
-    assert_eq!(app.world().get::<ShownA>(entity), Some(&ShownA(12.0)));
+    assert_eq!(app.world().get::<ShownCorr>(entity), Some(&ShownCorr(12.0)));
     assert_eq!(error(&app, left_out), Some(4.0));
-    assert_eq!(app.world().get::<ShownA>(left_out), Some(&ShownA(-1.0)));
+    assert_eq!(
+        app.world().get::<ShownCorr>(left_out),
+        Some(&ShownCorr(-1.0))
+    );
     for corrected in [entity, left_out] {
         assert_eq!(
-            app.world().get::<CorrectionA>(corrected),
-            Some(&CorrectionA(10.0))
+            app.world().get::<CompCorr>(corrected),
+            Some(&CompCorr(10.0))
         );
     }
 }
@@ -220,10 +208,10 @@ fn correct_with_decays_the_error_by_its_function_where_the_frame_writes() {
 #[should_panic(expected = "which no frame rule shows it through")]
 fn a_correction_needs_a_frame_rule() {
     let mut app = app_with_replication_markers();
-    app.register_component::<CorrectionA>()
+    app.register_component::<CompCorr>()
         .replicate()
         .predict()
-        .correct_linear::<ShownA, ShownA>();
+        .correct_linear::<ShownCorr, ShownCorr>();
     app.add_plugins((
         FrameRegistryPlugin,
         PredictionRegistryPlugin,
@@ -236,11 +224,11 @@ fn a_correction_needs_a_frame_rule() {
 #[should_panic(expected = "registers more than one correction")]
 fn a_component_takes_one_correction() {
     let mut app = app_with_replication_markers();
-    app.register_component::<CorrectionA>()
+    app.register_component::<CompCorr>()
         .replicate()
         .predict()
         .correct_custom()
-        .correct_linear::<ShownA, ShownA>();
+        .correct_linear::<ShownCorr, ShownCorr>();
 }
 
 #[test]
@@ -251,8 +239,8 @@ fn an_entity_correction_policy_overrides_the_global_one() {
     let overridden = app
         .world_mut()
         .spawn((
-            CorrectionA(10.0),
-            VisualCorrection::active(ShownA(1.0), Duration::ZERO),
+            CompCorr(10.0),
+            VisualCorrection::active(ShownCorr(1.0), Duration::ZERO),
             FrameInterpolate,
             CorrectionPolicy::new(0.5, Duration::from_millis(50)),
         ))
@@ -260,8 +248,8 @@ fn an_entity_correction_policy_overrides_the_global_one() {
     let plain = app
         .world_mut()
         .spawn((
-            CorrectionA(10.0),
-            VisualCorrection::active(ShownA(1.0), Duration::ZERO),
+            CompCorr(10.0),
+            VisualCorrection::active(ShownCorr(1.0), Duration::ZERO),
             FrameInterpolate,
         ))
         .id();
@@ -285,7 +273,9 @@ fn correction_measures_a_saved_value_in_an_archetype_created_later() {
     let mut app = linear_app();
     let create = |app: &mut App| {
         app.world_mut()
-            .run_system_once(CorrectionFn::<CorrectionA, ShownA, ShownA>::create_visual_correction)
+            .run_system_once(
+                CorrectionFn::<CompCorr, ShownCorr, ShownCorr>::create_visual_correction,
+            )
             .unwrap();
         app.world_mut().flush();
     };
@@ -296,7 +286,7 @@ fn correction_measures_a_saved_value_in_an_archetype_created_later() {
     // A saved value appears, which puts the entity in a new archetype.
     let entity = app
         .world_mut()
-        .spawn((ShownA(10.0), PreviousVisual(Some(ShownA(4.0)))))
+        .spawn((ShownCorr(10.0), PreviousVisual(Some(ShownCorr(4.0)))))
         .id();
     app.world_mut().flush();
     create(&mut app);
@@ -308,7 +298,7 @@ fn correction_measures_a_saved_value_in_an_archetype_created_later() {
     );
     assert!(
         app.world()
-            .get::<PreviousVisual<ShownA>>(entity)
+            .get::<PreviousVisual<ShownCorr>>(entity)
             .and_then(|slot| slot.0.as_ref())
             .is_none()
     );
@@ -336,8 +326,8 @@ fn correction_policy_can_run_a_bounded_curve() {
     let entity = app
         .world_mut()
         .spawn((
-            CorrectionA(10.0),
-            VisualCorrection::active(ShownA(1.0), start),
+            CompCorr(10.0),
+            VisualCorrection::active(ShownCorr(1.0), start),
             FrameInterpolate,
             policy,
         ))
@@ -398,8 +388,8 @@ fn a_visual_correction_marks_its_visual_changed() {
     let entity = app
         .world_mut()
         .spawn((
-            CorrectionA(10.0),
-            VisualCorrection::active(ShownA(1.0), Duration::ZERO),
+            CompCorr(10.0),
+            VisualCorrection::active(ShownCorr(1.0), Duration::ZERO),
             FrameInterpolate,
         ))
         .id();
@@ -407,8 +397,8 @@ fn a_visual_correction_marks_its_visual_changed() {
     let idle = app
         .world_mut()
         .spawn((
-            CorrectionA(10.0),
-            VisualCorrection::<ShownA>::default(),
+            CompCorr(10.0),
+            VisualCorrection::<ShownCorr>::default(),
             FrameInterpolate,
         ))
         .id();
@@ -417,14 +407,14 @@ fn a_visual_correction_marks_its_visual_changed() {
     let changed = |app: &App| {
         app.world()
             .entity(entity)
-            .get_change_ticks::<ShownA>()
+            .get_change_ticks::<ShownCorr>()
             .unwrap()
             .changed
     };
     let idle_changed = |app: &App| {
         app.world()
             .entity(idle)
-            .get_change_ticks::<VisualCorrection<ShownA>>()
+            .get_change_ticks::<VisualCorrection<ShownCorr>>()
             .unwrap()
             .changed
     };
@@ -446,44 +436,49 @@ fn a_visual_correction_marks_its_visual_changed() {
 #[test]
 fn a_correction_after_a_rollback_measures_nothing_with_no_live_value() {
     let mut app = linear_app();
-    app.world_mut().spawn((PreviousVisual(Some(ShownA(12.0))),));
-    let running = VisualCorrection(Some(VisualOffset::new(ShownA(3.0), Duration::ZERO)));
+    app.world_mut()
+        .spawn((PreviousVisual(Some(ShownCorr(12.0))),));
+    let running = VisualCorrection(Some(VisualOffset::new(ShownCorr(3.0), Duration::ZERO)));
     let exact = app
         .world_mut()
-        .spawn((PreviousVisual(Some(ShownA(5.0))), ShownA(5.0), running))
+        .spawn((
+            PreviousVisual(Some(ShownCorr(5.0))),
+            ShownCorr(5.0),
+            running,
+        ))
         .id();
     let moved = app
         .world_mut()
-        .spawn((PreviousVisual(Some(ShownA(5.0))), ShownA(2.0)))
+        .spawn((PreviousVisual(Some(ShownCorr(5.0))), ShownCorr(2.0)))
         .id();
 
     app.world_mut()
-        .run_system_once(CorrectionFn::<CorrectionA, ShownA, ShownA>::create_visual_correction)
+        .run_system_once(CorrectionFn::<CompCorr, ShownCorr, ShownCorr>::create_visual_correction)
         .unwrap();
     app.world_mut().flush();
-    let mut query = app.world_mut().query::<&VisualCorrection<ShownA>>();
+    let mut query = app.world_mut().query::<&VisualCorrection<ShownCorr>>();
     assert_eq!(query.iter(app.world()).count(), 2);
     let world = app.world();
     assert!(
         world
-            .get::<VisualCorrection<ShownA>>(exact)
+            .get::<VisualCorrection<ShownCorr>>(exact)
             .unwrap()
             .0
             .is_none()
     );
     assert!(
         world
-            .get::<PreviousVisual<ShownA>>(exact)
+            .get::<PreviousVisual<ShownCorr>>(exact)
             .unwrap()
             .0
             .is_none()
     );
     let error = world
-        .get::<VisualCorrection<ShownA>>(moved)
+        .get::<VisualCorrection<ShownCorr>>(moved)
         .unwrap()
         .0
         .as_ref();
-    assert_eq!(error.map(|offset| &offset.error), Some(&ShownA(3.0)));
+    assert_eq!(error.map(|offset| &offset.error), Some(&ShownCorr(3.0)));
 }
 
 /// A saved value with no live component to measure against is only kept
@@ -497,13 +492,13 @@ fn creation_discards_a_saved_value_nobody_is_waiting_for() {
     // No live visual: the destination timeline has not presented it.
     let unwatched = app
         .world_mut()
-        .spawn(PreviousVisual(Some(ShownA(8.0))))
+        .spawn(PreviousVisual(Some(ShownCorr(8.0))))
         .id();
     // The same, but a switch window is waiting for the visual.
     let watched = app
         .world_mut()
         .spawn((
-            PreviousVisual(Some(ShownA(8.0))),
+            PreviousVisual(Some(ShownCorr(8.0))),
             SwitchBlend::new(
                 Duration::ZERO,
                 Duration::from_millis(500),
@@ -514,21 +509,21 @@ fn creation_discards_a_saved_value_nobody_is_waiting_for() {
     app.world_mut().flush();
 
     app.world_mut()
-        .run_system_once(CorrectionFn::<CorrectionA, ShownA, ShownA>::create_visual_correction)
+        .run_system_once(CorrectionFn::<CompCorr, ShownCorr, ShownCorr>::create_visual_correction)
         .unwrap();
     app.world_mut().flush();
 
     let world = app.world();
     assert!(
         world
-            .get::<PreviousVisual<ShownA>>(unwatched)
+            .get::<PreviousVisual<ShownCorr>>(unwatched)
             .and_then(|slot| slot.0.as_ref())
             .is_none(),
         "nothing was waiting for this value"
     );
     assert!(
         world
-            .get::<PreviousVisual<ShownA>>(watched)
+            .get::<PreviousVisual<ShownCorr>>(watched)
             .and_then(|slot| slot.0.as_ref())
             .is_some(),
         "the window must keep waiting for the component it will blend"
@@ -707,8 +702,8 @@ fn an_exponential_correction_ends_at_its_window() {
     let entity = app
         .world_mut()
         .spawn((
-            CorrectionA(10.0),
-            VisualCorrection::active(ShownA(1.0), start),
+            CompCorr(10.0),
+            VisualCorrection::active(ShownCorr(1.0), start),
             FrameInterpolate,
         ))
         .id();

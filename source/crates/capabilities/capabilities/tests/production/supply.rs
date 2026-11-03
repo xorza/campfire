@@ -1,3 +1,4 @@
+use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::system::SystemState;
 use campfire_stats::{PlayerModifiers, StatsWorld};
 use campfire_values::ModifierId;
@@ -93,8 +94,27 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
     // The third despawns, and a new one spawns in the same tick: 8 - 4 + 4 = 8 given.
     let gone = game.unit_entity(third_depot);
     game.entity_mut(gone).despawn();
-    Production::owned(&mut game, depot, player);
+    let fourth_depot = Production::owned(&mut game, depot, player);
     step(&mut game, 0, 3, (9, 8), 9);
+    // A depot that rides, out of the world, still gives, as one that spawns inside a container
+    // does: 8 + 4 = 12 given, the cap at its most of 10 (04-capabilities/production.md, A rider
+    // counts for its player).
+    game.insert_parts(fourth_depot, Disabled);
+    let fifth_depot = Production::owned(&mut game, depot, player);
+    game.insert_parts(fifth_depot, Disabled);
+    step(&mut game, 0, 3, (9, 10), 10);
+    // A restore counts every unit again, riders among them, and gives what the live match gave:
+    // the riders leave the world again as their containers would hold them.
+    let mut snapshot = Vec::new();
+    game.snapshot(&mut snapshot);
+    step(&mut game, 0, 3, (9, 10), 11);
+    let live = game.state_hash();
+    game.restore_in_place(&snapshot).unwrap();
+    for rider in [fourth_depot, fifth_depot] {
+        game.insert_parts(rider, Disabled);
+    }
+    step(&mut game, 0, 3, (9, 10), 11);
+    assert_eq!(game.state_hash(), live);
 }
 
 #[test]
@@ -173,8 +193,12 @@ fn a_train_needs_the_units_and_the_player_modifiers_its_requires_names() {
     // meets the entry in its place, and the next joins.
     game.insert_parts(forge, Dead);
     step(&mut game, 1, 4);
-    Production::owned(&mut game, shop.depot, player);
+    let depot = Production::owned(&mut game, shop.depot, player);
     step(&mut game, 2, 5);
+    // The depot rides, out of the world, and still meets it, as a rider counts for its player:
+    // the next joins.
+    game.insert_parts(depot, Disabled);
+    step(&mut game, 3, 6);
 }
 
 #[test]

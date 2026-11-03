@@ -75,7 +75,7 @@ impl ModeMap {
             variations: cx.book_if::<ById<UnitType, Variations>>()?,
         };
         let unit_type = |name: &str| {
-            let unit_type = cx.unit_type(TypeScope::Mode, name);
+            let unit_type = cx.type_named(TypeScope::Mode, name);
             unit_type.filter(|&unit_type| cx.type_of(unit_type).stands())
         };
         let map = Self::of(input, unit_type);

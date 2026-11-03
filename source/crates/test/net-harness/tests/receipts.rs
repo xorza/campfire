@@ -126,7 +126,7 @@ fn a_receipt_not_written_is_logged_and_the_client_plays_on() {
     let mut unsaved = Vec::new();
     for _ in 0..2000 {
         local.step();
-        unsaved.extend(local.log().take::<ReceiptUnsaved>());
+        unsaved.extend(local.log_check().take::<ReceiptUnsaved>());
         if !unsaved.is_empty() {
             break;
         }
@@ -215,5 +215,5 @@ fn a_client_that_left_keeps_a_receipt_that_crosses_its_leave() {
     local.step();
     assert!(left(&local));
     assert_eq!(receipt(&local), None);
-    assert_eq!(local.log().take::<ReceiptRefused>(), []);
+    assert_eq!(local.log_check().take::<ReceiptRefused>(), []);
 }

@@ -158,7 +158,7 @@ mod tests {
         ReportPlugin::write_screenshot(&dir, &frame);
         let file = InputFile::read(&dir.screenshot(), 1 << 10).unwrap();
         let image = Png::decode(&file).unwrap();
-        assert_eq!((image.width, image.height), (2, 1));
-        assert_eq!(image.pixels, [255, 0, 0, 255, 0, 0, 255, 128]);
+        assert_eq!((image.width(), image.height()), (2, 1));
+        assert_eq!(image.pixels(), [255, 0, 0, 255, 0, 0, 255, 128]);
     }
 }

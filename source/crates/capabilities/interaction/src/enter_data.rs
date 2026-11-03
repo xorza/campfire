@@ -74,6 +74,16 @@ pub enum RiderCount {
     One,
 }
 
+impl RiderCount {
+    /// The room a rider of `size` takes.
+    pub const fn room_of(self, size: u32) -> u32 {
+        match self {
+            Self::Size => size,
+            Self::One => 1,
+        }
+    }
+}
+
 /// Riders a container spawns with: `count` of the unit type `unit` of its package.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

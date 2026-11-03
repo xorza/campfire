@@ -194,15 +194,17 @@ impl Fliers {
                         && clear_of_units(point, circle)
                 };
                 let ring = landing.ring.map_or_else(|| cells.cell(), Radius::get);
-                let Some(first) = Self::first_clear(ground, ring, cells.bounds(), probe_clears)
-                else {
+                let mut work = 0;
+                let first =
+                    Self::first_clear(ground, ring, cells.bounds(), &mut work, probe_clears);
+                let Some(first) = first else {
+                    planner.count(work);
                     break 'found ground;
                 };
                 let spiral = landing.cells.map_or_else(
                     || cells.cells(),
                     |cells| usize::try_from(cells.get()).expect("a spiral's cells fit a usize"),
                 );
-                let mut work = 0;
                 let cell =
                     planner.spiral_open_where(walkable, first, (spiral, &mut work), |cell| {
                         clear_of_units(cells.center(cell, Num::ZERO), shape)
@@ -221,13 +223,18 @@ impl Fliers {
     /// apart outward, each sampled at angles of `ring` × 60° over the ring's radius plus 1 apart,
     /// from 0° each way in turn, as `PartitionManager::findPositionAround` samples them, until a
     /// ring's radius passes the corner of `bounds` farthest from `center`, past which no point lies
-    /// in them; none when no point of them clears.
+    /// in them; none when no point of them clears. Each point tried counts in `work`.
     fn first_clear(
         center: Vec3,
         ring: Num,
         bounds: &Bounds,
+        work: &mut u32,
         clears: impl Fn(Vec3) -> bool,
     ) -> Option<Vec3> {
+        let mut clears = |point| {
+            *work = work.saturating_add(1);
+            clears(point)
+        };
         if clears(center) {
             return Some(center);
         }
@@ -279,13 +286,14 @@ mod tests {
         // center, 29 in all, none clear.
         let bounds = Bounds::new([-Num::int(2); 2], [Num::int(2); 2]).unwrap();
         let tried = RefCell::new(Vec::new());
-        let none = Fliers::first_clear(Vec3::ZERO, Num::ONE, &bounds, |point| {
+        let mut work = 0;
+        let none = Fliers::first_clear(Vec3::ZERO, Num::ONE, &bounds, &mut work, |point| {
             tried.borrow_mut().push(point);
             false
         });
         assert_eq!(none, None);
         let tried = tried.into_inner();
-        assert_eq!(tried.len(), 29);
+        assert_eq!((tried.len(), work), (29, 29));
         assert_eq!(
             tried[..2],
             [Vec3::ZERO, Vec3::new(Num::ONE, Num::ZERO, Num::ZERO)]
@@ -306,12 +314,16 @@ mod tests {
         // tried.
         let center = Vec3::new(Num::int(3), Num::ZERO, Num::int(4));
         let calls = RefCell::new(0);
-        let found = Fliers::first_clear(center, Num::ONE, &bounds, |_| {
+        let found = Fliers::first_clear(center, Num::ONE, &bounds, &mut 0, |_| {
             *calls.borrow_mut() += 1;
             true
         });
         assert_eq!((found, calls.take()), (Some(center), 1));
-        let found = Fliers::first_clear(Vec3::ZERO, Num::ONE, &bounds, |point| point.z > Num::ZERO);
+        let mut work = 0;
+        let found = Fliers::first_clear(Vec3::ZERO, Num::ONE, &bounds, &mut work, |point| {
+            point.z > Num::ZERO
+        });
+        assert_eq!(work, 4);
         assert_eq!(found, Some(tried[3]));
     }
 }

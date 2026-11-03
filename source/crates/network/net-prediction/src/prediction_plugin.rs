@@ -6,7 +6,6 @@ use bevy_ecs::prelude::*;
 use bevy_replicon::shared::replication::diff::Diffable;
 use campfire_net_despawns::DespawnReplicated;
 use campfire_net_replication::HistoryComponent;
-use campfire_net_replication::PreSpawnedReceiver;
 use campfire_net_replication::ReplicationSystems;
 use campfire_net_sync::InputTimelineSetup;
 use campfire_net_timeline::LocalTimeline;
@@ -23,6 +22,7 @@ use crate::rollback_check_systems::RollbackCheckSystems;
 use crate::rollback_plugin::RollbackPlugin;
 use crate::rollback_scan::RollbackScan;
 use crate::rollback_systems::RollbackSystems;
+use crate::unseeded_histories::UnseededHistories;
 
 /// A client's prediction and rollback, which run while the app holds a
 /// [`PredictionSetup`](crate::prediction_setup::PredictionSetup) and its topology is a client; a
@@ -64,6 +64,11 @@ pub(crate) fn add_non_networked_rollback_systems<C: Component<Mutability = Mutab
 pub(crate) fn add_prediction_systems<C: HistoryComponent>(app: &mut App) {
     add_non_networked_rollback_systems::<C>(app);
     app.add_observer(PredictionHistory::<C>::backfill_confirmed);
+    app.init_resource::<UnseededHistories<C>>();
+    app.add_systems(
+        PreUpdate,
+        PredictionHistory::<C>::seed_unseeded.in_set(RollbackCheckSystems::Begin),
+    );
     // Prune once per frame in PostUpdate (not before the rollback check): Check must
     // see the full confirmed history for this frame's rollback decision, including
     // snapshots received in PreUpdate. PostUpdate runs after the fixed loop,
@@ -158,11 +163,7 @@ impl Plugin for PredictionPlugin {
         );
         app.add_systems(
             FixedPostUpdate,
-            (
-                Self::finalize_local_despawns,
-                Self::forget_unreachable_pre_spawns,
-            )
-                .in_set(PredictionSystems::EntityDespawn),
+            (Self::finalize_local_despawns,).in_set(PredictionSystems::EntityDespawn),
         );
 
         app.configure_sets(
@@ -198,19 +199,6 @@ impl PredictionPlugin {
                     .queue_handled(DespawnReplicated, error::warn);
             }
         }
-    }
-
-    /// Forgets the pre-spawned entities no rollback can reach, so the list a rollback walks holds
-    /// only those its window covers.
-    pub(crate) fn forget_unreachable_pre_spawns(
-        mut receiver: ResMut<'_, PreSpawnedReceiver>,
-        timeline: Res<'_, LocalTimeline>,
-        prediction_setup: Res<'_, PredictionSetup>,
-        input_setup: Res<'_, InputTimelineSetup>,
-    ) {
-        receiver.forget_rollback_through(
-            prediction_setup.oldest_rollback_tick(timeline.tick(), &input_setup),
-        );
     }
 }
 
@@ -335,17 +323,5 @@ mod tests {
         for stays in [kept, held, pre_spawned] {
             assert!(world.get_entity(stays).is_ok());
         }
-
-        let mut receiver = PreSpawnedReceiver::default();
-        receiver.register(NetTick(100 - window), gone);
-        receiver.register(NetTick(100 - window + 1), kept);
-        world.insert_resource(receiver);
-        world
-            .run_system_once(PredictionPlugin::forget_unreachable_pre_spawns)
-            .unwrap();
-        assert_eq!(
-            world.resource::<PreSpawnedReceiver>().rollback(),
-            [(NetTick(100 - window + 1), kept)]
-        );
     }
 }

@@ -39,6 +39,12 @@ pub(crate) enum PacketType {
     Close,
 }
 
+/// The length of a path challenge's random bytes, and of the response that echoes them.
+pub(crate) const CHALLENGE_LEN: usize = 8;
+
+/// The length of a close's body, its `AppCode` as a big-endian `u64`.
+pub(crate) const CLOSE_LEN: usize = 8;
+
 impl PacketType {
     const ALL: [Self; 6] = [
         Self::Payload,
@@ -57,6 +63,17 @@ impl PacketType {
             Self::PathChallenge => 3,
             Self::PathResponse => 4,
             Self::Close => 5,
+        }
+    }
+
+    /// The length of a body of this type, exactly; none for a payload, of any length
+    /// (05-protocol-spec.md, The sealed UDP).
+    pub(crate) const fn body_len(self) -> Option<usize> {
+        match self {
+            Self::Payload => None,
+            Self::AckOnly | Self::Ping => Some(0),
+            Self::PathChallenge | Self::PathResponse => Some(CHALLENGE_LEN),
+            Self::Close => Some(CLOSE_LEN),
         }
     }
 

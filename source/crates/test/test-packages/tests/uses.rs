@@ -4,7 +4,6 @@ use campfire_actions::{
     ActionBook, ActionProblem, EffectListBook, ListHook, ListsOf, PipelineField, SlotError,
     SlotKind,
 };
-use campfire_common::DeclaredName;
 use campfire_interaction::{EnterError, UseError};
 use campfire_items::ItemsDataError;
 use campfire_names::Filter;
@@ -17,6 +16,7 @@ use campfire_values::{ActionId, Named, PackageIndex};
 use crate::flaws::{Flaw, fails_each};
 use crate::moba::{edited, load};
 use crate::module_rules::{entry, rule_at};
+use crate::{fountain, name};
 
 const MANIFEST: &str = "moba/modes/3v3/manifest.toml";
 const MODE_DATA: &str = "moba/modes/3v3/data/mode.toml";
@@ -56,14 +56,6 @@ const USES: [(&str, Edit<'static>); 5] = [
 /// The 3v3 with its uses and `more` edits after them.
 fn with_uses(more: &[(&'static str, Edit<'static>)]) -> Result<ModePackages, LoadError> {
     load(&edited(USES.iter().chain(more).copied()))
-}
-
-fn name(text: &str) -> DeclaredName {
-    DeclaredName::new(text).unwrap()
-}
-
-fn fountain() -> Place {
-    Place::UnitType(name("fountain"))
 }
 
 fn husk() -> Place {

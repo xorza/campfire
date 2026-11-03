@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use bevy_ecs::world::{EntityRef, World};
 use campfire_actions::{ActionProgress, ActionTarget, InProgress};
-use campfire_common::PlayerSlot;
+use campfire_common::{NamedEnum, PlayerSlot};
 use campfire_math::Vec3;
 use campfire_navigation::{Progress, Route};
 use campfire_production::{Activity, ActivityParts};
@@ -39,8 +39,8 @@ pub enum ProbeUnits {
     State(ProbeState),
 }
 
-/// What a unit does, as a probe reads it, which a probe selects by.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What a unit does, as a probe reads it, which a probe selects by, named as its activity is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, NamedEnum)]
 pub enum ProbeState {
     Idle,
     /// Walks, stuck or not.
@@ -299,13 +299,7 @@ impl MatchProbe {
             Some(InProgress::WindDown { slot, .. }) => format!("wind-down {slot}"),
             None => String::new(),
         };
-        let doing = match doing {
-            Activity::Idle => "idle",
-            Activity::Walking => "walk",
-            Activity::Working => "work",
-            Activity::Fighting => "fight",
-            Activity::Acting => "act",
-        };
+        let doing = doing.name();
         if action.is_empty() {
             doing.to_owned()
         } else {
@@ -433,11 +427,17 @@ impl fmt::Display for Counts {
             working,
             fighting,
             acting,
-        } = self;
+        } = *self;
+        let name = |state: ProbeState| state.name();
         write!(
             f,
-            "{idle} idle, {walking} walking ({stuck} stuck), {working} working, \
-             {fighting} fighting, {acting} acting"
+            "{idle} {}, {walking} {} ({stuck} {}), {working} {}, {fighting} {}, {acting} {}",
+            name(ProbeState::Idle),
+            name(ProbeState::Walking),
+            name(ProbeState::Stuck),
+            name(ProbeState::Working),
+            name(ProbeState::Fighting),
+            name(ProbeState::Acting),
         )
     }
 }

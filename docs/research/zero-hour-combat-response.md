@@ -9,7 +9,7 @@ What the released source (GeneralsX, read as a specification) and the install's 
 - **The chase.** The guard-retaliate machine starts by attacking the damager, pursuing it. The attack ends after `GuardChaseUnitsDuration`, 10,000 ms, when the damager is gone, when the damager lies farther from the guard point than the unit's `VisionRange` times `GuardOuterModifierHuman` plus `GuardInnerModifierHuman`, 2.2 plus 1.8, or when the unit lies farther from the point than its `VisionRange` times 1.8, each on the ground (`GuardRetaliateExitConditions::shouldExit`).
 - **The return.** The unit then moves back to the point, looking every `GuardEnemyReturnScanRate`, 1,000 ms, for an enemy within 1.8 times its vision range, not a structure but a base defense, which it attacks within 1.5 times that range of the point; at the point it looks every `GuardEnemyScanRate`, 500 ms, and leaves the machine when it finds none (`AIGuardRetaliateReturnState`, `AIGuardRetaliateIdleState`, `lookForInnerTarget`).
 - **The vision ranges.** Of the objects' `VisionRange` lines, by value, 225 give 200, 224 give 150, 119 give 300, 93 give 0, 54 give 100 and 49 give 180; a GLA vehicle of `GLAVehicle.ini` gives 125.
-- **A computer player's units do not retaliate.** Their idle scan reaches the vision range times `GuardOuterModifierAI`, 1.333, with no weapon-range or fog filter, and pursues (zero-hour-auto-attack.md, The scan).
+- **A computer player's units do not retaliate.** Their idle scan reaches the vision range times `GuardOuterModifierAI`, 1.333, with no weapon-range or fog filter, and pursues ([The scan](zero-hour-auto-attack.md#the-scan)).
 
 ## A turret on the move
 
@@ -29,6 +29,6 @@ What the released source (GeneralsX, read as a specification) and the install's 
 
 ## OpenRA
 
-- **Return fire is the unit's own.** `AutoTarget` answers damage on the damaged unit alone, by its stance (zero-hour-auto-attack.md, OpenRA).
+- **Return fire is the unit's own.** `AutoTarget` answers damage on the damaged unit alone, by its stance ([OpenRA](zero-hour-auto-attack.md#openra)).
 - **Every armament that can fire does.** `AttackBase` takes each armament valid for the target, and each fires as it is ready, so a unit picks no one weapon.
 - **OpenRA's test maps.** A map's Lua script places actors in `WorldLoaded` by `Actor.Create(type, addToWorld, { Owner, Location })`, and the map is played in the game; no headless gameplay harness is documented (read 28 October 2026, [Lua API](https://docs.openra.net/en/release/lua/), [map scripting](https://github.com/OpenRA/OpenRA/wiki/Map-scripting)).

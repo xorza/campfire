@@ -232,7 +232,7 @@ impl ClientLoad {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod reach_in {
     use campfire_client_files::ClientUnits;
 
     use crate::view::client_data::{ClientLoad, PackageClient};

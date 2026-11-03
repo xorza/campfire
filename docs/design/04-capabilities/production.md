@@ -23,6 +23,7 @@
 
 - **Supply is derived, not a player resource.** Supply used and the cap follow from the living units, the queued trains and the complete providers, so no script keeps it and it cannot drift from them. Refused: an update at each event, which would need every system that spawns or kills to report it.
 - **Supply and holdings follow what changed.** One cache keeps what each unit counts for, and its observers mark a unit whose owner, type, death, site or presence comes or goes, as each fires on every path that spawns, kills, restores or rolls back; a queue, which changes in place, shows by its change tick. Each reader follows the marked units before it reads, so a count costs the units that changed, not every unit. Refused: a count of every unit at each train and again at each tick's end, and a `Changed` filter on each part, which reads every unit's change ticks in each tick.
+- **A rider counts for its player.** The holdings, and the supply a script reads, count a unit inside a container as they count it outside, as a transport's cargo keeps its supply in StarCraft; a rider leaves the world, not its player. Refused: the default queries, which skip a `Disabled` rider, so a unit that walked in kept its share, one that spawned inside never had one, and a restore's full count dropped every rider, so a live world and its restore admitted different trains.
 
 ## Requirements
 

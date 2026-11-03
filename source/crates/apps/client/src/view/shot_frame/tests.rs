@@ -32,17 +32,14 @@ fn a_shot_scales_to_both_bounds_of_claudes_images() {
 #[test]
 fn a_shot_crops_and_means_the_frames_pixels() {
     // A frame of 4 × 2, each pixel's red its column × 10 and green its row × 100.
-    let frame = RgbaImage {
-        width: 4,
-        height: 2,
-        pixels: (0..2_u8)
-            .flat_map(|row| (0..4_u8).flat_map(move |column| [column * 10, row * 100, 0, 255]))
-            .collect(),
-    };
+    let pixels = (0..2_u8)
+        .flat_map(|row| (0..4_u8).flat_map(move |column| [column * 10, row * 100, 0, 255]))
+        .collect();
+    let frame = RgbaImage::new(4, 2, pixels).unwrap();
     // Its columns 1 to 2 of row 1, at their own size.
     let crop = ShotFrame::of(URect::new(1, 1, 3, 2), UVec2::new(4, 2)).unwrap();
     assert_eq!(
-        crop.image(&frame).pixels,
+        crop.image(&frame).pixels(),
         [10, 100, 0, 255, 20, 100, 0, 255]
     );
     // The whole frame halved, as a shot of a frame past the bounds would: each pixel the mean of
@@ -53,8 +50,8 @@ fn a_shot_crops_and_means_the_frames_pixels() {
         image: UVec2::new(2, 1),
     };
     let image = half.image(&frame);
-    assert_eq!((image.width, image.height), (2, 1));
-    assert_eq!(image.pixels, [5, 50, 0, 255, 25, 50, 0, 255]);
+    assert_eq!((image.width(), image.height()), (2, 1));
+    assert_eq!(image.pixels(), [5, 50, 0, 255, 25, 50, 0, 255]);
     // A rectangle of the halved image covers twice its pixels of the frame, from the region.
     assert_eq!(
         half.frame_rect(URect::new(1, 0, 2, 1)),
