@@ -72,6 +72,7 @@ pub(crate) mod match_hud;
 pub(crate) mod match_picking;
 pub(crate) mod minimap;
 pub(crate) mod model_scenes;
+pub(crate) mod node_mask;
 pub(crate) mod package_source;
 pub(crate) mod pixel_scale;
 pub(crate) mod player_camera;

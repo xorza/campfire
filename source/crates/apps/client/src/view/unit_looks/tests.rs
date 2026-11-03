@@ -1,9 +1,10 @@
-use campfire_client_files::{ClientUnit, ClientUnits, LookVariation, ModelScale, NodeUpgrade};
+use campfire_client_files::{
+    ClientUnit, ClientUnits, ClipRounds, LookVariation, ModelScale, NodeUpgrade,
+};
 use campfire_codec::Toml;
 use campfire_declarations::ByIdBuilder;
 use campfire_names::TagNames;
 use campfire_units::{BodyForm, BodyShape, Layer, TypeOrigin};
-use campfire_values::PackagePath;
 
 use super::*;
 
@@ -80,11 +81,7 @@ fn a_type_takes_the_models_of_its_key_in_its_packages_units() {
         .collect::<Vec<_>>()
         .try_into()
         .unwrap();
-    let look_nodes = |hide: &[&str]| LookNodes {
-        hide: hide.iter().map(|&name| name.to_owned()).collect(),
-        turret: None,
-        turret_pitch: None,
-    };
+    let look_nodes = LookNodes::hiding;
     assert_eq!(
         paths(types[0]).unwrap(),
         [
@@ -538,18 +535,26 @@ fn a_models_upgrade_shows_and_hides_its_nodes_over_its_states_while_its_unit_hol
         known: Some(&known),
     };
     let [model] = <[LookModel; 1]>::try_from(LookModel::all(source, &[tank])).unwrap();
-    let hidden = |held, lacks: &[u16]| model.held_nodes(held, lacks).hide.to_vec();
-    // Unarmored: the flag, then the hull; armored, bit 2: the flag shown, the hatch hidden, then
-    // the hull, in the upgrades' order. A clip that lacks no round shows both, the flag too,
-    // over its state; one round lacked hides the first rocket; the first group's lack hides
-    // none; both lacked hide both rockets and the flag.
+    let hidden = |held, lacks: &[u16]| {
+        let nodes = model.held_nodes(held, lacks);
+        nodes
+            .hidden()
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    };
+    // Its names in the order it first names them: the flag, the hatch, the hull and the two
+    // rockets. Unarmored: the hull; armored, bit 2: the flag shown, the hatch hidden, and the
+    // hull. A clip that lacks no round shows both, the flag too, over its state; one round lacked
+    // hides the first rocket; the first group's lack hides none; both lacked hide both rockets
+    // and the flag.
     assert_eq!(hidden(0, &[]), ["hull"]);
     assert_eq!(hidden(1 << 2, &[]), ["hatch", "hull"]);
     assert_eq!(hidden(1 << 3, &[2, 0]), ["hull"]);
     assert_eq!(hidden(0, &[0, 1]), ["hull", "rocket01"]);
     assert_eq!(
         hidden(1 << 2, &[0, 2]),
-        ["hatch", "hull", "rocket01", "rocket02", "flag"]
+        ["flag", "hatch", "hull", "rocket01", "rocket02"]
     );
     assert!(model.shows_rounds());
     // Its upgrades test bit 2 alone; a source of no conditions holds none.

@@ -537,11 +537,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     assert!(model.get::<WorldAssetRoot>().is_some());
     assert_eq!(
         model.get::<LookNodes>(),
-        Some(&LookNodes {
-            hide: ["tank.flash".to_owned()].into(),
-            turret: None,
-            turret_pitch: None,
-        })
+        Some(&LookNodes::hiding(&["tank.flash"]))
     );
     let transform = model.get::<Transform>().unwrap();
     assert_eq!(transform.rotation, Quat::IDENTITY);

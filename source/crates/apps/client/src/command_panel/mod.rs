@@ -927,22 +927,26 @@ impl Shown {
             return true;
         }
         let tags = held.tags;
-        let slots = held.slots.into_iter().flat_map(ActionSlots::indexed);
-        let actions = slots.filter_map(|(slot, held)| {
-            let action = held.action?;
-            let making = match books.actions.get(action)?.kind {
-                ActionKind::Train => Making::Train,
-                ActionKind::Build => Making::Build(books.builds.of(action)?.unit_type),
-                ActionKind::Research => Making::Research(*books.researches.get(action)?),
-                ActionKind::Cast => Making::cast(books.actions.get(action)?.when, tags)?,
-                _ => return None,
-            };
-            Some(Does::Action {
-                slot,
-                action,
-                making,
+        // Each pass over the unit's actions reads its slots again, as a look's places look each
+        // up by its id, so no frame collects them.
+        let actions = || {
+            let slots = held.slots.into_iter().flat_map(ActionSlots::indexed);
+            slots.filter_map(move |(slot, held)| {
+                let action = held.action?;
+                let making = match books.actions.get(action)?.kind {
+                    ActionKind::Train => Making::Train,
+                    ActionKind::Build => Making::Build(books.builds.of(action)?.unit_type),
+                    ActionKind::Research => Making::Research(*books.researches.get(action)?),
+                    ActionKind::Cast => Making::cast(books.actions.get(action)?.when, tags)?,
+                    _ => return None,
+                };
+                Some(Does::Action {
+                    slot,
+                    action,
+                    making,
+                })
             })
-        });
+        };
         let key = |does: Does| match does {
             Does::Action { action, .. } => looks.action(action)?.key,
             Does::Command(command) => looks.command(command).face.key,
@@ -950,7 +954,7 @@ impl Shown {
         };
         let places = looks.places(held.unit_type);
         if places.is_empty() {
-            let laid = actions
+            let laid = actions()
                 .enumerate()
                 .map_while(|(at, does)| Some((looks.cell_in_order(at)?, does)));
             self.buttons.extend(laid.map(|(cell, does)| Button {
@@ -959,29 +963,27 @@ impl Shown {
                 key: key(does),
             }));
         } else {
-            let actions: Vec<Does> = actions.collect();
             let sells = books.sales.get(held.unit_type).is_some();
             let mut riders = held.riders.iter();
             for placed in places {
-                let does =
-                    match placed.button {
-                        PlacedButton::Action(id) => actions.iter().copied().find(
-                            |does| matches!(does, Does::Action { action, .. } if *action == id),
-                        ),
-                        PlacedButton::Command(PanelCommand::Sell) => {
-                            sells.then_some(Does::Command(PanelCommand::Sell))
-                        }
-                        PlacedButton::Command(PanelCommand::Rally) => {
-                            held.queue.map(|_| Does::Command(PanelCommand::Rally))
-                        }
-                        PlacedButton::Command(PanelCommand::Exit) => {
-                            let rider = riders.next();
-                            rider.map(|&(rider, unit_type)| Does::Exit { rider, unit_type })
-                        }
-                        PlacedButton::Command(PanelCommand::Evacuate) => (!held.riders.is_empty())
-                            .then_some(Does::Command(PanelCommand::Evacuate)),
-                        PlacedButton::Command(command) => Some(Does::Command(command)),
-                    };
+                let does = match placed.button {
+                    PlacedButton::Action(id) => actions()
+                        .find(|does| matches!(does, Does::Action { action, .. } if *action == id)),
+                    PlacedButton::Command(PanelCommand::Sell) => {
+                        sells.then_some(Does::Command(PanelCommand::Sell))
+                    }
+                    PlacedButton::Command(PanelCommand::Rally) => {
+                        held.queue.map(|_| Does::Command(PanelCommand::Rally))
+                    }
+                    PlacedButton::Command(PanelCommand::Exit) => {
+                        let rider = riders.next();
+                        rider.map(|&(rider, unit_type)| Does::Exit { rider, unit_type })
+                    }
+                    PlacedButton::Command(PanelCommand::Evacuate) => {
+                        (!held.riders.is_empty()).then_some(Does::Command(PanelCommand::Evacuate))
+                    }
+                    PlacedButton::Command(command) => Some(Does::Command(command)),
+                };
                 if let Some(does) = does {
                     self.buttons.push(Button {
                         cell: placed.cell,

@@ -138,11 +138,7 @@ fn a_model_that_replaces_another_shows_as_it_is_dressed_and_a_new_state_hides_ag
         .unwrap()
         .scenes[0]
         .clone();
-    let nodes = |hide: &[&str]| LookNodes {
-        hide: hide.iter().map(|&name| name.to_owned()).collect(),
-        turret: None,
-        turret_pitch: None,
-    };
+    let nodes = LookNodes::hiding;
     // A model of the state before, shown, and the one of the new state, hidden as it loads.
     let world = app.world_mut();
     let root = world.spawn(Visibility::default()).id();
@@ -195,6 +191,18 @@ fn a_model_that_replaces_another_shows_as_it_is_dressed_and_a_new_state_hides_ag
     assert_eq!(visibility(&app, flag), Some(Visibility::Inherited));
     assert_eq!(visibility(&app, hull), Some(Visibility::Hidden));
     assert!(app.world().get::<Redress>(after).is_none());
+    // A shot of the same look, which hides none of its names now, shows the hull by the nodes
+    // found as it was dressed, and its flag stays shown.
+    let shown = LookNodes {
+        hide: NodeMask::default(),
+        ..app.world().get::<LookNodes>(after).unwrap().clone()
+    };
+    app.world_mut().entity_mut(after).insert((shown, Redress));
+    app.update();
+    assert_eq!(visibility(&app, hull), Some(Visibility::Inherited));
+    assert_eq!(visibility(&app, flag), Some(Visibility::Inherited));
+    let dressed = app.world().get::<Dressed>(after).unwrap();
+    assert!(dressed.hidden.is_empty());
     // Its hierarchy: the root pivot plays its clips, the root's own mesh is its hull, the arm's
     // its flag; each pivot is a target by the names from the root to it.
     let [root, arm] = ["root", "arm"].map(|name| node(&app, name).unwrap());
@@ -352,11 +360,7 @@ fn each_client_object_stands_still_on_the_ground_turned_and_at_its_models_scales
     placed.sort_by(|a, b| a.0.translation.x.total_cmp(&b.0.translation.x));
     // The bush at the ground's 4 m, unturned; the oak at 4 + 1 = 5 m, turned a quarter about
     // y; each model at its own scale, with the nodes its look hides; the ghost is none.
-    let look_nodes = |hide: &[&str]| LookNodes {
-        hide: hide.iter().map(|&node| node.to_owned()).collect(),
-        turret: None,
-        turret_pitch: None,
-    };
+    let look_nodes = LookNodes::hiding;
     let scaled = |scale: f32| Transform::from_scale(Vec3::splat(scale));
     assert_eq!(placed.len(), 2);
     assert_eq!(placed[0].0, Transform::from_xyz(0.0, 4.0, 0.0));
@@ -382,9 +386,9 @@ fn a_dressing_hides_the_named_nodes_and_finds_the_turret() {
     let [turret, elevation, flash, hull, other] = [(); 5].map(|()| world.spawn_empty().id());
     // It hides the flash and a decal, turns the turret and pitches its elevation.
     let look_nodes = LookNodes {
-        hide: ["tank.decal".to_owned(), "tank.flash".to_owned()].into(),
         turret: Some("tank.turret".into()),
         turret_pitch: Some("tank.elevation".into()),
+        ..LookNodes::hiding(&["tank.decal", "tank.flash"])
     };
     let node = |entity, name| Node { entity, name };
     let nodes = [
@@ -394,13 +398,14 @@ fn a_dressing_hides_the_named_nodes_and_finds_the_turret() {
         node(hull, Some("tank.hull")),
         node(other, None),
     ];
+    let dressing = Dressing::of(&look_nodes, nodes.into_iter());
+    let hidden: Vec<Entity> = dressing.named.of_mask(look_nodes.hide).collect();
+    assert_eq!(hidden, [flash]);
+    assert_eq!(dressing.named.at(0).count(), 0);
+    assert_eq!(dressing.named.at(1).collect::<Vec<_>>(), [flash]);
     assert_eq!(
-        Dressing::of(&look_nodes, nodes.into_iter()),
-        Dressing {
-            hidden: vec![flash],
-            turret: Some(turret),
-            turret_pitch: Some(elevation),
-        }
+        [dressing.turret, dressing.turret_pitch],
+        [Some(turret), Some(elevation)]
     );
     // A look of no turret turns none.
     let still = LookNodes {
@@ -519,10 +524,7 @@ fn a_model_at_a_bone_stands_where_its_hosts_node_stands_at_its_own_scale() {
     let mut world = World::new();
     let quarter = Quat::from_rotation_y(FRAC_PI_2);
     let host = world.spawn(Transform::from_scale(Vec3::splat(2.0))).id();
-    let undressed = Dressed {
-        hidden: Vec::new(),
-        pivots: None,
-    };
+    let undressed = Dressed::hiding(Vec::new(), None);
     let turret = Transform::from_xyz(0.0, 1.0, 0.0).with_rotation(quarter);
     let turret = world
         .spawn((turret, Name::new("turret"), ChildOf(host)))

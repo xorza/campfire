@@ -47,6 +47,7 @@ use crate::view::ground_heights::GroundHeights;
 use crate::view::look_clips::{ClipHidden, ClipTiming, HiddenPivot};
 use crate::view::match_colors::{MatchColors, Paint};
 use crate::view::model_scenes::ModelScenes;
+use crate::view::node_mask::NodeMask;
 use crate::view::unit_looks::{LookModel, LookNodes, LookTypes, ModelSource, UnitLooks};
 
 /// Draws units and the map's client objects with their packages' models: loads each unit type's
@@ -302,10 +303,11 @@ impl UnitModelsPlugin {
             name: names.get(node).ok().map(Name::as_str),
         });
         let Dressing {
-            hidden,
+            named,
             turret,
             turret_pitch,
         } = Dressing::of(look_nodes, spawned);
+        let hidden: Vec<Entity> = named.of_mask(look_nodes.hide).collect();
         for &node in &hidden {
             commands.entity(node).insert(Visibility::Hidden);
         }
@@ -328,7 +330,12 @@ impl UnitModelsPlugin {
         commands
             .entity(ready.entity)
             .remove::<Redress>()
-            .insert(Dressed { hidden, pivots });
+            .insert(Dressed {
+                hidden,
+                pivots,
+                named,
+                hides: look_nodes.hide,
+            });
         // A model is a child of its unit's drawing, which the turret's nodes turn with.
         let at_rest = |node: Option<Entity>| {
             let node = node?;
@@ -401,27 +408,45 @@ impl UnitModelsPlugin {
         }
     }
 
-    /// Hides again the nodes of each dressed model whose state's hidden nodes changed, as a new
-    /// state of the same model gives them: those it hid shown, and those its nodes now hide
-    /// hidden.
+    /// Hides again the nodes of each dressed model whose hidden nodes changed, as a shot or a new
+    /// state of the same model gives them: each node of a name it hid and no longer hides shown,
+    /// and each of a name it now hides hidden, by the nodes it found of each name as it was
+    /// dressed; a model of a state whose look names other nodes finds its nodes of each again.
     fn redress(
         mut models: Query<'_, '_, (Entity, &LookNodes, &mut Dressed), With<Redress>>,
         (children, names): (Query<'_, '_, &Children>, Query<'_, '_, &Name>),
         mut commands: Commands<'_, '_>,
     ) {
         for (model, look_nodes, mut dressed) in &mut models {
-            for &node in &dressed.hidden {
-                commands.entity(node).insert(Visibility::Inherited);
+            let dressed = &mut *dressed;
+            let changed = if dressed.named.reads(&look_nodes.names) {
+                dressed.hides.changed(look_nodes.hide)
+            } else {
+                for &node in &dressed.hidden {
+                    commands.entity(node).insert(Visibility::Inherited);
+                }
+                let spawned = children.iter_descendants(model).map(|node| Node {
+                    entity: node,
+                    name: names.get(node).ok().map(Name::as_str),
+                });
+                dressed.named = Dressing::of(look_nodes, spawned).named;
+                look_nodes.hide
+            };
+            for at in changed.iter() {
+                let visibility = if look_nodes.hide.contains(at) {
+                    Visibility::Hidden
+                } else {
+                    Visibility::Inherited
+                };
+                for node in dressed.named.at(at) {
+                    commands.entity(node).insert(visibility);
+                }
             }
-            let spawned = children.iter_descendants(model).map(|node| Node {
-                entity: node,
-                name: names.get(node).ok().map(Name::as_str),
-            });
-            let Dressing { hidden, .. } = Dressing::of(look_nodes, spawned);
-            for &node in &hidden {
-                commands.entity(node).insert(Visibility::Hidden);
-            }
-            dressed.hidden = hidden;
+            dressed.hides = look_nodes.hide;
+            dressed.hidden.clear();
+            dressed
+                .hidden
+                .extend(dressed.named.of_mask(look_nodes.hide));
             commands.entity(model).remove::<Redress>();
         }
     }
@@ -621,13 +646,61 @@ pub(crate) struct DressSystems;
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Redress;
 
-/// On a dressed model: the nodes its dressing hid, and its pivots, none for a model of no
-/// hierarchy.
+/// On a dressed model: the nodes its dressing hid, its pivots, none for a model of no hierarchy,
+/// its nodes of each name its look shows and hides, and the names it hides, as a mask.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
 #[require(ClipHidden)]
 pub(crate) struct Dressed {
     pub(crate) hidden: Vec<Entity>,
     pub(crate) pivots: Option<ModelPivots>,
+    named: NamedNodes,
+    hides: NodeMask,
+}
+
+/// A spawned model's nodes of each name its look shows and hides, by the name's place among them:
+/// one run of nodes, each name's from its start, found once as the model is dressed, so a shot
+/// that hides a clip's round names no node.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct NamedNodes {
+    names: Arc<[Arc<str>]>,
+    nodes: Vec<Entity>,
+    starts: Vec<u32>,
+}
+
+impl NamedNodes {
+    /// The nodes of `names` that `placed` gives, each with its name's place, in the order met.
+    fn of(names: &Arc<[Arc<str>]>, mut placed: Vec<(usize, Entity)>) -> Self {
+        placed.sort_by_key(|&(at, _)| at);
+        let mut starts = Vec::with_capacity(names.len() + 1);
+        let mut next = 0;
+        for at in 0..=names.len() {
+            while next < placed.len() && placed[next].0 < at {
+                next += 1;
+            }
+            starts.push(u32::try_from(next).expect("a model's nodes fit u32"));
+        }
+        Self {
+            names: Arc::clone(names),
+            nodes: placed.into_iter().map(|(_, node)| node).collect(),
+            starts,
+        }
+    }
+
+    /// Whether it holds the nodes of `names`, the very list it was found of.
+    fn reads(&self, names: &Arc<[Arc<str>]>) -> bool {
+        Arc::ptr_eq(&self.names, names)
+    }
+
+    /// The nodes of the name at `at`.
+    fn at(&self, at: usize) -> impl Iterator<Item = Entity> + '_ {
+        let range = |at: usize| self.starts.get(at).map_or(0, |&start| start as usize);
+        self.nodes[range(at)..range(at + 1)].iter().copied()
+    }
+
+    /// The nodes of each name `mask` holds.
+    fn of_mask(&self, mask: NodeMask) -> impl Iterator<Item = Entity> + '_ {
+        mask.iter().flat_map(|at| self.at(at))
+    }
 }
 
 /// A model's pivots, as its scene spawned them: the root of its hierarchy, which its clips' player
@@ -654,11 +727,11 @@ struct ModelTree<'q, 'w, 's> {
     meshes: &'q Query<'w, 's, (), With<Mesh3d>>,
 }
 
-/// What a spawned model's dressing does: the nodes it hides, and the nodes its unit's turret
-/// angle and pitch turn.
+/// What a spawned model's dressing finds: its nodes of each name its look shows and hides, and
+/// the nodes its unit's turret angle and pitch turn.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Dressing {
-    hidden: Vec<Entity>,
+    named: NamedNodes,
     turret: Option<Entity>,
     turret_pitch: Option<Entity>,
 }
@@ -711,16 +784,15 @@ impl TurretNodes {
 }
 
 impl Dressing {
-    /// The dressing of a model of `look_nodes`, whose scene spawned `nodes`: each node of a name it
-    /// hides, and the first node of its turret's name.
+    /// The dressing of a model of `look_nodes`, whose scene spawned `nodes`: its nodes of each name
+    /// its look shows and hides, and the first node of its turret's name.
     fn of<'a>(look_nodes: &LookNodes, nodes: impl Iterator<Item = Node<'a>>) -> Self {
         let mut dressing = Self::default();
+        let mut placed = Vec::new();
         for node in nodes {
-            if node
-                .name
-                .is_some_and(|name| look_nodes.hide.iter().any(|hidden| hidden == name))
-            {
-                dressing.hidden.push(node.entity);
+            let names = &look_nodes.names;
+            if let Some(at) = names.iter().position(|name| Some(&**name) == node.name) {
+                placed.push((at, node.entity));
             }
             let named = |name: &Option<Arc<str>>| {
                 node.name.is_some_and(|node| Some(node) == name.as_deref())
@@ -732,7 +804,25 @@ impl Dressing {
                 dressing.turret_pitch = Some(node.entity);
             }
         }
+        dressing.named = NamedNodes::of(&look_nodes.names, placed);
         dressing
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod reach_in {
+    use super::*;
+
+    impl Dressed {
+        /// A dressed model that hid `hidden`, of `pivots`, its look naming no node.
+        pub(crate) fn hiding(hidden: Vec<Entity>, pivots: Option<ModelPivots>) -> Self {
+            Self {
+                hidden,
+                pivots,
+                named: NamedNodes::default(),
+                hides: NodeMask::default(),
+            }
+        }
     }
 }
 

@@ -137,7 +137,11 @@ fn a_units_draw_takes_the_state_of_its_life_keeping_a_model_of_the_same_scene() 
     let first = app.world().get::<Children>(root).unwrap()[0];
     let hidden = |app: &App, model| {
         let nodes = app.world().get::<LookNodes>(model).unwrap();
-        nodes.hide.iter().cloned().collect::<Vec<String>>()
+        nodes
+            .hidden()
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<Vec<String>>()
     };
     assert_eq!(hidden(&app, first), ["flag"]);
     // At half its life, damaged: the same model, which hides its nodes again, hiding none.
@@ -322,16 +326,16 @@ fn a_clip_hides_its_pivots_own_meshes_in_its_frames_but_those_its_look_hides() {
     let [player, arm, flag] = [(); 3].map(|()| world.spawn(Inherited).id());
     // The arm's own meshes, its arm and its flag, which the look hides; the clip hides the arm at
     // frames 1 and 2, and a leg the model lacks.
-    let dressed = Dressed {
-        hidden: vec![flag],
-        pivots: Some(ModelPivots {
+    let dressed = Dressed::hiding(
+        vec![flag],
+        Some(ModelPivots {
             player,
             meshes: vec![PivotMeshes {
                 pivot: "arm".to_owned(),
                 meshes: vec![arm, flag],
             }],
         }),
-    };
+    );
     world.entity_mut(flag).insert(Hidden);
     let hidden_at = |pivot: &str| HiddenPivot {
         pivot: pivot.to_owned(),

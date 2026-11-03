@@ -11,22 +11,22 @@ use bevy::math::Vec3;
 use bevy::transform::components::Transform;
 use bevy::world_serialization::WorldAssetRoot;
 use campfire_client_files::{
-    AnimationMode, AttackPhase, ClientModel, ClipRounds, ConditionTest, DoorStage, FireBone,
-    LifeShare, LookDraw, LookShown, ModelTop, SetMatch, SiteStage, StartFrame, StateAnimation,
-    StateSet,
+    AnimationMode, AttackPhase, ClientModel, ConditionTest, DoorStage, FireBone, LifeShare,
+    LookDraw, LookShown, ModelTop, SetMatch, SiteStage, StartFrame, StateAnimation, StateSet,
 };
 use campfire_common::DeclaredName;
 use campfire_declarations::ById;
 use campfire_math::Num;
 use campfire_names::MatchNames;
 use campfire_units::{TypeOriginBook, Variation, Variations};
-use campfire_values::{ActionId, NameId, PackageIndex, Tag, TagSet, UnitType};
+use campfire_values::{ActionId, NameId, PackageIndex, PackagePath, Tag, TagSet, UnitType};
 use tracing::error;
 
 use crate::view::client_data::ClientLoad;
 use crate::view::float_num::FloatNum;
 use crate::view::match_colors::Paint;
 use crate::view::model_scenes::ModelScenes;
+use crate::view::node_mask::NodeMask;
 use crate::view::package_source::PackageAssets;
 
 /// Each unit type's look, as its package's client data gives it, by type: none for a type of no
@@ -212,7 +212,8 @@ pub(crate) struct UnitFacts {
 }
 
 /// A model a look is drawn with: the path of its glTF's first scene, its nodes, the factor it is
-/// drawn at, the nodes its upgrades show and hide, and those that show its clips' rounds.
+/// drawn at, the nodes its upgrades show and hide, and those that show its clips' rounds, each
+/// set of nodes a mask over the names its nodes list.
 #[derive(Debug, Clone)]
 pub(crate) struct LookModel {
     pub(crate) scene: AssetPath<'static>,
@@ -221,16 +222,45 @@ pub(crate) struct LookModel {
     /// The node of its state's first model it is drawn at, none for one drawn at its unit.
     pub(crate) bone: Option<Arc<str>>,
     upgrades: Arc<[ModelUpgrade]>,
-    rounds: Arc<[ClipRounds]>,
+    rounds: Arc<[ClipNodes]>,
+}
+
+/// The nodes that show a clip's rounds, of the weapon group of its slot: each round's.
+#[derive(Debug, Clone)]
+struct ClipNodes {
+    slot: u8,
+    rounds: Box<[NodeMask]>,
+}
+
+/// The names a model's look shows and hides, each placed once as its load first meets it.
+#[derive(Debug, Default)]
+struct NodeNames(Vec<Arc<str>>);
+
+impl NodeNames {
+    /// The mask of `names`, of the model `model`, each at its place, placed as it is first met;
+    /// one past `NodeMask::MOST` places is logged and left out.
+    fn mask(&mut self, names: &[String], model: &PackagePath) -> NodeMask {
+        NodeMask::of(names.iter().filter_map(|name| {
+            if let Some(at) = self.0.iter().position(|placed| **placed == **name) {
+                return Some(at);
+            }
+            if self.0.len() == NodeMask::MOST {
+                error!(model = ?model, node = name, "a model names more nodes than its look holds");
+                return None;
+            }
+            self.0.push(Arc::from(name.as_str()));
+            Some(self.0.len() - 1)
+        }))
+    }
 }
 
 /// The nodes of a look's model a condition shows and hides while its unit holds it, over those
 /// its state hides (09-zero-hour.md, An upgrade's look is a tag).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 struct ModelUpgrade {
     when: Known,
-    show: Box<[String]>,
-    hide: Box<[String]>,
+    show: NodeMask,
+    hide: NodeMask,
 }
 
 /// Where a look's models come from: their package, the nodes they turn by their unit's turret,
@@ -250,11 +280,13 @@ pub(crate) struct TurretNames<'a> {
     pitch: Option<&'a str>,
 }
 
-/// What a drawn model needs once its scene is spawned: the names of the nodes its look hides, and
-/// the names of the nodes its look turns by its unit's turret angle and pitch, if it has them.
+/// What a drawn model needs once its scene is spawned: the names of the nodes its look shows and
+/// hides, those it hides, as a mask over them, and the names of the nodes its look turns by its
+/// unit's turret angle and pitch, if it has them.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LookNodes {
-    pub(crate) hide: Arc<[String]>,
+    pub(crate) names: Arc<[Arc<str>]>,
+    pub(crate) hide: NodeMask,
     pub(crate) turret: Option<Arc<str>>,
     pub(crate) turret_pitch: Option<Arc<str>>,
 }
@@ -798,40 +830,26 @@ impl LookModel {
     /// each clip as many as it lacks hidden, and the rest shown, as `doHideShowProjectileObjects`
     /// sets them over both (02-engine-core.md, A model shows its clip's rounds).
     pub(crate) fn held_nodes(&self, held: u64, lacks: &[u16]) -> LookNodes {
-        let mut applied = self
+        let mut hide = self.nodes.hide;
+        for upgrade in self
             .upgrades
             .iter()
             .filter(|upgrade| upgrade.when.holds(held))
-            .peekable();
-        if applied.peek().is_none() && self.rounds.is_empty() {
-            return self.nodes.clone();
-        }
-        let mut hide = self.nodes.hide.to_vec();
-        let mut set = |node: &String, hidden: bool| {
-            if !hidden {
-                hide.retain(|held| held != node);
-            } else if !hide.contains(node) {
-                hide.push(node.clone());
-            }
-        };
-        for upgrade in applied {
-            for node in &upgrade.show {
-                set(node, false);
-            }
-            for node in &upgrade.hide {
-                set(node, true);
-            }
+        {
+            hide = hide.minus(upgrade.show).union(upgrade.hide);
         }
         for clip in &*self.rounds {
             let lacked = lacks.get(usize::from(clip.slot)).copied().unwrap_or(0);
-            for (round, nodes) in (0_u16..).zip(&clip.rounds) {
-                for node in nodes {
-                    set(node, round < lacked);
-                }
+            for (round, &nodes) in (0_u16..).zip(&clip.rounds) {
+                hide = if round < lacked {
+                    hide.union(nodes)
+                } else {
+                    hide.minus(nodes)
+                };
             }
         }
         LookNodes {
-            hide: hide.into(),
+            hide,
             ..self.nodes.clone()
         }
     }
@@ -867,31 +885,65 @@ impl LookModel {
         } = source;
         models
             .iter()
-            .map(|model| Self {
-                upgrades: model
-                    .upgrades
-                    .iter()
+            .map(|model| {
+                let mut names = NodeNames::default();
+                let hide = names.mask(&model.hide, &model.model);
+                let upgrades = (model.upgrades.iter())
                     .map(|upgrade| ModelUpgrade {
                         when: known
                             .and_then(|known| known.get(&upgrade.condition))
                             .copied()
                             .unwrap_or(Known::Lacked),
-                        show: upgrade.show.as_slice().into(),
-                        hide: upgrade.hide.as_slice().into(),
+                        show: names.mask(&upgrade.show, &model.model),
+                        hide: names.mask(&upgrade.hide, &model.model),
                     })
-                    .collect(),
-                scene: GltfAssetLabel::Scene(0)
-                    .from_asset(PackageAssets::asset_path(package, &model.model)),
-                nodes: LookNodes {
-                    hide: model.hide.as_slice().into(),
-                    turret: turret.angle.filter(|_| model.bone.is_none()).map(Arc::from),
-                    turret_pitch: turret.pitch.filter(|_| model.bone.is_none()).map(Arc::from),
-                },
-                scale: model.scale.get(),
-                bone: model.bone.as_deref().map(Arc::from),
-                rounds: model.rounds.as_slice().into(),
+                    .collect();
+                let rounds = (model.rounds.iter())
+                    .map(|clip| ClipNodes {
+                        slot: clip.slot,
+                        rounds: (clip.rounds.iter())
+                            .map(|round| names.mask(round, &model.model))
+                            .collect(),
+                    })
+                    .collect();
+                Self {
+                    upgrades,
+                    scene: GltfAssetLabel::Scene(0)
+                        .from_asset(PackageAssets::asset_path(package, &model.model)),
+                    nodes: LookNodes {
+                        names: names.0.into(),
+                        hide,
+                        turret: turret.angle.filter(|_| model.bone.is_none()).map(Arc::from),
+                        turret_pitch: turret.pitch.filter(|_| model.bone.is_none()).map(Arc::from),
+                    },
+                    scale: model.scale.get(),
+                    bone: model.bone.as_deref().map(Arc::from),
+                    rounds,
+                }
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod reach_in {
+    use super::*;
+
+    impl LookNodes {
+        /// The nodes of a look that hides `hide` and turns no turret.
+        pub(crate) fn hiding(hide: &[&str]) -> Self {
+            Self {
+                names: hide.iter().map(|&name| Arc::from(name)).collect(),
+                hide: NodeMask::of(0..hide.len()),
+                turret: None,
+                turret_pitch: None,
+            }
+        }
+
+        /// The names of the nodes it hides, in their places' order.
+        pub(crate) fn hidden(&self) -> Vec<&str> {
+            self.hide.iter().map(|at| &*self.names[at]).collect()
+        }
     }
 }
 

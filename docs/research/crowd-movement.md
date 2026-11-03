@@ -356,6 +356,11 @@ change tried alone.
   within the play's limit; with a mover of a speed of 0 counted stuck once it comes no nearer
   too, the boarding took 918 ticks, from 412, and the bases play stalled 401 times, from 188. This brake holds a walker
   whose step would reach a unit, where Zero Hour's `blocked` flag comes of a collision alone.
+- **The bump limit on a touch stalls the check too.** With the limit, and the turn where a mover
+  stands, taken only while a unit that brakes the mover touches it, within the bit a touch
+  rounds to, the combat play's drive and the garrison never ended within the plays' limits; with
+  a mover's speed of a bit at such a touch taken as a stop, the entry play's bunker was never
+  boarded. Measured 3 November 2026.
 - **A mover that stands counted stuck stalls the bases play.** Counting a stuck tick for each
   tick a mover of a speed of 0 comes no nearer its waypoint, as one that turns where it stands
   does, the bases play stalled 953 times, from 188.
