@@ -27,6 +27,7 @@ use campfire_vision::{ByHolding, ByVision, TeamSight};
 use crate::holdings::Holdings;
 use crate::kept_spawns::KeptSpawns;
 use crate::leaders::Leaders;
+use crate::power_count::PowerCount;
 use crate::production_column::RowReads;
 use crate::sales::Sales;
 
@@ -55,6 +56,7 @@ mod holdings;
 mod kept_spawns;
 mod leaders;
 mod made_at;
+mod mode_power_data;
 mod mode_supply_data;
 mod node;
 mod node_book;
@@ -62,7 +64,11 @@ mod node_data;
 mod order_dues;
 mod placement;
 mod placement_data;
+mod player_power;
 mod player_supply;
+mod power_book;
+mod power_count;
+mod power_speed;
 mod producer_spec;
 mod production_api;
 mod production_books;
@@ -70,6 +76,7 @@ mod production_column;
 mod production_data;
 mod production_directive;
 mod production_orders;
+mod queue_pace;
 mod rally;
 mod rally_target;
 mod requirement_book;
@@ -117,19 +124,24 @@ pub use crate::gather_spec::GatherSpec;
 pub use crate::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeAt};
 pub use crate::held_places::HeldPlaces;
 pub use crate::made_at::{MadeAt, Rehome};
+pub use crate::mode_power_data::{EmptyPower, ModePowerData, PowerSpeedData};
 pub use crate::mode_supply_data::ModeSupplyData;
 pub use crate::node::Node;
 pub use crate::node_book::{NodeBook, NodeSpec};
 pub use crate::node_data::{EmptyNode, NodeData};
 pub use crate::placement::Placement;
 pub use crate::placement_data::{PlacementData, PlacementRule};
+pub use crate::player_power::PlayerPower;
 pub use crate::player_supply::PlayerSupply;
+pub use crate::power_book::PowerBook;
+pub use crate::power_speed::PowerSpeed;
 pub use crate::producer_spec::ProducerSpec;
 pub use crate::production_api::ProductionApi;
 pub use crate::production_column::ProductionColumn;
 pub use crate::production_data::{PlaceData, ProductionData};
 pub use crate::production_directive::ProductionDirective;
 pub use crate::production_orders::ProductionOrders;
+pub use crate::queue_pace::QueuePace;
 pub use crate::rally::Rally;
 pub use crate::rally_target::RallyTarget;
 pub use crate::requirement_book::{Required, RequirementBook};
@@ -147,7 +159,7 @@ pub use crate::supply_book::SupplyBook;
 pub use crate::supply_cost_book::{SupplyCostBook, SupplyUnit, UnitSupply};
 pub use crate::supply_data::SupplyData;
 pub use crate::train_data::TrainData;
-pub use crate::train_queue::{Queued, TrainQueue};
+pub use crate::train_queue::{HeadTimes, Queued, TrainQueue};
 pub use crate::train_spec::TrainSpec;
 pub use crate::trained_units::{OnUnitTrained, Trained, TrainedUnits};
 pub use crate::trains::Trains;
@@ -168,7 +180,7 @@ pub enum ProductionSystems {
     Start,
     /// Sites progress, and the trains whose time ended spawn.
     Finish,
-    /// Each player's supply is counted again, and the emptied nodes go.
+    /// Each player's supply and power are counted again, and the emptied nodes go.
     Supply,
     /// After the actions run and before units move: each builder shows whether it holds a build,
     /// for what moves idle units aside as they move.
@@ -212,6 +224,7 @@ impl Module for Production {
         d.section::<NodeData>();
         d.section::<DropOffData>();
         d.section::<ModeSupplyData>();
+        d.section::<ModePowerData>();
         d.removals::<Gatherer>();
         d.engine_tags(&[
             Self::CONSTRUCTING,
@@ -229,6 +242,8 @@ impl Module for Production {
         d.observer(Holdings::aged);
         d.derived_sent::<PlayerSupply>();
         d.server_part::<Player, PlayerSupply>();
+        d.derived_sent::<PlayerPower>();
+        d.server_part::<Player, PlayerPower>();
         d.component::<Rally>();
         d.component::<HeldPlaces>();
         d.component::<Doors>();
@@ -270,12 +285,14 @@ impl Module for Production {
         d.book::<ById<ActionId, TrainSpec>>(TrainSpec::book);
         d.book::<ById<ActionId, ResearchSpec>>(ResearchSpec::book);
         d.extend::<ModifierAppliers>(ResearchSpec::applied_ways);
+        d.extend::<ModifierAppliers>(PowerBook::applied_ways);
         d.book::<ById<ActionId, GatherSpec>>(GatherSpec::book);
         d.book::<RequirementBook>(RequirementBook::build);
         d.book::<SupplyCostBook>(SupplyCostBook::build);
         d.book::<BuildBook>(BuildBook::build);
         d.book::<NodeBook>(NodeBook::build);
         d.book::<SupplyBook>(SupplyBook::build);
+        d.book::<PowerBook>(PowerBook::build);
         d.rule(Self::rule);
         d.rule(Self::actions_rule);
         d.column::<ProductionColumn, RowReads>(ProductionColumn::fill_row);
@@ -323,8 +340,9 @@ impl Module for Production {
     /// spawn are the server's: a predicting client derives none, as it holds only the units its
     /// team sees, and its unit comes back by replication. A build's placement tests the units the
     /// server's vision sees, or, on a predicting client, the units it holds. On the server, a
-    /// player spawns with its supply, which the refresh of a mode that counts supply writes in
-    /// place; a client receives its own player's.
+    /// player spawns with its supply and its power, which the refreshes of a mode that counts them
+    /// write in place, the power's giving or taking its player's shortage modifier; a client
+    /// receives its own player's.
     fn install(cx: &mut InstallCx<'_, Self::Systems>) {
         cx.by_role(
             ProductionSystems::Commands,
@@ -342,6 +360,9 @@ impl Module for Production {
         );
         if cx.book::<SupplyBook>().is_some_and(|book| book.counts()) {
             cx.server(ProductionSystems::Supply, PlayerSupply::refresh);
+        }
+        if cx.book::<PowerBook>().is_some_and(|book| book.counts()) {
+            cx.server(ProductionSystems::Supply, PowerCount::refresh);
         }
         // A build places a box, which only the module that finds a walker's open cell tests for
         // room, and a worker walks.
@@ -452,7 +473,7 @@ pub mod internals {
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{IdAllocator, MatchRate, StableId};
     use campfire_stats::ModifierBook;
-    use campfire_units::{BuildTarget, Life};
+    use campfire_units::{BuildTarget, Life, StatId};
     use campfire_values::{ActionId, ModifierId, UnitType};
 
     use crate::Production;
@@ -460,7 +481,10 @@ pub mod internals {
     use crate::builder::Builder;
     use crate::gather_spec::GatherSpec;
     use crate::gatherer::{GatherStep, Gatherer};
+    use crate::mode_power_data::PowerSpeedData;
     use crate::mode_supply_data::ModeSupplyData;
+    use crate::power_book::{PowerBook, PowerRules};
+    use crate::power_speed::PowerSpeed;
     use crate::research_data::ResearchHolder;
     use crate::research_spec::ResearchSpec;
     use crate::site::SiteProgress;
@@ -614,6 +638,18 @@ pub mod internals {
                 SupplyCostBook::new(types.build(), world.resource::<ById<ActionId, TrainSpec>>());
             costs.load_into(world);
             (SupplyBook(Some(ModeSupplyData { max }))).load_into(world);
+        }
+
+        /// Slows production by `speed`, of a mode that counts power by the stat at `stat` and
+        /// gives a short player no modifier, as its `[power]` would.
+        pub fn slow_by_power(world: &mut World, stat: StatId, speed: &PowerSpeedData) {
+            let speed = PowerSpeed::new(speed).expect("a test's speed keeps its rules");
+            let rules = PowerRules {
+                stat,
+                short: None,
+                speed: Some(speed),
+            };
+            PowerBook(Some(rules)).load_into(world);
         }
 
         /// The next stable id.

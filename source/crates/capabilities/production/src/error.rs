@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
+use campfire_actions::ActionKind;
 use campfire_common::{DeclaredName, EnumAll};
 use campfire_math::Num;
 use campfire_script::CapabilityRefusal;
@@ -69,6 +70,15 @@ pub enum ProductionDataError {
     /// with the life pool.
     #[error("its building's site starts at no life")]
     StartLife,
+    /// A power speed whose `min` is 0, under which a player of no power would never finish.
+    #[error("a power speed's `min` is above 0")]
+    PowerMin,
+    /// A power speed whose `min` passes its `max`.
+    #[error("a power speed's `min` passes its `max`")]
+    PowerMinPastMax,
+    /// A power speed that slows an action kind production times not.
+    #[error("a power speed slows trains, researches and builds, not {}", .0.name())]
+    PowerSlows(ActionKind),
 }
 
 /// Why the production capability refused a script call: a script gave it a value it does not
@@ -77,6 +87,8 @@ pub enum ProductionDataError {
 pub enum ProductionRefusal {
     /// A count of supply in a mode that counts none.
     NoSupply,
+    /// A count of power in a mode that counts none.
+    NoPower,
 }
 
 impl CapabilityRefusal for ProductionRefusal {
@@ -86,6 +98,7 @@ impl CapabilityRefusal for ProductionRefusal {
     fn message(self) -> &'static str {
         match self {
             Self::NoSupply => "the mode counts no supply",
+            Self::NoPower => "the mode counts no power",
         }
     }
 }

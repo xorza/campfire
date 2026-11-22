@@ -6,20 +6,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 The slice of [Power](../docs/design/power.md): a player of a Zero Hour skirmish as America builds past its power and sees the bar turn red, its Patriot batteries go dark and silent, its minimap go out and its trains and builds slow, then builds a power plant or buys the Control Rods and sees all of it come back; as GLA it trains a Rebel in the original's 10 s. Its facts are [Zero Hour's power](../docs/research/zero-hour-power.md); its checks are that document's.
 
-### Batch 1: the count and the shortage
-
-It touches `production`, `stats`' player modifiers, the script API and the replication of the player's entity, and stands first, as every later step reads the count.
-
-- [ ] **PW1. The mode's power and a unit's stat.** Production has no power: the holdings count each unit's supply and type alone (`holdings.rs:31`, `Share` at `:46`). The mode's `[power]` names its stat, its shortage's modifier, its speed and the kinds it slows, checked at the load; the holdings count each player's given and used power from the stat of each living, owned, complete unit, riders and sold buildings among them, and count a unit again as its stats change; the count runs as each tick ends on the server and writes `PlayerPower` on the player's entity, sent on change to its audience as `PlayerSupply` is (`player_supply.rs:36`, `lib.rs:344`), with `power_given` and `power_used` beside `supply_used` (`production_api.rs:96`) (Direction: a module adds what it declares once; a pass visits what changed). Check: the design's production tests of the count.
-- [ ] **PW2. A shortage holds its modifier.** No count changes a player's modifiers but research and perks (`player_modifiers.rs:17`). The count adds the mode's shortage modifier to a player's modifiers as it falls short and removes it as power returns, so `PlayerGrants::want` (`player_grants.rs:53`) holds it on the units it affects from the next tick, and `PlayerModifiers`' check (`player_modifiers.rs:52`) holds it equal to the count after a restore (Direction: what can be forgotten is a type). Check: the design's production tests of the shortage and the restore.
-
-### Batch 2: the speed
-
-It touches `production`'s trains and construction, and stands after the count, which gives the speed.
-
-- [ ] **PW3. A train's end follows the speed.** A queue's head ends at a tick fixed as it reaches the head (`train_queue.rs:102`, `:124`). The head keeps the tick it reached the head and ends at that tick plus its time at its player's speed, for the kinds `[power] slows` lists; the count moves each queue's head of a player whose speed changed in the index of the queues, and `Trains::finish_trains` (`trains.rs:268`) ends a head past its new end (Direction: a pass visits what changed). Check: the design's production tests of trains, at the ticks they compute; the snapshot's data version rises with the queue's layout.
-- [ ] **PW4. A site grows at the speed.** `Construction::progress_sites` (`construction/mod.rs:315`) grows a site by its builders' rate alone (`site.rs:125`). Its progress each tick takes the rate times its time over its time at its player's speed, on the server and on a predicting client from the count it receives. Check: the design's production tests of sites.
-
 ### Batch 3: the import, the rules and the bot
 
 It touches the import, the rules package and its bot, and stands after the engine holds power.
@@ -39,3 +25,14 @@ It touches the client's HUD, panel and looks, and stands last but the player's c
 - [ ] A player of Tournament Desert as America against the China builder bot, then as GLA, does what the design's last check says, in the client; then the slice's decisions fold into `04-capabilities/production.md`, `02-engine-core.md`, `03-game-scripting.md` and `09-zero-hour.md`, its losses into `09-zero-hour.md`'s in place of the Power loss, and `power.md` goes.
 
 ## Foundations
+
+## Changed
+
+- **PW2. A shortage holds its modifier.** The count sets the modifier to the player's shortage as each tick ends, whatever the player held, in place of a restore check of it: `PlayerModifiers`' check is the stats crate's, below production, and a level-triggered count makes a restored or a script-changed set hold as the count does from the next tick's end, which the runner test shows.
+
+## Decisions
+
+- **Power is sent under supply's kind.** `PlayerPower` replicates as `DataKind::Supply`, a player's counts of production, as a kind of its own passed Replicon's 32 visibility scopes (`bevy_replicon` 0.45, `visibility/registry.rs:61`), which every server test then failed on.
+- **A speed names the kinds it slows.** `slows` is a field of `[power] speed`, not of `[power]`, so no mode names kinds to slow with no speed to slow them by.
+- **The count is `PowerCount`'s.** The refresh is an associated function of a unit type of its own module, as `PlayerPower`, `Holdings` and `PowerSpeed` read one another otherwise, which the rules' test of module cycles refuses.
+- **The holdings mark a unit whose stats changed.** In a mode that counts power, each follow scans the owned units' `UnitStats` change ticks, as it scans the queues', since a stat changes in place with no part inserted or removed; a unit's stats empty before their first refresh count 0 until it marks the unit.

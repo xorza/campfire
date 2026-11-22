@@ -12,7 +12,7 @@ use campfire_math::Vec3;
 use campfire_names::TagNames;
 use campfire_production::internals::TestBuild;
 use campfire_production::{
-    BuildStart, NewBuild, Production, Queued, RallyTarget, SiteStart, Style,
+    BuildStart, NewBuild, Production, QueuePace, Queued, RallyTarget, SiteStart, Style,
 };
 use campfire_sim::{Capability, IdAllocator, UnitDues};
 use campfire_stats::{TypeUpgrade, TypeUpgrades};
@@ -84,8 +84,20 @@ fn a_look_lays_its_buttons_at_its_places_and_one_of_none_its_trains_in_slot_orde
         time,
         paid: 0,
     };
-    queue.push(queued, &[], Tick::new(0), &mut UnitDues::loose());
-    queue.push(queued, &[], Tick::new(0), &mut UnitDues::loose());
+    queue.push(
+        queued,
+        &[],
+        Tick::new(0),
+        QueuePace::Own,
+        &mut UnitDues::loose(),
+    );
+    queue.push(
+        queued,
+        &[],
+        Tick::new(0),
+        QueuePace::Own,
+        &mut UnitDues::loose(),
+    );
     let mut ids = IdAllocator::default();
     let (center, wall) = (ids.allocate(), ids.allocate());
     let d = Some(Key::KeyD);
@@ -516,25 +528,17 @@ fn a_key_presses_the_first_shown_button_of_it_and_each_press_does_its_button_s_w
 fn progress_shows_in_whole_percent_rounded_down() {
     // A head of 150 ticks from tick 0, done at 150: at 60, 60 / 150 = 40 %; at 149, 99.3 %
     // shows 99; at 150 and past, 100.
-    let train = ActionId::new(0);
-    let queued = Queued {
-        action: train,
-        rank: Rank::FIRST,
-        time: Ticks::new(150),
-        paid: 0,
-    };
-    let mut queue = TrainQueue::default();
-    assert_eq!(head_percent(&queue, Tick::new(0)), None);
-    queue.push(queued, &[], Tick::new(0), &mut UnitDues::loose());
-    let at = |now| head_percent(&queue, Tick::new(now));
+    let head = |start, time| HeadTimes::from(Tick::new(start), Ticks::new(time));
+    let at = |now| head_percent(head(0, 150), Tick::new(now));
     assert_eq!(
         [at(0), at(60), at(149), at(150), at(400)],
-        [0, 40, 99, 100, 100].map(Some)
+        [0, 40, 99, 100, 100]
     );
     // A head that reached the head at 100, after another: at 160, 60 of its 150 ticks.
-    let mut queue = TrainQueue::default();
-    queue.push(queued, &[], Tick::new(100), &mut UnitDues::loose());
-    assert_eq!(head_percent(&queue, Tick::new(160)), Some(40));
+    assert_eq!(head_percent(head(100, 150), Tick::new(160)), 40);
+    // A head its player's power slows to 300 ticks: at 160, 60 of 300 is 20 %; of none, 100.
+    assert_eq!(head_percent(head(100, 300), Tick::new(160)), 20);
+    assert_eq!(head_percent(head(100, 0), Tick::new(100)), 100);
     // A site 0.7 of the way to 300 ticks: 210 / 300 = 70 % exactly; one 2⁻³² below it, 69.
     let time = Num::int(300);
     let progress = Num::int(210);
@@ -721,7 +725,13 @@ fn a_train_at_a_place_is_dimmed_while_no_place_is_free_of_units_and_queued_train
             paid: 0,
         };
         for _ in 0..count {
-            queue.push(queued, &[], Tick::new(0), &mut UnitDues::loose());
+            queue.push(
+                queued,
+                &[],
+                Tick::new(0),
+                QueuePace::Own,
+                &mut UnitDues::loose(),
+            );
         }
         queue
     };

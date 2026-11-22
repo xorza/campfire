@@ -230,7 +230,13 @@ fn queue(train: ActionId, times: &[u64]) -> TrainQueue {
             time: Ticks::new(time),
             paid: 0,
         };
-        queue.push(queued, &[], Tick::new(0), &mut UnitDues::loose());
+        queue.push(
+            queued,
+            &[],
+            Tick::new(0),
+            QueuePace::Own,
+            &mut UnitDues::loose(),
+        );
     }
     queue
 }
@@ -489,7 +495,13 @@ fn a_train_queue_is_state_and_restores() {
             time: Ticks::new(time),
             paid: 0,
         };
-        queue.push(queued, &[], Tick::new(pushed), &mut UnitDues::loose());
+        queue.push(
+            queued,
+            &[],
+            Tick::new(pushed),
+            QueuePace::Own,
+            &mut UnitDues::loose(),
+        );
         Binary::decodes_again(&queue) && queue.check(&restored, entity)
     };
     assert!(check(0, Tick::LIMIT.get()));

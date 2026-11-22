@@ -1,4 +1,4 @@
-data_version 106
+data_version 107
 actions.player_cooldowns e392c93f37f118db
 actions.progress cf0f07e0b1cf07cf
 actions.slot_times e81a763b4f0f5285
@@ -74,7 +74,7 @@ production.rally 3dfad42e3fcd1064
 production.site cdbba5f2eae6c68f
 production.site_progress e458cddc4fb70b3b
 production.sold ffc96ab57b36357e
-production.train_queue eddf577bb3fa6bed
+production.train_queue 7c1732a055b08d03
 production.trained_units 2fde87a764f18cfd
 progression.experience 59054d8a3dd78ffe
 progression.level_ups fc77233e4615a843

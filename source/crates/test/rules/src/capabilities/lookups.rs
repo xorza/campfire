@@ -15,7 +15,7 @@ const BOTS: &str = "crates/session/bots";
 /// arguments or none, as each lookup of an id by its name is spelled, a table's `named` the most. Each runs in a script call, which resolves the names it is
 /// given once, as its arguments' types take them, in the load, which resolves the packages' names
 /// once, or as a bot starts. The test fails when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 109] = [
+const LOOKUPS: [(&str, &str); 110] = [
     // The load, each module's books by their builders.
     ("actions/action_load.rs", "named"),
     ("actions/action_names.rs", "named"),
@@ -62,6 +62,7 @@ const LOOKUPS: [(&str, &str); 109] = [
     ("navigation/navigation_books.rs", "named"),
     ("production/book_builders.rs", "named"),
     ("production/book_builders.rs", "type_named"),
+    ("production/power_book.rs", "named"),
     ("production/build_book.rs", "type_named"),
     ("production/requirement_book.rs", "named"),
     ("production/requirement_book.rs", "type_named"),

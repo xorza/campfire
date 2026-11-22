@@ -2,6 +2,7 @@ use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::system::SystemState;
+use campfire_actions::ActionKind;
 use campfire_combat::{Combat, DamageCause};
 use campfire_geometry::{Bounds, Grid, GridReach, Polygon};
 use campfire_names::Filter;
@@ -9,11 +10,12 @@ use campfire_navigation::{Navigation, Walker};
 use campfire_orders::OrdersDirective;
 use campfire_production::internals::TestBuild;
 use campfire_sim::{EntityIndex, Position, SnapshotError};
+use campfire_stats::{StatRule, Stats};
 use campfire_units::{
-    BuildTarget, Deaths, GroundPoint, Leader, Life, LivingSpawns, MapBook, SeenBy, SpawnOf,
+    BuildTarget, Deaths, GroundPoint, Leader, Life, LivingSpawns, MapBook, SeenBy, SpawnOf, StatId,
     UnitsWorld, Wall,
 };
-use campfire_values::{RelationSet, TeamSet};
+use campfire_values::{RelationSet, Share, Stat, TeamSet};
 use campfire_vision::{ByVision, Sight, Vision};
 
 use super::*;
@@ -723,6 +725,45 @@ fn each_style_grows_its_site_at_the_rate_of_its_builders_by_tick() {
         assert_eq!(Production::order_of(&game, second), None, "{style:?}");
         assert_eq!(Production::site(&game, depot).0, Num::int(100), "{style:?}");
     }
+}
+
+#[test]
+fn a_site_grows_at_its_players_power_from_the_tick_after_it_changes() {
+    // An `alone` site of 4 ticks, of player 0, which gives and takes no power under Zero Hour's
+    // speed: a share of 0, at least 0.5, 8 ticks, 4 / 8 = 0.5 a tick. A forge that gives 5 joins
+    // player 0 after two ticks, half way; its power counts as the next tick ends, so that tick
+    // still grows 0.5, and each after 1, to 4 in two more and a half: 1.5, 2.5, 3.5, then 4.
+    let Building {
+        mut game,
+        shop,
+        yard,
+    } = Building::new(Rules::of(Style::Alone));
+    let power = Stat::named("power").unwrap();
+    Stats::load_rules(&mut game, &BTreeMap::from([(power, StatRule::default())]));
+    Stats::give_type_stats(&mut game, shop.forge, &[Num::int(5)]);
+    let speed = PowerSpeedData {
+        penalty: Share::ALL,
+        min: share("0.5"),
+        max: share("0.8"),
+        empty: EmptyPower::None,
+        slows: vec![ActionKind::Build],
+    };
+    Production::slow_by_power(&mut game, StatId::new(0), &speed);
+    let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
+    Production::build_at(&mut game, builder, 0, 0);
+    let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
+    let mut seen = vec![Production::site(&game, depot).1];
+    game.step();
+    seen.push(Production::site(&game, depot).1);
+    Production::owned(&mut game, shop.forge, PlayerSlot::new(0));
+    for _ in 0..3 {
+        game.step();
+        seen.push(Production::site(&game, depot).1);
+    }
+    let half = |halves: i64| Some(Num::HALF * Num::int(halves));
+    assert_eq!(seen, [half(1), half(2), half(3), half(5), half(7)]);
+    game.step();
+    assert_eq!(Production::site(&game, depot), (Num::int(100), None));
 }
 
 #[test]

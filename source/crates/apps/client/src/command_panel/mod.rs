@@ -45,8 +45,8 @@ use campfire_net::PendingOrders;
 use campfire_orders::OrdersDirective;
 use campfire_players::{PlayerRows, ResourceAmount};
 use campfire_production::{
-    BuildBook, HeldPlaces, ProductionDirective, RequirementBook, ResearchHolder, ResearchSpec,
-    SellSpec, Site, SiteProgress, TrainQueue, TrainSpec,
+    BuildBook, HeadTimes, HeldPlaces, ProductionDirective, RequirementBook, ResearchHolder,
+    ResearchSpec, SellSpec, Site, SiteProgress, TrainQueue, TrainSpec,
 };
 use campfire_sim::{EntityIndex, MatchRate, SimTick, StableId, Unpredicted};
 use campfire_stats::Modifiers;
@@ -607,7 +607,9 @@ impl CommandPanelPlugin {
         }
         for cell in &queue_cells {
             let head = (cell.place == 0).then_some(queue).flatten();
-            let percent = head.and_then(|queue| head_percent(queue, now));
+            let percent = head
+                .and_then(TrainQueue::head)
+                .map(|head| head_percent(head, now));
             if let Some(mut bar) = cell.bar.and_then(|bar| bars.get_mut(bar).ok()) {
                 #[expect(
                     clippy::cast_precision_loss,
@@ -1240,17 +1242,15 @@ impl ButtonTip<'_> {
     }
 }
 
-/// The share of its time the head of `queue` ran by `now`, in whole percent rounded down, so
-/// 100 shows only once its time ends; none for an empty queue.
-fn head_percent(queue: &TrainQueue, now: Tick) -> Option<u64> {
-    let head = queue.entries().first()?;
-    let done = queue.head_done()?;
-    let time = head.time.get();
-    let left = done.since(now).map_or(0, Ticks::get).min(time);
-    Some(match time {
+/// The share of its time at its pace a queue's head of `head` ran by `now`, in whole percent
+/// rounded down, so 100 shows only once its time ends.
+fn head_percent(head: HeadTimes, now: Tick) -> u64 {
+    let time = head.done().since(head.start()).map_or(0, Ticks::get);
+    let left = head.done().since(now).map_or(0, Ticks::get).min(time);
+    match time {
         0 => 100,
         _ => (time - left) * 100 / time,
-    })
+    }
 }
 
 /// The share of `time` that `progress` is, in whole percent rounded down, from 0 to 100; 100 for

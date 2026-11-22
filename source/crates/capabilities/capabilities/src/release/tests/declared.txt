@@ -131,6 +131,7 @@ book production SupplyCostBook
 book production BuildBook
 book production NodeBook
 book production SupplyBook
+book production PowerBook
 book production ById<UnitType, Builder>
 book production ById<UnitType, Node>
 book production ById<UnitType, Gatherer>
@@ -197,6 +198,7 @@ server ActionSlots ShotStreak
 server UnitEntity SeenBy
 server Player SeenCells
 server Player PlayerSupply
+server Player PlayerPower
 server Builder AtWork
 engine_tag avatar
 engine_tag dead

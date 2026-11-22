@@ -36,7 +36,13 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
             resource: gold,
             amount: paid,
         };
-        queue.push(queued, &[amount], Tick::new(0), &mut UnitDues::loose());
+        queue.push(
+            queued,
+            &[amount],
+            Tick::new(0),
+            QueuePace::Own,
+            &mut UnitDues::loose(),
+        );
     }
     let player = PlayerSlot::new(0);
     let producer = Production::allocate_id(&mut game);
@@ -87,7 +93,13 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
         resource: gold,
         amount: 10,
     };
-    queue.push(queued, &[ten], Tick::new(7), &mut UnitDues::loose());
+    queue.push(
+        queued,
+        &[ten],
+        Tick::new(7),
+        QueuePace::Own,
+        &mut UnitDues::loose(),
+    );
     game.insert_parts(producer, queue);
     let mut resources = game.player_resources_mut(player).unwrap();
     resources.add(gold, i64::MAX - 35).unwrap();
@@ -486,7 +498,13 @@ fn a_sale_refunds_its_queue_at_once_then_its_refund_at_its_end_and_removes_it_wi
             resource: gold,
             amount: paid,
         };
-        queue.push(queued, &[amount], Tick::new(0), &mut UnitDues::loose());
+        queue.push(
+            queued,
+            &[amount],
+            Tick::new(0),
+            QueuePace::Own,
+            &mut UnitDues::loose(),
+        );
     }
     let player = PlayerSlot::new(0);
     let producer = Production::allocate_id(&mut game);

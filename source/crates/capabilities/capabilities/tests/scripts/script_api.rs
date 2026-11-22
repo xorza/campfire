@@ -26,8 +26,8 @@ use campfire_mode::{
 use campfire_navigation::ModeNavigationData;
 use campfire_orders::AiData;
 use campfire_production::{
-    BuildData, DropOffData, GatherData, ModeSupplyData, NodeData, ProductionData, RequiresData,
-    SupplyData, TrainData,
+    BuildData, DropOffData, GatherData, ModePowerData, ModeSupplyData, NodeData, PowerSpeedData,
+    ProductionData, RequiresData, SupplyData, TrainData,
 };
 use campfire_progression::{PerkData, TrackData};
 use campfire_projectiles::{ProjectileData, ProjectileDeliveryData};
@@ -620,6 +620,8 @@ fn the_data_fields_are_the_schemas() {
         table::<ProductionData>(),
         table::<SupplyData>(),
         table::<ModeSupplyData>(),
+        table::<ModePowerData>(),
+        table::<PowerSpeedData>(),
         table::<RequiresData>(),
         table::<NodeData>(),
         table::<DropOffData>(),
@@ -655,7 +657,7 @@ fn the_data_fields_are_the_schemas() {
 /// The names the registry binds that no package's script uses yet, in the registry's order: each
 /// is a capability's rule an engine test's script proves, which a mode of the genre it serves
 /// calls, as a mode's end, a player's resources and supply, or a unit's pools and level.
-const UNUSED: [&str; 37] = [
+const UNUSED: [&str; 39] = [
     "Ctx.add_player_modifier",
     "Ctx.cancel_timer",
     "Ctx.kill",
@@ -677,6 +679,8 @@ const UNUSED: [&str; 37] = [
     "MatchResult.is_draw",
     "MatchResult.winner",
     "Player.is_out",
+    "Player.power_given",
+    "Player.power_used",
     "Player.resource",
     "Player.supply_cap",
     "Player.supply_used",

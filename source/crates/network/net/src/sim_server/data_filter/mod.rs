@@ -91,7 +91,7 @@ filtered_kinds! {
     ModeStateKind: ModeState;
     /// A player's resources.
     ResourcesKind: Resources;
-    /// A player's supply.
+    /// A player's supply and power.
     SupplyKind: Supply;
     /// A producer's train queue.
     QueuesKind: Queues;
