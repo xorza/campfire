@@ -11,9 +11,9 @@ use crate::decal_ground::DecalGround;
 use crate::pins::{
     BotBase, BotMatchEnd, CombatSteps, ContainedCounts, DefenseTicks, DrivenCounts, EffectCounts,
     EntrySteps, FactorySteps, FightSteps, Fingerprints, FoughtCounts, GarrisonSteps,
-    HelicopterSteps, JetTicks, LookCounts, MapCounts, MissileTicks, PanelCounts, ProducedCounts,
-    ProductionSteps, RangerLook, RoadCounts, SaleSteps, ScienceSteps, SoundCounts, SuppliedCounts,
-    SupplySteps, TerrainDrawn, TransportSteps, UpgradeSteps, UpgradedCounts,
+    HelicopterSteps, JetTicks, LookCounts, MapCounts, MissileTicks, PanelCounts, PowerSteps,
+    ProducedCounts, ProductionSteps, RangerLook, RoadCounts, SaleSteps, ScienceSteps, SoundCounts,
+    SuppliedCounts, SupplySteps, TerrainDrawn, TransportSteps, UpgradeSteps, UpgradedCounts,
 };
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
@@ -144,6 +144,9 @@ pub(crate) enum CheckFailure {
     /// The Patriot battery's defense play's ticks differ from the pinned.
     #[display("its Patriot battery defended as {_0}")]
     Patriot(Box<Differs<DefenseTicks>>),
+    /// The power play's steps differ from the pinned.
+    #[display("it played power as {_0}")]
+    Power(Box<Differs<PowerSteps>>),
     /// The Stinger site's defense play's ticks differ from the pinned.
     #[display("its Stinger site defended as {_0}")]
     Stinger(Box<Differs<DefenseTicks>>),

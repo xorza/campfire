@@ -3,8 +3,8 @@
 drive_ticks = 1711
 
 [fingerprints]
-game = "93e330d245471bc2092b2265f3c5635d8ea2e78dc8e7721af8011ced61633f78"
-rules = "1498cfd1e7ed3aa02e62e47a2e0ea40f5b9661f6afdfdc3915d14af0113347b0"
+game = "bea4fe0373c0f3cb822bb0a053bef4c0c2da71c178b7ea6c35d82890782ceef4"
+rules = "5df6955dc047fc7c7e06080d172f6ce88108312a8640126b0f181a14c7be9fdd"
 
 [map]
 heights = [270, 340]
@@ -133,15 +133,15 @@ unturning = 0
 uncorrected = 16
 
 [skirmish]
-barracks = 648
-factory = [460, 650, 933]
+barracks = 948
+factory = [760, 650, 933]
 strategy_center = 1879
 shot = 947
 hit = 957
 fight = 2637
 
 [supply]
-built = [477, 418]
+built = [777, 418]
 deliveries = [491, 899, 1313]
 
 [helicopter]
@@ -150,7 +150,7 @@ delivered = 619
 shot_down = 320
 
 [jet]
-trained = 660
+trained = 1260
 took_off = 142
 over = 305
 hit = 107
@@ -162,7 +162,7 @@ target_life = 4600
 [science]
 queued_before = 0
 points = 0
-paladin = 458
+paladin = 818
 
 [combat]
 cannon = 33
@@ -193,38 +193,42 @@ outranged = 1289
 left = 940
 
 [defense]
-built = [477, 1009]
-hit = 995
-death = 1513
+built = [777, 1009]
+hit = 991
+death = 1509
 
 [patriot]
-built = [464, 996]
-hit = 1013
-death = 1177
+built = [764, 996]
+hit = 1017
+death = 1181
 
 [stinger]
-built = [436, 835]
-hit = 948
-death = 1179
+built = [736, 1285]
+hit = 949
+death = 1180
+
+[power]
+built = [764, 996, 860, 561]
+disabled = [false, false, true, false]
 
 [missile]
-built = 714
-trained = 150
-shot = 1088
-hit = 1109
-death = 1287
+built = 1014
+trained = 300
+shot = 1119
+hit = 1138
+death = 1318
 
 [bot]
 built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
 farthest_m = 517
 
 [base]
-ended = 10057
+ended = 15073
 standing = [0, 9]
 ranks = [2, 5]
 perks = [3, 8]
-think_ops = 20885
-stalls = 496
+think_ops = 18885
+stalls = 379
 
 [base.result]
 Won = 1
@@ -262,7 +266,7 @@ untaken = 0
 no_avatar = 0
 no_unit = 0
 no_slot = 0
-no_target = 2
+no_target = 8
 no_place = 0
 no_stack = 0
 
@@ -280,16 +284,16 @@ no_build = 0
 unusable = 0
 
 [base.sight]
-seen = [4239, 4535]
+seen = [3741, 5373]
 explored = [0, 0]
 words = 91
 
 [attack]
-ended = 13990
+ended = 14290
 standing = [4, 0]
 ranks = [1, 1]
 perks = [2, 2]
-think_ops = 9444
+think_ops = 9472
 stalls = 68
 
 [attack.result]

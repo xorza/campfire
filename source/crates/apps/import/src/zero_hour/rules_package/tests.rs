@@ -3,12 +3,14 @@ use std::collections::BTreeSet;
 use fluent_syntax::ast::{Entry, Expression, InlineExpression, PatternElement};
 use fluent_syntax::parser;
 
+use campfire_actions::ActionKind;
 use campfire_actions::SlotKindData;
 use campfire_math::Num;
 use campfire_navigation::ModeNavigationData;
+use campfire_production::{EmptyPower, PowerSpeedData};
 use campfire_progression::PerkData;
 use campfire_stats::StatOp;
-use campfire_values::{Number, Stat};
+use campfire_values::{Number, Share, Stat};
 
 use super::*;
 use crate::zero_hour::combat_import::StageModifier;
@@ -45,6 +47,7 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
             movers: &MoverImport::default(),
             second_lives: &SecondLifeImport::default(),
             propaganda: &PropagandaImport::default(),
+            energy: &EnergyImport::default(),
         }
         .data()
         .unwrap()
@@ -80,6 +83,22 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
         }
     );
     assert_eq!(retaliation(AiRetaliation::default(), &names).unwrap(), None);
+    // A shipped speed of 0.5 to 0.8, of a penalty of 1, writes its `[power]` patch, over the
+    // rules package's stat and shortage; an import of none writes no `[power]`.
+    let half = Share::billionths(500_000_000).unwrap();
+    let energy = EnergyImport {
+        power: ModePowerPatch {
+            speed: Some(PowerSpeedData {
+                penalty: Share::ALL,
+                min: half,
+                max: Share::billionths(800_000_000).unwrap(),
+                empty: EmptyPower::None,
+                slows: vec![ActionKind::Train, ActionKind::Build],
+            }),
+            ..ModePowerPatch::default()
+        },
+        ..EnergyImport::default()
+    };
     let written = ModeImport {
         start: &start,
         additions: &Additions::default(),
@@ -94,6 +113,7 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
         movers: &MoverImport::default(),
         second_lives: &SecondLifeImport::default(),
         propaganda: &PropagandaImport::default(),
+        energy: &energy,
     }
     .data()
     .unwrap();
@@ -102,6 +122,11 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
         "{written}"
     );
     assert!(!none.contains("retaliation"), "{none}");
+    assert!(
+        written.contains("[power.speed]\nempty = \"none\"\nmax = \"0.8\"\nmin = \"0.5\"\npenalty = 1\nslows = [\"train\", \"build\"]"),
+        "{written}"
+    );
+    assert!(!none.contains("[power"), "{none}");
 
     // An upgrade and a science of one name, legal in the game, would give two modifiers of one
     // name: the mode's data refuses them, naming both.
@@ -135,6 +160,7 @@ fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
         movers: &MoverImport::default(),
         second_lives: &SecondLifeImport::default(),
         propaganda: &PropagandaImport::default(),
+        energy: &EnergyImport::default(),
     }
     .data();
     let clashed = NameClash {
@@ -203,6 +229,7 @@ fn the_rules_package_s_data_declares_each_name_the_import_gives_its_types() {
         &names.veterancy_rate,
         &names.garrison_range,
         &names.garrison_damage,
+        &names.power,
     ] {
         assert!(stats.holds(stat.name()), "{stat}");
     }
@@ -224,6 +251,8 @@ fn the_rules_package_s_data_declares_each_name_the_import_gives_its_types() {
         &names.continuous_fire[0],
         &names.continuous_fire[1],
         &names.continuous_fire_slow,
+        &names.powered,
+        &names.disabled,
     ] {
         assert!(tags.holds(tag.as_str()), "{tag}");
     }

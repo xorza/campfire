@@ -440,15 +440,3 @@ fn transports_and_garrisons_convert_to_their_entries_and_riders_to_their_sizes()
         format!("[stats]\ngarrison_damage = \"0.25\"\ngarrison_range = \"{range}\"\n")
     );
 }
-
-#[test]
-fn a_share_is_the_game_s_float_to_the_nearest_billionth() {
-    // 1 and 0 are whole; 0.1 is 0.100000001490116…, 100,000,001 billionths; past 1, below 0
-    // or not a number is none.
-    assert_eq!(ContainImport::share(1.0), Some(Share::ALL));
-    assert_eq!(ContainImport::share(0.0), Some(Share::NONE));
-    assert_eq!(ContainImport::share(0.1), Share::billionths(100_000_001));
-    for refused in [1.000_001, -0.1, f32::NAN] {
-        assert_eq!(ContainImport::share(refused), None, "{refused}");
-    }
-}

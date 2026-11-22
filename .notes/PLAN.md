@@ -6,13 +6,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 The slice of [Power](../docs/design/power.md): a player of a Zero Hour skirmish as America builds past its power and sees the bar turn red, its Patriot batteries go dark and silent, its minimap go out and its trains and builds slow, then builds a power plant or buys the Control Rods and sees all of it come back; as GLA it trains a Rebel in the original's 10 s. Its facts are [Zero Hour's power](../docs/research/zero-hour-power.md); its checks are that document's.
 
-### Batch 3: the import, the rules and the bot
-
-It touches the import, the rules package and its bot, and stands after the engine holds power.
-
-- [ ] **PW5. The import gives power.** The import reads no `EnergyProduction`, `EnergyBonus`, `KindOf = POWERED`, `DisableProof` or `GameData.ini`'s low-energy and power-bar fields (`ini_build.rs:89`, `object_kinds.rs:26`, `game_data_ini/mod.rs:14`), and converts a `PowerPlantUpgrade` to a tag alone and a `RadarUpgrade` with no conflict (`upgrade_import/mod.rs:244`, `:245`). It writes each type's power stat, the tag `powered`, the Control Rods' `power_plant_upgraded_<n>` modifiers, each radar upgrade's conflict but the Radar Van's, the mode's `[power]` and the HUD's power bar and mark; the rules package declares the stat `power`, the tags `powered` and `disabled` with its blocks, and the modifier `underpowered` (Direction: the importer takes a game's data as it is; a capability serves every game). Check: the design's import tests; the Zero Hour check's golden moves only by the trains' and builds' times and the power play.
-- [ ] **PW6. A bot builds power while short.** The bot builds the first base building it lacks (`bot.rhai:87`). While its player's `power_used` passes its `power_given` and none of its faction's `power_plants_<faction>` is under way, it builds one first. Check: the Zero Hour check's bases play keeps America's and China's bots never short past the time one power plant takes, measured against today's bases.
-
 ### Batch 4: the client
 
 It touches the client's HUD, panel and looks, and stands last but the player's check, as it shows what the engine now counts.
@@ -30,9 +23,13 @@ It touches the client's HUD, panel and looks, and stands last but the player's c
 
 - **PW2. A shortage holds its modifier.** The count sets the modifier to the player's shortage as each tick ends, whatever the player held, in place of a restore check of it: `PlayerModifiers`' check is the stats crate's, below production, and a level-triggered count makes a restored or a script-changed set hold as the count does from the next tick's end, which the runner test shows.
 
+- **PW5. The import gives power.** The shortage's modifier is the import's, as a rules package holds no modifier (`LoadProblem::RulesKey`), and so is `[power] short`; the rules package keeps the stat and the tags. A radar its object grants itself as it is made is an upgrade's entry of no trigger, in place of a tag of its type, so its conflict with the shortage reaches it. The Control Rods' modifiers are `<trigger>_power_<bonus>`, after the import's names of an upgrade's effects.
+- **PW6. A bot builds power while short.** The Zero Hour check plays power in a play of its own, a Patriot battery disabled by a second one past one plant's power and enabled by a second plant, as a Patriot needs a plant; the skirmish's builder fixture waits the 300 ticks more its first plant takes, as its timed orders took the dozer off a plant half built.
+
 ## Decisions
 
 - **Power is sent under supply's kind.** `PlayerPower` replicates as `DataKind::Supply`, a player's counts of production, as a kind of its own passed Replicon's 32 visibility scopes (`bevy_replicon` 0.45, `visibility/registry.rs:61`), which every server test then failed on.
 - **A speed names the kinds it slows.** `slows` is a field of `[power] speed`, not of `[power]`, so no mode names kinds to slow with no speed to slow them by.
 - **The count is `PowerCount`'s.** The refresh is an associated function of a unit type of its own module, as `PlayerPower`, `Holdings` and `PowerSpeed` read one another otherwise, which the rules' test of module cycles refuses.
+- **A speed of none is the original's floor.** The import writes a `min` or a `max` of 0 as 0.01, `calcTimeToBuild`'s rate of a rate of none, and a `min` past its `max` as the `max`, which every short player then takes in the original too; a `min` of 0 differs only for a rate between 0 and 0.01, which the original takes as it is.
 - **The holdings mark a unit whose stats changed.** In a mode that counts power, each follow scans the owned units' `UnitStats` change ticks, as it scans the queues', since a stat changes in place with no part inserted or removed; a unit's stats empty before their first refresh count 0 until it marks the unit.

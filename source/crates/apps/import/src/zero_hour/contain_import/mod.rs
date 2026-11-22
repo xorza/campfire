@@ -261,7 +261,7 @@ impl ContainImport {
                     tags: [taken].into_iter().chain(refused.iter().cloned()).collect(),
                 }
             });
-        let share = |value: f32| Self::share(value).ok_or(ContainDropCause::BadNumber);
+        let share = |value: f32| game_float::to_share(value).ok_or(ContainDropCause::BadNumber);
         let damage = share(contain.damage)?;
         let lasts = object.kinds().holds(ObjectKind::GarrisonableUntilDestroyed);
         let full = (garrison && !lasts)
@@ -317,7 +317,7 @@ impl ContainImport {
             assault: object
                 .fight()
                 .assault
-                .map(|ratio| Self::share(ratio).ok_or(ContainDropCause::BadNumber))
+                .map(|ratio| game_float::to_share(ratio).ok_or(ContainDropCause::BadNumber))
                 .transpose()?,
         })
     }
@@ -359,21 +359,6 @@ impl ContainImport {
             unit: rider.declared().clone(),
             count,
         })
-    }
-
-    /// The share `value` of the game's `f32` holds, to the nearest billionth a share holds; none
-    /// below 0 or past 1.
-    fn share(value: f32) -> Option<Share> {
-        if !(0.0..=1.0).contains(&value) {
-            return None;
-        }
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "a share from 0 to 1 is from 0 to a billion billionths"
-        )]
-        let billionths = (f64::from(value) * 1e9).round() as u32;
-        Share::billionths(billionths)
     }
 
     /// The fire points `points`, the game's axes, on the engine's; none past what it holds.

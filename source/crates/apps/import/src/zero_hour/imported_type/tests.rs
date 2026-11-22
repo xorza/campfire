@@ -750,9 +750,18 @@ End
 }
 
 #[test]
-fn an_object_made_with_its_radar_holds_the_radar_s_tag_and_one_researched_does_not() {
-    // The USA's command center grants its own radar as it is made; China's researches it.
-    let ini = ObjectIni::of(&["Object Granted
+fn an_object_gives_its_energy_as_its_power_and_a_powered_one_its_tag_but_no_radar_its_own() {
+    // A plant gives 5; a cannon, `POWERED`, takes 3; an object of no energy has no power. A radar
+    // made with its object is its upgrade's, no tag of its type (power.md, The radar falls by an
+    // upgrade's conflict).
+    let ini = ObjectIni::of(&["Object Plant
+  EnergyProduction = 5
+End
+Object Cannon
+  KindOf = POWERED
+  EnergyProduction = -3
+End
+Object Granted
   Behavior = GrantUpgradeCreate ModuleTag_09
     UpgradeToGrant = Upgrade_AmericaRadar
   End
@@ -760,20 +769,23 @@ fn an_object_made_with_its_radar_holds_the_radar_s_tag_and_one_researched_does_n
     TriggeredBy = Upgrade_AmericaRadar
   End
 End
-Object Researched
-  Behavior = RadarUpgrade ModuleTag_14
-    TriggeredBy = Upgrade_ChinaRadar
-  End
-End
 "]);
-    let tags = |name: &str| {
+    let rules = ZeroHourRules::default();
+    let of = |name: &str| {
         let object = ini.object(name.as_bytes()).unwrap();
-        ImportedType::of(object, &ZeroHourRules::default())
-            .unwrap()
-            .tags
+        ImportedType::of(object, &rules).unwrap()
     };
-    assert_eq!(tags("Granted"), Some(TypeTagsData(vec![declared("radar")])));
-    assert_eq!(tags("Researched"), None);
+    let power = |value: i64| {
+        let flat = StatValue::flat(Num::int(value));
+        StatsData::from([(rules.names.power.clone(), flat)])
+    };
+    let [plant, cannon, granted] = ["Plant", "Cannon", "Granted"].map(of);
+    assert_eq!((plant.stats, plant.tags), (power(5), None));
+    assert_eq!(
+        (cannon.stats, cannon.tags),
+        (power(-3), Some(TypeTagsData(vec![declared("powered")])))
+    );
+    assert_eq!((granted.stats, granted.tags), (StatsData::default(), None));
 }
 
 /// A tank of an AI module that drives and sees 150, one alike that is `IMMOBILE`, and one of no AI

@@ -636,6 +636,8 @@ impl Reading {
                     | "experiencerequired"
                     | "istrainable"
                     | "transportslotcount"
+                    | "energyproduction"
+                    | "energybonus"
                     | "buttonimage"
             ) || word.starts_with("geometry") =>
             {
@@ -656,6 +658,8 @@ impl Reading {
                     "kindof" => object.kinds.set_by(at)?,
                     "isbridge" => object.is_bridge = at.yes()?,
                     "transportslotcount" => object.transport_slots = at.int()?,
+                    "energyproduction" => object.energy = at.int()?,
+                    "energybonus" => object.energy_bonus = at.int()?,
                     "buttonimage" => object.button_image = Some(at.value()?.to_owned()),
                     "visionrange" => object.vision_range = at.real()?,
                     "experiencevalue" | "experiencerequired" | "istrainable" => {

@@ -10,6 +10,7 @@ use crate::zero_hour::additions::Additions;
 use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::dropped::Losses;
 use crate::zero_hour::error::ZeroHourError;
+use crate::zero_hour::format::ini::object_ini::ini_object::IniObject;
 use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::{
     HealthChange, IniUpgradeModule, UpgradeEffect,
 };
@@ -72,6 +73,14 @@ impl EffectModifier {
         Self {
             tags: vec![tag.clone()],
             stats: BTreeMap::new(),
+        }
+    }
+
+    /// The modifier that gives the tag `tag` and adds `stats`, each by its number.
+    fn tagged_adding(tag: &DeclaredName, stats: BTreeMap<Stat, Number>) -> Self {
+        Self {
+            tags: vec![tag.clone()],
+            stats,
         }
     }
 
@@ -141,7 +150,7 @@ impl UpgradeImport {
                 let converted = if imported.is_projectile() {
                     Err(UpgradeDropCause::Projectile)
                 } else {
-                    import.module(sources, module, &entries)
+                    import.module(sources, object, module, &entries)
                 };
                 match converted {
                     Ok(entry) => entries.push(entry),
@@ -167,15 +176,19 @@ impl UpgradeImport {
         Ok(import)
     }
 
-    /// The entry of `module`, of a type of the entries `held` before it, its trigger's and its
-    /// conflicts' modifiers kept and its effect's made; why the import drops it. A conflict no file
-    /// defines is no upgrade any player or object holds, so it keeps nothing from triggering, and
-    /// goes. A life its type holds an entry of already takes the next of `_2`, `_3` and so on
+    /// The entry of `module`, of `object`'s type of the entries `held` before it, its trigger's and
+    /// its conflicts' modifiers kept and its effect's made; why the import drops it. A conflict no
+    /// file defines is no upgrade any player or object holds, so it keeps nothing from triggering,
+    /// and goes. A radar of triggers its object grants itself as it is made holds from its spawn,
+    /// of no trigger, and one not `DisableProof` conflicts with its player's shortage of power,
+    /// as `Player::disableRadar` turns it off (power.md, The radar falls by an upgrade's
+    /// conflict). A life its type holds an entry of already takes the next of `_2`, `_3` and so on
     /// after its name, as each `MaxHealthUpgrade` adds its own, where a tag or a weapon's bonus
     /// is a flag the original sets once however many modules set it.
     fn module(
         &mut self,
         sources: ModuleSources<'_>,
+        object: &IniObject,
         module: &IniUpgradeModule,
         held: &[UpgradeData],
     ) -> Result<UpgradeData, UpgradeDropCause> {
@@ -241,8 +254,20 @@ impl UpgradeImport {
                     EffectModifier::adding(BTreeMap::from([life])),
                 )
             }
-            UpgradeEffect::PowerPlant => ("power".to_owned(), EffectModifier::tagged(&tag()?)),
-            UpgradeEffect::Radar => ("radar".to_owned(), EffectModifier::tagged(&names.radar)),
+            // The Control Rods add their object's `EnergyBonus` to its power, one modifier of each
+            // bonus (power.md, The Control Rods give power).
+            UpgradeEffect::PowerPlant => match object.energy_bonus() {
+                0 => ("power".to_owned(), EffectModifier::tagged(&tag()?)),
+                bonus => {
+                    let power = (names.power.clone(), Number::from(i64::from(bonus)));
+                    let adding = BTreeMap::from([power]);
+                    let effect = EffectModifier::tagged_adding(&tag()?, adding);
+                    (format!("power_{bonus}"), effect)
+                }
+            },
+            UpgradeEffect::Radar { .. } => {
+                ("radar".to_owned(), EffectModifier::tagged(&names.radar))
+            }
             UpgradeEffect::ModelCondition { .. } => {
                 let tag = tag()?;
                 (tag.as_str().to_owned(), EffectModifier::tagged(&tag))
@@ -294,9 +319,21 @@ impl UpgradeImport {
         self.upgrades.extend(triggers.iter().cloned());
         self.upgrades.extend(conflicts.iter().cloned());
         self.effects.insert(name.clone(), effect);
+        let (triggers, all, conflicts) = match module.effect {
+            UpgradeEffect::Radar { disable_proof } => {
+                let short = (!disable_proof).then(|| names.underpowered.clone());
+                let conflicts = conflicts.into_iter().chain(short).collect();
+                if object.grants_itself(module) {
+                    (Vec::new(), true, conflicts)
+                } else {
+                    (triggers, module.all, conflicts)
+                }
+            }
+            _ => (triggers, module.all, conflicts),
+        };
         Ok(UpgradeData {
             triggers,
-            all: module.all,
+            all,
             conflicts,
             when: None,
             modifier: name,

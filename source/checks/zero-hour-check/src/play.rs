@@ -21,6 +21,9 @@ pub(crate) enum Play {
     Patriot,
     /// A Stinger site kills a dozer.
     Stinger,
+    /// America's Patriot batteries stand disabled while its player is short of power, and stand
+    /// again under a second power plant.
+    Power,
     /// A Tank Hunter's missiles kill a dozer.
     Missile,
     /// America's Comanche chooses its weapons, its Crusaders answer a rocket buggy, and one fires

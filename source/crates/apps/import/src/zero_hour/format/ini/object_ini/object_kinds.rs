@@ -19,7 +19,9 @@ pub(crate) struct ObjectKinds(u64);
 /// prefer its targets); an immobile object, a drone and one that cannot retaliate, which answer no
 /// ally's call (09-zero-hour.md, The import converts what the choice and the answer read); a hulk;
 /// an object a capture puts on the radar; the kinds a container's masks name, and a garrison that
-/// holds riders until it dies (04-capabilities/interaction.md, A container says who rides); and the
+/// holds riders until it dies (04-capabilities/interaction.md, A container says who rides); an
+/// object its player's shortage of power disables (power.md, A disabled unit is the rules
+/// package's); and the
 /// faction structures, `KINDOFMASK_FS`, the base defense among them, which a human player's idle
 /// unit takes as a target among structures.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, NamedEnum)]
@@ -47,6 +49,7 @@ pub(crate) enum ObjectKind {
     ForceAttackable,
     NoGarrison,
     GarrisonableUntilDestroyed,
+    Powered,
     FsFactory,
     FsBaseDefense,
     FsTechnology,

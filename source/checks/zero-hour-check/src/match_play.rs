@@ -27,7 +27,7 @@ use campfire_sim::{Position, SimWorld, StableId};
 use campfire_units::{
     BuildTarget, Destination, GroundPoint, Life, MapPoint, MoveStep, Units, UnitsWorld,
 };
-use campfire_values::{ResourceId, UnitType};
+use campfire_values::{Block, ResourceId, UnitTags, UnitType};
 use campfire_vision::{CellBits, ExploredCells, SeenCells};
 use tracing::info;
 
@@ -687,6 +687,17 @@ impl<'p> MatchPlay<'p> {
         builder: BuildingDozer,
         building: PlannedBuilding,
     ) -> Result<u64, CheckFailure> {
+        self.build_of(packages, builder, building, 1)
+    }
+
+    /// Builds `building` as `build` does, until player 1 holds `count` whole buildings of its type.
+    pub(crate) fn build_of(
+        &mut self,
+        packages: &ModePackages,
+        builder: BuildingDozer,
+        building: PlannedBuilding,
+        count: usize,
+    ) -> Result<u64, CheckFailure> {
         let [x, z, angle] = building.at.map(Num::int);
         let build = OrdersDirective::Build {
             slot: slot(packages, builder.unit, building.action)?,
@@ -698,13 +709,26 @@ impl<'p> MatchPlay<'p> {
         self.until(builder.id, build, |play| {
             let built = play.owned(building.unit, 0)?;
             let units = MatchUnits::of(play.game());
-            Ok(built.len() == 1 && !units.unit(built[0]).contains::<Site>())
+            let whole = built
+                .iter()
+                .filter(|&&unit| !units.unit(unit).contains::<Site>());
+            Ok(built.len() == count && whole.count() == count)
         })
     }
 
     /// The life of `unit`, none once it is gone.
     pub(crate) fn life(&self, unit: StableId) -> Option<Num> {
         self.life_of(unit).map(Life::current)
+    }
+
+    /// Whether `unit` holds a tag that blocks its attacks, as a disabled unit does; false once it
+    /// is gone (power.md, A disabled unit is the rules package's).
+    pub(crate) fn blocks_attacks(&self, unit: StableId) -> bool {
+        let Some(entity) = self.game().entity_of(unit) else {
+            return false;
+        };
+        let tags = self.game().entity(entity).get::<UnitTags>();
+        tags.is_some_and(|tags| tags.properties.blocks(Block::Attack))
     }
 
     /// The life pool of `unit`, none once it is gone.

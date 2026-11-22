@@ -2,8 +2,23 @@
 //! of its own (07-determinism-core.md, No float converts).
 
 use campfire_math::{Num, Rounding};
+use campfire_values::Share;
 
 use crate::zero_hour::format::error::FloatError;
+
+/// The share `value` holds, to the nearest billionth a share holds; none below 0 or past 1.
+pub(crate) fn to_share(value: f32) -> Option<Share> {
+    if !(0.0..=1.0).contains(&value) {
+        return None;
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a share from 0 to 1 is from 0 to a billion billionths"
+    )]
+    let billionths = (f64::from(value) * 1e9).round() as u32;
+    Share::billionths(billionths)
+}
 
 /// `value` exactly where a step of 2⁻²⁴ holds it, as it holds every value of at least 2⁻¹ that
 /// fits, and below rounded once to nearest, ties to even.

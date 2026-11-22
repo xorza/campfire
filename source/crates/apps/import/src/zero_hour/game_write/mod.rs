@@ -32,6 +32,7 @@ use crate::zero_hour::contain_import::ContainImport;
 use crate::zero_hour::dropped::{Dropped, Losses};
 use crate::zero_hour::effect_drop_cause::EffectDropCause;
 use crate::zero_hour::effects_import::{EffectSources, EffectsImport};
+use crate::zero_hour::energy_import::EnergyImport;
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::game_frames;
 use crate::zero_hour::format::ini::object_ini::ini_object::{IniObject, RadarPriority};
@@ -198,6 +199,7 @@ impl<'r> GameWrite<'r> {
         };
         let mut upgrades = UpgradeImport::of(sources, names.types(), &mut additions)?;
         let propaganda = PropagandaImport::of(game, names.types(), &mut additions)?;
+        let energy = EnergyImport::of(game.game_data.low_energy, &game.names, names.types())?;
         upgrades.take_propaganda(&propaganda);
         let veterancy = VeterancyImport::of(game, names.types(), &mut additions)?;
         let needed = production.sciences.iter().chain(&veterancy.sciences);
@@ -251,6 +253,7 @@ impl<'r> GameWrite<'r> {
             movers: &movers,
             second_lives: &second_lives,
             propaganda: &propaganda,
+            energy: &energy,
         };
         let modifiers = TypeModifiers {
             movers: &movers,

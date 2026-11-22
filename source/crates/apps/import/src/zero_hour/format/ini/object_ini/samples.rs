@@ -365,6 +365,7 @@ Object = AmericaBarracks AmericaCommandCenter\r
 End\r
 Object AmericaPowerPlant\r
   KindOf = STRUCTURE\r
+  EnergyProduction = 5\r
   Geometry = BOX\r
   GeometryMajorRadius = 3.0\r
   GeometryMinorRadius = 3.0\r

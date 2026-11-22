@@ -11,9 +11,9 @@ use crate::error::CheckError;
 use crate::pins::{
     BotBase, BotMatchEnd, CombatTicks, ContainedCounts, DefenseTicks, DrivenCounts, EffectCounts,
     EntryTicks, Fingerprints, FoughtCounts, GarrisonTicks, HelicopterTicks, JetTicks, LookCounts,
-    MapCounts, MissileTicks, PanelCounts, ProducedCounts, RangerLook, RoadCounts, ScienceSteps,
-    SkirmishTicks, SoundCounts, SuppliedCounts, SupplyTicks, TerrainCounts, TransportTicks,
-    UpgradedCounts,
+    MapCounts, MissileTicks, PanelCounts, PowerSteps, ProducedCounts, RangerLook, RoadCounts,
+    ScienceSteps, SkirmishTicks, SoundCounts, SuppliedCounts, SupplyTicks, TerrainCounts,
+    TransportTicks, UpgradedCounts,
 };
 
 /// What the check measured of the known version and this importer, each a value no closed form
@@ -59,6 +59,7 @@ pub(crate) struct Golden {
     pub(crate) defense: DefenseTicks,
     pub(crate) patriot: DefenseTicks,
     pub(crate) stinger: DefenseTicks,
+    pub(crate) power: PowerSteps,
     pub(crate) missile: MissileTicks,
     pub(crate) bot: BotBase,
     pub(crate) base: BotMatchEnd,
@@ -97,6 +98,7 @@ pub(crate) struct Measured {
     pub(crate) defense: Option<DefenseTicks>,
     pub(crate) patriot: Option<DefenseTicks>,
     pub(crate) stinger: Option<DefenseTicks>,
+    pub(crate) power: Option<PowerSteps>,
     pub(crate) missile: Option<MissileTicks>,
     pub(crate) bot: Option<BotBase>,
     pub(crate) base: Option<BotMatchEnd>,
@@ -173,6 +175,7 @@ impl Measured {
             defense: self.defense?,
             patriot: self.patriot?,
             stinger: self.stinger?,
+            power: self.power?,
             missile: self.missile?,
             bot: self.bot?,
             base: self.base?,

@@ -104,6 +104,10 @@ pub enum ZeroHourError {
     /// them.
     #[error("the game data's damage thresholds are no shares of life")]
     DamageThresholds,
+    /// `GameData.ini`'s low-energy speed is no speed the engine holds: a bound or a penalty
+    /// below 0 or past 1, a `min` of 0, or a `min` past the `max`.
+    #[error("the game data's low-energy production speed is no speed the engine holds")]
+    LowEnergy,
     /// A value of retaliation of `AIData.ini` is no number the engine holds.
     #[error("the AI data's retaliation is no number the engine holds")]
     Retaliation,

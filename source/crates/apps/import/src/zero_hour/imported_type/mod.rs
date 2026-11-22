@@ -259,6 +259,12 @@ impl ImportedType {
         if let Some(life) = life {
             stats.push((names.life_stat.clone(), StatValue::flat(life)));
         }
+        // A unit gives its `EnergyProduction` above 0 and takes it below (power.md, A unit's power
+        // is a stat).
+        if object.energy() != 0 {
+            let power = Num::from_int(i64::from(object.energy())).expect("an `Int` is a `Num`");
+            stats.push((names.power.clone(), StatValue::flat(power)));
+        }
         let armor = fight
             .starting_armor()
             .map(|armor| ImportName::latin(armor).declared())
@@ -502,8 +508,8 @@ impl ImportedType {
         Ok(Some(VisionData { sight }))
     }
 
-    /// The tags of `object`'s kinds that the rules data declares, and its radar's, of one made with
-    /// it.
+    /// The tags of `object`'s kinds that the rules data declares, and a wall's; a radar is its
+    /// upgrade's (power.md, The radar falls by an upgrade's conflict).
     fn tags(object: &IniObject, names: &RulesNames) -> Option<TypeTagsData> {
         let kinds = object.kinds();
         let of_kinds = names
@@ -511,10 +517,7 @@ impl ImportedType {
             .into_iter()
             .map(|(kind, tag)| (kinds.holds(kind), tag));
         let victory = (object.counts_for_victory(), &names.counts_for_victory);
-        let others = [
-            (object.is_wall(), &names.wall),
-            (object.makes_radar(), &names.radar),
-        ];
+        let others = [(object.is_wall(), &names.wall)];
         let tags: Vec<DeclaredName> = [victory]
             .into_iter()
             .chain(of_kinds)

@@ -124,7 +124,7 @@ pub use crate::gather_spec::GatherSpec;
 pub use crate::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeAt};
 pub use crate::held_places::HeldPlaces;
 pub use crate::made_at::{MadeAt, Rehome};
-pub use crate::mode_power_data::{EmptyPower, ModePowerData, PowerSpeedData};
+pub use crate::mode_power_data::{EmptyPower, ModePowerData, ModePowerPatch, PowerSpeedData};
 pub use crate::mode_supply_data::ModeSupplyData;
 pub use crate::node::Node;
 pub use crate::node_book::{NodeBook, NodeSpec};

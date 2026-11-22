@@ -52,6 +52,7 @@ use crate::pins::{
 };
 use crate::play::Play;
 use crate::play_selection::PlaySelection;
+use crate::power_play::PowerPlay;
 use crate::science_play::SciencePlay;
 use crate::skirmish_play::{SkirmishPlay, SkirmishSteps};
 use crate::start_drive::StartDrive;
@@ -862,6 +863,20 @@ impl ImportCheck<'_> {
                 hit = stinger.hit,
                 death = stinger.death,
                 "player 1's Stinger site's soldiers, ordered nothing, killed the bot's dozer"
+            );
+        }
+        if let Some((played, tools)) = self.played(Play::Power, rate)?
+            && let Some(power) = PowerPlay::run(played, rate, tools, &mut self.failures)
+        {
+            let expected = self.pinned(|golden| golden.power, power);
+            self.failures
+                .extend(Differs::of(power, expected).map(CheckFailure::Power));
+            self.measured.power = Some(power);
+            info!(
+                built = ?power.built,
+                disabled = ?power.disabled,
+                "player 1's Patriot batteries stood disabled while it was short of power, and \
+                 again under a second power plant"
             );
         }
         if let Some((played, tools)) = self.played(Play::Missile, rate)?

@@ -161,6 +161,8 @@ impl ObjectFiles {
                 radar_priority: RadarPriority::Unset,
                 contain: None,
                 transport_slots: 0,
+                energy: 0,
+                energy_bonus: 0,
                 button_image: None,
                 experience: IniExperience::default(),
                 powers: IniPowers::default(),

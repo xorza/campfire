@@ -41,6 +41,7 @@ pub(crate) mod dropped;
 pub(crate) mod dropped_roads;
 pub(crate) mod effect_drop_cause;
 pub(crate) mod effects_import;
+mod energy_import;
 pub(crate) mod error;
 pub(crate) mod format;
 pub(crate) mod game_path;

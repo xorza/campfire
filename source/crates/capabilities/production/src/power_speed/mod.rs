@@ -32,7 +32,7 @@ struct Fraction {
 impl PowerSpeed {
     /// The speed `data` gives; an error for a `min` of 0 or past `max`, or a kind production
     /// does not time.
-    pub(crate) fn new(data: &PowerSpeedData) -> Result<Self, ProductionDataError> {
+    pub fn new(data: &PowerSpeedData) -> Result<Self, ProductionDataError> {
         if data.min.is_zero() {
             return Err(ProductionDataError::PowerMin);
         }
