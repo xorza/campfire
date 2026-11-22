@@ -4,7 +4,7 @@ drive_ticks = 1711
 
 [fingerprints]
 game = "93e330d245471bc2092b2265f3c5635d8ea2e78dc8e7721af8011ced61633f78"
-rules = "513add17c3c5a482380fe26a6c135fb9f252b6795b205cda6e7cd69fedef750c"
+rules = "1498cfd1e7ed3aa02e62e47a2e0ea40f5b9661f6afdfdc3915d14af0113347b0"
 
 [map]
 heights = [270, 340]
