@@ -1,7 +1,8 @@
 // Zero Hour's skirmish bot, which the imported mode names twice: `builder`, of `army` 0, and
 // `attacker`. Each think, a bot learns the perks of its skill set it can; a bot with no site under
-// way orders one of its faction's builders to build the first building of its faction's base list
-// it lacks and may start, at the nearest place round its start where the build passes, so the
+// way orders one of its faction's builders to build, while its player is short of power, the first
+// of its faction's power plants it may start, and else the first building of its faction's base
+// list it lacks and may start, at the nearest place round its start where the build passes, so the
 // builder idles once its base is whole and builds a building again once one falls. Each bot sends
 // its idle gatherers to the nearest node, and trains a gatherer while it holds fewer than
 // `gatherers` for each drop-off. The attacker also trains its faction's army at each producer, the
@@ -10,7 +11,8 @@
 // `army`, or no more are coming, at the nearest enemy they see within `sight`, or at the nearest
 // enemy start; its idle units out with the army go on so whatever its count: by attack-move, and
 // within `reach` by an attack (09-zero-hour.md, A builder and an attacker;
-// 04-capabilities/control.md, A bot gathers; 04-capabilities/control.md, An army attack-moves).
+// 04-capabilities/control.md, A bot gathers; 04-capabilities/control.md, An army attack-moves;
+// 09-zero-hour.md, A bot builds power while short).
 fn on_bot_think(ctx) {
     let me = ctx.player;
     let chosen = ctx.chosen(me, "faction");
@@ -20,7 +22,7 @@ fn on_bot_think(ctx) {
     }
     let faction = chosen[0];
     learn(ctx, me, faction);
-    build(ctx, faction, home);
+    build(ctx, me, faction, home);
     gather(ctx, faction);
     if ctx.params.army > 0 {
         let coming = train(ctx, faction);
@@ -82,9 +84,11 @@ fn gather(ctx, faction) {
     }
 }
 
-// Orders a builder to build the first base building the bot lacks and may start, unless a site
-// of its base is under way, which its builder builds on.
-fn build(ctx, faction, home) {
+// Orders a builder to build a power plant while its player takes more power than it gives, as
+// `AISkirmishPlayer::processBaseBuilding` builds one first while short, else the first base building
+// the bot lacks, each one it may start, unless a site of its base is under way, which its builder
+// builds on.
+fn build(ctx, me, faction, home) {
     let buildings = ctx.params[`base_buildings_${faction}`];
     for building in buildings {
         for unit in ctx.own_units(building) {
@@ -98,8 +102,10 @@ fn build(ctx, faction, home) {
         builders += ctx.own_units(builder);
     }
     let near = #{ near: [home.x, home.z], gap: ctx.params.place_gap, steps: ctx.params.place_steps };
-    for building in buildings {
-        if !ctx.own_units(building).is_empty() {
+    let short = me.power_used > me.power_given;
+    let wanted = if short { ctx.params[`power_plants_${faction}`] } else { buildings };
+    for building in wanted {
+        if !short && !ctx.own_units(building).is_empty() {
             continue;
         }
         let action = `build_${building}`;

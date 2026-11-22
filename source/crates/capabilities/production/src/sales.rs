@@ -12,6 +12,7 @@ use campfire_values::UnitType;
 
 use crate::Production;
 use crate::production_directive::ProductionDirective;
+use crate::queue_pace::QueuePaces;
 use crate::sell_data::SellSpec;
 use crate::site::Site;
 use crate::sold::Sold;
@@ -53,7 +54,7 @@ impl Sales {
         mut units: SoldUnits<'_, '_>,
         mut commands: Commands<'_, '_>,
         (mut paid, mut started): (Local<'_, Vec<ResourceAmount>>, Local<'_, Vec<Entity>>),
-        mut queues: QueueIndex<'_>,
+        (mut queues, paces): (QueueIndex<'_>, QueuePaces<'_, '_>),
     ) {
         let now = tick.start();
         started.clear();
@@ -81,7 +82,8 @@ impl Sales {
                                 break;
                             }
                         }
-                        queue.remove(0, now, &mut queues.of(unit, entity));
+                        let pace = paces.of(Some(order.player_slot));
+                        queue.remove(0, now, pace, &mut queues.of(unit, entity));
                     }
                 }
                 // A sold container's riders leave (04-capabilities/interaction.md, A sold container

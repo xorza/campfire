@@ -12,9 +12,7 @@ use crate::zero_hour::format::ini::object_ini::ini_fall::IniFall;
 use crate::zero_hour::format::ini::object_ini::ini_power::IniPowers;
 use crate::zero_hour::format::ini::object_ini::ini_propaganda::IniPropaganda;
 use crate::zero_hour::format::ini::object_ini::ini_supply::IniSupply;
-use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::{
-    IniUpgradeModule, UpgradeEffect,
-};
+use crate::zero_hour::format::ini::object_ini::ini_upgrade_module::IniUpgradeModule;
 use crate::zero_hour::format::ini::object_ini::ini_voices::IniVoices;
 use crate::zero_hour::format::ini::object_ini::object_kinds::{ObjectKind, ObjectKinds};
 use crate::zero_hour::format::ini::object_ini::{IniFile, ObjectId};
@@ -66,6 +64,10 @@ pub(crate) struct IniObject {
     /// room it takes of a transport, its `TransportSlotCount`.
     pub(super) contain: Option<IniContain>,
     pub(super) transport_slots: i32,
+    /// Its `EnergyProduction`, the power it gives above 0 and takes below, and its `EnergyBonus`,
+    /// what its upgrade or its overcharge adds to what it gives, each 0 when absent.
+    pub(super) energy: i32,
+    pub(super) energy_bonus: i32,
     /// The mapped image a button that stands for it shows, its `ButtonImage`, none of none.
     pub(super) button_image: Option<String>,
     pub(super) experience: IniExperience,
@@ -205,18 +207,15 @@ impl IniObject {
     }
 
     /// Its upgrade modules, in the order it gives them.
-    /// Whether it gives its player a radar as it is made: a `RadarUpgrade` of its own whose every
-    /// trigger a `GrantUpgradeCreate` of its own grants, as the USA's command center and the GLA's
-    /// radar van grant theirs (02-engine-core.md, A minimap by a radar tag).
-    pub(crate) fn makes_radar(&self) -> bool {
-        self.upgrades.iter().any(|module| {
-            module.effect == UpgradeEffect::Radar
-                && !module.triggers.is_empty()
-                && module
-                    .triggers
-                    .iter()
-                    .all(|trigger| self.granted.contains(trigger))
-        })
+    /// Whether a `GrantUpgradeCreate` of its own grants each trigger of `module`, one of its own,
+    /// as the USA's command center and the GLA's radar van grant their radars'
+    /// (02-engine-core.md, A minimap by a radar tag).
+    pub(crate) fn grants_itself(&self, module: &IniUpgradeModule) -> bool {
+        !module.triggers.is_empty()
+            && module
+                .triggers
+                .iter()
+                .all(|trigger| self.granted.contains(trigger))
     }
 
     /// Its priority on the radar: its `RadarPriority`, or of none set, a structure's for one a
@@ -251,6 +250,17 @@ impl IniObject {
                 ..
             })
         )
+    }
+
+    /// The power it gives above 0 and takes below, its `EnergyProduction` (`Energy::objectEnteringInfluence`).
+    pub(crate) const fn energy(&self) -> i32 {
+        self.energy
+    }
+
+    /// What its `PowerPlantUpgrade` adds to the power it gives, its `EnergyBonus`
+    /// (`Energy::addPowerBonus`).
+    pub(crate) const fn energy_bonus(&self) -> i32 {
+        self.energy_bonus
     }
 
     /// The room it takes of a transport, its `TransportSlotCount`: 0 for one no transport takes.

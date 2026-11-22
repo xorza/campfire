@@ -8,7 +8,7 @@ use campfire_common::Tick;
 use campfire_declarations::{ById, RoleForm};
 use campfire_geometry::Placed;
 use campfire_math::Num;
-use campfire_players::{PlayerResources, PlayersWorld, ResourceAmount};
+use campfire_players::{PlayerResources, PlayerRows, PlayersWorld, ResourceAmount};
 use campfire_sim::{
     DueIndex, DueUnit, EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, StableId,
     UnitDues,
@@ -30,6 +30,8 @@ use crate::construction::building_at::BuildingAt;
 use crate::construction::step::{StartingBuild, Step};
 use crate::kept_spawns::KeptSpawns;
 use crate::order_dues;
+use crate::player_power::PlayerPower;
+use crate::power_book::PowerBook;
 use crate::producer_spec::ProducerSpec;
 use crate::site::{Site, SiteProgress, SiteStart};
 use crate::spawn_spec::SpawnSpec;
@@ -301,7 +303,8 @@ impl Construction {
 
     /// Grows each site, in the Mode stage before the trains finish, by stable id: its progress
     /// adds its build's rate for the count of builders that build it, a `builder` site's the one
-    /// that holds it alone, toward the build's time in ticks, and its life the gain of that
+    /// that holds it alone, slowed by its player's power in a mode whose power slows builds,
+    /// toward the build's time in ticks, and its life the gain of that
     /// progress, within its maximum; a site that grew holds the `being_built` tag until a tick it
     /// grows no more, as Zero Hour's dozer sets `ACTIVELY_BEING_CONSTRUCTED` while it builds
     /// (09-zero-hour.md, A condition is the game's name for a test). A builder builds a site
@@ -313,11 +316,13 @@ impl Construction {
     /// form `F` grows and completes sites alike, and leaves their life, the free units and the
     /// hook to the server.
     pub(crate) fn progress_sites<F: RoleForm>(
-        (index, book, builds, map): (
+        (index, book, builds, map, power, players): (
             Res<'_, EntityIndex>,
             Res<'_, ActionBook>,
             Res<'_, BuildBook>,
             Res<'_, MapBook>,
+            Res<'_, PowerBook>,
+            PlayerRows<'_, '_, PlayerPower>,
         ),
         mut sites: Query<
             '_,
@@ -327,7 +332,7 @@ impl Construction {
                 &StableId,
                 &Position,
                 &Body,
-                (&Site, &mut SiteProgress),
+                (&Site, &mut SiteProgress, Option<&Owner>),
                 Option<&mut Life>,
                 &mut StatusTags,
             ),
@@ -398,7 +403,7 @@ impl Construction {
         done.clear();
         let ordered = sites.iter().map(|(entity, &id, ..)| Keyed { id, entity });
         for &Keyed { entity, id } in order.sort(ordered) {
-            let (.., (site, mut progress), life, mut status) =
+            let (.., (site, mut progress, owner), life, mut status) =
                 sites.get_mut(entity).expect("a site in the order");
             let spec = builds
                 .of(site.action())
@@ -413,11 +418,17 @@ impl Construction {
                 (Style::Builder, None) => 0,
                 (Style::Alone | Style::Builders(_), _) => builders,
             };
+            // A slowed build grows at its player's power (04-capabilities/production.md, A site
+            // grows at the speed).
+            let rate = spec.rate(count);
+            let slowed = power.speed().filter(|speed| speed.slows(ActionKind::Build));
+            let rate = match (slowed, players.of(owner)) {
+                (Some(speed), Some(&held)) => speed.site_rate(rate, site.time(), held),
+                (None, _) | (_, None) => rate,
+            };
             // A site no builder grows changes neither its progress nor its life.
             let before = *progress;
-            let progressed = progress
-                .bypass_change_detection()
-                .grow(site, spec.rate(count));
+            let progressed = progress.bypass_change_detection().grow(site, rate);
             let grew = *progress != before;
             if grew {
                 progress.set_changed();

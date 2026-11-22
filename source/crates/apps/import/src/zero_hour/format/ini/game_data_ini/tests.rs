@@ -106,6 +106,37 @@ End
     )
     .unwrap();
     assert_eq!(thresholds(&ini), [0.7, 0.35]);
+    // No low-energy speed by default, and a power bar of base 7, 3 intervals and a yellow range
+    // of 5; the shipped 0.5, 0.8 and 1.0 once they read, and the bar's fields as a file sets them.
+    let low = |ini: &GameDataIni| ini.low_energy;
+    let none = LowEnergy {
+        min: 0.0,
+        max: 0.0,
+        penalty: 0.0,
+    };
+    let bar = IniPowerBar {
+        base: 7,
+        intervals: 3.0,
+        yellow_range: 5,
+    };
+    assert_eq!((low(&ini), ini.power_bar), (none, bar));
+    ini.read(
+        b"GameData\n  MinLowEnergyProductionSpeed = 0.5\n  MaxLowEnergyProductionSpeed = 0.8\n  \
+          LowEnergyPenaltyModifier = 1.0\n  PowerBarBase = 5\n  PowerBarIntervals = 4.0\n  \
+          PowerBarYellowRange = 2\nEnd\n",
+    )
+    .unwrap();
+    let shipped = LowEnergy {
+        min: 0.5,
+        max: 0.8,
+        penalty: 1.0,
+    };
+    let set = IniPowerBar {
+        base: 5,
+        intervals: 4.0,
+        yellow_range: 2,
+    };
+    assert_eq!((low(&ini), ini.power_bar), (shipped, set));
     // A sale gives back all of its cost by default, the shipped 50 % once it reads.
     assert_eq!(ini.sell_share, 1.0);
     ini.read(b"GameData\n  SellPercentage = 50%\nEnd\n")

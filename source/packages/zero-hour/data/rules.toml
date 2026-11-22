@@ -14,7 +14,8 @@ marker_params = ["name", "player_slot"]
 # bonus condition, the range and the damage a garrison adds to every weapon of its riders, as
 # `GarrisonContain::onContaining` sets `GARRISONED`, the rate of fire a propaganda tower adds to
 # every weapon, as `PropagandaTowerBehavior::effectLogic` sets `ENTHUSIASTIC` and `SUBLIMINAL`,
-# and the share of its most life a unit regains a second, which the tower's heal adds to.
+# the share of its most life a unit regains a second, which the tower's heal adds to, and the
+# power a unit gives above 0 and takes below, its object's `EnergyProduction`.
 [stats]
 move_speed = {}
 turn_rate = {}
@@ -27,6 +28,7 @@ garrison_range = {}
 garrison_damage = {}
 propaganda_rate = {}
 life_regen_share = {}
+power = {}
 
 [pools.life]
 max = "life"
@@ -106,6 +108,14 @@ life = "life"
 # shows by.
 [tags.radar]
 
+# A unit its player's shortage of power disables, of `KindOf = POWERED`, and a disabled unit, which
+# neither moves, attacks, casts, uses nor produces, as `AIUpdate` runs under no disabling but
+# `HELD` (09-zero-hour.md, A disabled unit is the rules package's).
+[tags.powered]
+
+[tags.disabled]
+blocks = ["move", "attack", "cast", "use", "produce"]
+
 # A unit in its second life, as an undead body's first death leaves it, held where it stands as
 # `BattleBusSlowDeathBehavior` holds the bus, which its second life's armor tests
 # (04-capabilities/combat.md, A type may live twice).
@@ -137,6 +147,12 @@ spawn_tags = ["start", "rally"]
 layers = ["ground", "air"]
 crossing = "steps_pass"
 landing = { probe = "5", ring = "5", cells = 400 }
+
+# A player's power, by each unit's stat of it. The import gives the modifier a short player holds,
+# which gives its powered units `disabled`, as a rules package holds no modifier, and the speed of
+# a short player's production, of the install's `GameData.ini`.
+[power]
+stat = "power"
 
 # A skirmish's end, as the original's `VictoryConditions` keeps it: a player whose last living
 # building that counts for victory dies is out of play, and its other units die, as

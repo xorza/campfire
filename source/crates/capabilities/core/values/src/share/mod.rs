@@ -54,6 +54,11 @@ impl Share {
         Some(Self(parts))
     }
 
+    /// Its billionths, `Share::ALL`'s a billion.
+    pub const fn parts(self) -> u32 {
+        self.0
+    }
+
     /// Whether it is no share at all.
     pub const fn is_zero(self) -> bool {
         self.0 == 0

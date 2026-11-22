@@ -22,20 +22,30 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::doors::Doors;
+use crate::power_book::PowerBook;
 use crate::producer_spec::ProducerSpec;
+use crate::queue_pace::QueuePace;
 
 /// A unit's train queue: the trains it was ordered, in order, at most as many as its type's
 /// `production` section holds, and the player resources each paid, one run after another in the
 /// entries' order. It makes one at a time, the head, whose time runs from the tick it reached the
-/// head. Its hook pushes its unit into the index of the queues at each insert, a spawn's and a
-/// restore's alike.
+/// head at its pace, which its player's power may change while it runs
+/// (04-capabilities/production.md, A train's end follows the speed). Its hook pushes its unit into
+/// the index of the queues at each insert, a spawn's and a restore's alike.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[component(on_insert = DueIndex::<Self>::pushed)]
 pub struct TrainQueue {
     entries: Vec<Queued>,
-    /// The tick the head's time ends; none for an empty queue.
-    head_done: Option<Tick>,
+    /// The head's times; none for an empty queue.
+    head: Option<HeadTimes>,
     paid: Vec<ResourceAmount>,
+}
+
+/// When a queue's head reached the head, and the tick its time at its pace ends, no sooner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct HeadTimes {
+    start: Tick,
+    done: Tick,
 }
 
 /// A train in a queue: its action, the rank it was ordered at, the time it takes, as its action's
@@ -70,7 +80,7 @@ impl TrainQueue {
     ) {
         let entity = revived.entity;
         if let (Ok((&id, queue)), Some(mut index)) = (units.get(entity), index) {
-            UnitDues::new(&mut index, id, entity).push(queue.head_done);
+            UnitDues::new(&mut index, id, entity).push(queue.head_done());
         }
     }
 
@@ -79,36 +89,65 @@ impl TrainQueue {
         self.entries.len() < usize::from(capacity.get())
     }
 
+    /// Its head's times; none for an empty queue.
+    pub const fn head(&self) -> Option<HeadTimes> {
+        self.head
+    }
+
     /// The tick its head's time ends; none for an empty queue.
     pub const fn head_done(&self) -> Option<Tick> {
-        self.head_done
+        match self.head {
+            Some(head) => Some(head.done),
+            None => None,
+        }
     }
 
     pub fn entries(&self) -> &[Queued] {
         &self.entries
     }
 
-    /// Adds `queued`, which paid `paid`, at the end; at the head, its time runs from `now`, and
-    /// its unit is due in `dues` as it ends.
+    /// Adds `queued`, which paid `paid`, at the end; at the head, its time at `pace` runs from
+    /// `now`, and its unit is due in `dues` as it ends.
     pub fn push(
         &mut self,
         queued: Queued,
         paid: &[ResourceAmount],
         now: Tick,
+        pace: QueuePace<'_>,
         dues: &mut UnitDues<'_, Self>,
     ) {
         debug_assert_eq!(usize::from(queued.paid), paid.len());
         if self.entries.is_empty() {
-            self.head_done = Some(now.after(queued.time));
+            self.head = Some(HeadTimes::from(now, pace.time(queued.action, queued.time)));
         }
         self.entries.push(queued);
         self.paid.extend_from_slice(paid);
-        dues.push(self.head_done);
+        dues.push(self.head_done());
+    }
+
+    /// Its head's times again at `pace`, from the tick it reached the head, as its player's power
+    /// changed; none for no head, or times that stay.
+    pub(crate) fn repaced(&self, pace: QueuePace<'_>) -> Option<HeadTimes> {
+        let (head, first) = (self.head?, self.entries.first()?);
+        let timed = HeadTimes::from(head.start, pace.time(first.action, first.time));
+        (timed != head).then_some(timed)
+    }
+
+    /// Takes `head`, times `repaced` gave its head, its unit due in `dues` as it now ends, at once
+    /// if that end passed.
+    pub(crate) fn retime(&mut self, head: HeadTimes, dues: &mut UnitDues<'_, Self>) {
+        debug_assert_eq!(
+            self.head.map(|held| held.start),
+            Some(head.start),
+            "a head's times again keep its start"
+        );
+        self.head = Some(head);
+        dues.push(self.head_done());
     }
 
     /// The head, when its time ended by `now`.
     pub(crate) fn done(&self, now: Tick) -> Option<Queued> {
-        let ended = self.head_done.is_some_and(|done| done <= now);
+        let ended = self.head.is_some_and(|head| head.done <= now);
         self.entries.first().copied().filter(|_| ended)
     }
 
@@ -120,16 +159,23 @@ impl TrainQueue {
     }
 
     /// Takes away the entry at `place`, one the queue holds, in `now`: the head made, or any
-    /// entry cancelled. A head's leaving starts the next one's time at `now`, its unit due in
-    /// `dues` as it ends.
-    pub fn remove(&mut self, place: usize, now: Tick, dues: &mut UnitDues<'_, Self>) {
+    /// entry cancelled. A head's leaving starts the next one's time at `pace` at `now`, its unit
+    /// due in `dues` as it ends.
+    pub fn remove(
+        &mut self,
+        place: usize,
+        now: Tick,
+        pace: QueuePace<'_>,
+        dues: &mut UnitDues<'_, Self>,
+    ) {
         let start = self.paid_before(place);
         let removed = self.entries.remove(place);
         self.paid.drain(start..start + usize::from(removed.paid));
         if place == 0 {
-            self.head_done = self.entries.first().map(|next| now.after(next.time));
+            let next = self.entries.first();
+            self.head = next.map(|next| HeadTimes::from(now, pace.time(next.action, next.time)));
         }
-        dues.push(self.head_done);
+        dues.push(self.head_done());
     }
 
     /// The count of player resources the entries before `place` paid.
@@ -151,7 +197,7 @@ impl TimedProcess for TrainQueue {
     type Books = ();
 
     fn due((): &(), (queue, dead, doors): (&Self, bool, Option<&Doors>)) -> Option<Tick> {
-        let done = queue.head_done.filter(|_| !dead)?;
+        let done = queue.head_done().filter(|_| !dead)?;
         Some(
             doors
                 .and_then(Doors::last_open_at)
@@ -166,8 +212,9 @@ impl SimComponent for TrainQueue {
 
     // A train the book lacks, or of a rank past its ranks, has no unit to make; a queue of a
     // type that produces nothing, or past what its type holds, breaks the rule of its room; a
-    // paid resource the mode lacks, or an amount below 0, has no refund to give; and a head's time
-    // ends at most its time after the tick the match runs next, as it started before it.
+    // paid resource the mode lacks, or an amount below 0, has no refund to give; and a head
+    // started by the tick the match runs next, and ends no sooner than its own time after its
+    // start and no later than that time at the slowest the mode's power speed goes.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let book = world.resource::<ActionBook>();
         let trains = self.entries.iter().all(|queued| {
@@ -187,8 +234,14 @@ impl SimComponent for TrainQueue {
             .iter()
             .all(|paid| paid.resource.index() < resources && paid.amount >= 0);
         let now = world.resource::<SimTick>().start();
-        let head = self.entries.first().zip(self.head_done);
-        let timed = head.is_none_or(|(head, done)| done <= now.after(head.time));
+        let speed = world.resource::<PowerBook>().speed();
+        let head = self.entries.first().zip(self.head);
+        let timed = head.is_none_or(|(first, head)| {
+            let slowest = speed.map_or(first.time, |speed| speed.slowest(first.time));
+            head.start <= now
+                && HeadTimes::from(head.start, first.time).done <= head.done
+                && head.done <= HeadTimes::from(head.start, slowest).done
+        });
         trains && capacity.is_some_and(|capacity| self.entries.len() <= capacity) && paid && timed
     }
 }
@@ -198,23 +251,58 @@ impl Replication for TrainQueue {
     type Sending = SentPredicted;
 }
 
-/// A snapshot is untrusted, so a head time without a head or without one, or paid amounts that
-/// are not the entries' runs, fail to decode.
+impl HeadTimes {
+    /// The times of a head that reached the head at `start` and takes `time`; a time past the
+    /// last tick ends at it, which no match reaches.
+    pub const fn from(start: Tick, time: Ticks) -> Self {
+        Self {
+            start,
+            done: Tick::new(start.get().saturating_add(time.get())),
+        }
+    }
+
+    pub const fn start(self) -> Tick {
+        self.start
+    }
+
+    pub const fn done(self) -> Tick {
+        self.done
+    }
+}
+
+/// A snapshot is untrusted, so times that end before they start fail to decode.
+impl<'de> Deserialize<'de> for HeadTimes {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Debug, Deserialize)]
+        struct Fields {
+            start: Tick,
+            done: Tick,
+        }
+        let Fields { start, done } = Fields::deserialize(deserializer)?;
+        if done < start {
+            return Err(D::Error::custom("a head ends no sooner than it starts"));
+        }
+        Ok(Self { start, done })
+    }
+}
+
+/// A snapshot is untrusted, so head times without a head or a head without them, or paid amounts
+/// that are not the entries' runs, fail to decode.
 impl<'de> Deserialize<'de> for TrainQueue {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             entries: Vec<Queued>,
-            head_done: Option<Tick>,
+            head: Option<HeadTimes>,
             paid: Vec<ResourceAmount>,
         }
         let Fields {
             entries,
-            head_done,
+            head,
             paid,
         } = Fields::deserialize(deserializer)?;
-        if entries.is_empty() != head_done.is_none() {
-            return Err(D::Error::custom("a head time exactly when a head"));
+        if entries.is_empty() != head.is_none() {
+            return Err(D::Error::custom("head times exactly when a head"));
         }
         let runs: usize = entries.iter().map(|queued| usize::from(queued.paid)).sum();
         if runs != paid.len() {
@@ -222,7 +310,7 @@ impl<'de> Deserialize<'de> for TrainQueue {
         }
         Ok(Self {
             entries,
-            head_done,
+            head,
             paid,
         })
     }
@@ -236,18 +324,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_queue_decodes_only_with_a_head_time_exactly_when_it_has_a_head_and_its_paid_runs() {
+    fn a_queue_decodes_only_with_head_times_exactly_when_it_has_a_head_in_order_and_its_paid_runs()
+    {
         #[derive(Debug, Serialize)]
         struct Fields {
             entries: Vec<Queued>,
-            head_done: Option<Tick>,
+            head: Option<HeadTimes>,
             paid: Vec<ResourceAmount>,
         }
-        let decode = |entries: Vec<Queued>, head_done: Option<u64>, paid: Vec<ResourceAmount>| {
-            let head_done = head_done.map(Tick::new);
+        let decode = |entries: Vec<Queued>, done: Option<u64>, paid: Vec<ResourceAmount>| {
+            let head = done.map(|done| HeadTimes {
+                start: Tick::new(5),
+                done: Tick::new(done),
+            });
             let fields = Fields {
                 entries,
-                head_done,
+                head,
                 paid,
             };
             Binary::decode::<TrainQueue>(&Binary::encode(&fields))
@@ -265,9 +357,20 @@ mod tests {
         };
         // Pushed at tick 5, a train of 30 ticks, which paid 5 gold, is done at tick 35.
         let mut queue = TrainQueue::default();
-        queue.push(queued, &[five], Tick::new(5), &mut UnitDues::loose());
+        queue.push(
+            queued,
+            &[five],
+            Tick::new(5),
+            QueuePace::Own,
+            &mut UnitDues::loose(),
+        );
         assert_eq!(decode(vec![queued], Some(35), vec![five]), Ok(queue));
         assert_eq!(decode(vec![], None, vec![]), Ok(TrainQueue::default()));
+        // A head that ends before it starts, at 4 of a start at 5.
+        assert_eq!(
+            decode(vec![queued], Some(4), vec![five]).err(),
+            Some(BinaryError::REFUSED)
+        );
         assert_eq!(
             decode(vec![], Some(35), vec![]).err(),
             Some(BinaryError::REFUSED)

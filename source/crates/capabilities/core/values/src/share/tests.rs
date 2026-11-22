@@ -20,6 +20,7 @@ fn a_share_writes_what_it_reads_back() {
         let field = Field {
             share: Share::billionths(parts).unwrap(),
         };
+        assert_eq!(field.share.parts(), parts);
         assert_eq!(Toml::write(&field), written);
         assert_eq!(Toml::parse::<Field>(written).unwrap(), field);
     }

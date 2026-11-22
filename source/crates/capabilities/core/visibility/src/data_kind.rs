@@ -29,7 +29,8 @@ pub enum DataKind {
     ModeState,
     /// A player's resources, on its entity.
     Resources,
-    /// A player's supply: what its units and queued trains use, and its cap.
+    /// A player's supply: what its units and queued trains use, and its cap; and its power, what
+    /// its units give and take (04-capabilities/production.md, The count runs as each tick ends).
     Supply,
     /// A producer's train queue.
     Queues,

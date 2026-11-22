@@ -1,6 +1,7 @@
 use campfire_actions::ActionData;
 use campfire_codec::StructFields;
 use campfire_common::PlayerSlot;
+use campfire_math::Num;
 use campfire_script::{
     ApiBuilder, ApiHolder, ApiVersion, CapabilityRefusal, Checked, Ctx, MemberDecl, PlayerHandle,
     Status, Unit,
@@ -12,6 +13,7 @@ use crate::build_data::BuildData;
 use crate::drop_off_data::DropOffData;
 use crate::error::ProductionRefusal;
 use crate::gather_data::GatherData;
+use crate::mode_power_data::{ModePowerData, PowerSpeedData};
 use crate::mode_supply_data::ModeSupplyData;
 use crate::node_data::NodeData;
 use crate::production_column::ProductionColumn;
@@ -21,8 +23,8 @@ use crate::supply_data::SupplyData;
 use crate::train_data::TrainData;
 
 /// What `production` gives scripts: what a unit carries, builds, trains and holds, and each
-/// player's supply; and the data of `production` the release runs: a train's unit type and
-/// requirements, a unit type's queue and supply, and the mode's supply rules.
+/// player's supply and power; and the data of `production` the release runs: a train's unit type
+/// and requirements, a unit type's queue and supply, and the mode's supply and power rules.
 #[derive(Debug)]
 pub struct ProductionApi;
 
@@ -31,6 +33,13 @@ pub struct ProductionApi;
 enum SupplyCount {
     Used,
     Cap,
+}
+
+/// A count of a player's power: what its units give, or what they take.
+#[derive(Debug, Clone, Copy)]
+enum PowerCount {
+    Given,
+    Used,
 }
 
 impl ProductionApi {
@@ -50,6 +59,8 @@ impl ProductionApi {
             .data::<ProductionData>(&[])
             .data::<SupplyData>(&[])
             .data::<ModeSupplyData>(&[])
+            .data::<ModePowerData>(&[])
+            .data::<PowerSpeedData>(&[])
             .data::<RequiresData>(&[])
             .tag_property(
                 TagProperty::Blocks(Block::Produce),
@@ -109,6 +120,26 @@ impl ProductionApi {
                 |ctx: &Ctx, player: &mut PlayerHandle| {
                     Self::supply(ctx, player.player_slot(), SupplyCount::Cap)
                 },
+            )
+            .bind(
+                MemberDecl::field(
+                    ApiHolder::of::<PlayerHandle>(),
+                    "power_given",
+                    "what its living, complete units give of power",
+                ),
+                |ctx: &Ctx, player: &mut PlayerHandle| {
+                    Self::power(ctx, player.player_slot(), PowerCount::Given)
+                },
+            )
+            .bind(
+                MemberDecl::field(
+                    ApiHolder::of::<PlayerHandle>(),
+                    "power_used",
+                    "what its living, complete units take of power",
+                ),
+                |ctx: &Ctx, player: &mut PlayerHandle| {
+                    Self::power(ctx, player.player_slot(), PowerCount::Used)
+                },
             );
     }
 
@@ -123,5 +154,16 @@ impl ProductionApi {
             SupplyCount::Cap => supply.cap,
         };
         Ok(i64::try_from(count).expect("a supply count fits an integer"))
+    }
+
+    /// `player`'s power as the view read the match: the count `count` names.
+    fn power(ctx: &Ctx, player: PlayerSlot, count: PowerCount) -> Checked<Num> {
+        ctx.view().admit_player(player, DataKind::Supply)?;
+        let power = ProductionColumn::power(ctx.view(), player)
+            .ok_or_else(|| ProductionRefusal::NoPower.fail())?;
+        Ok(match count {
+            PowerCount::Given => power.given(),
+            PowerCount::Used => power.used(),
+        })
     }
 }

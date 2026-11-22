@@ -1,3 +1,5 @@
+use campfire_client_files::IconRect;
+
 use super::*;
 
 #[test]
@@ -22,4 +24,41 @@ fn each_drawn_texture_goes_once_and_two_that_share_a_file_clash() {
         ZeroHourError::TextureClash { first, second }
             if first == path("art\\x.dds") && second == path("art\\x.tga")
     ));
+}
+
+#[test]
+fn the_power_bar_is_the_game_datas_of_its_four_icons_or_none() {
+    let icon = |left| PanelIcon {
+        texture: PackagePath::parse("art/bar.ktx2").unwrap(),
+        rect: IconRect::new(left, 0, left + 6, 6).unwrap(),
+    };
+    let icons = [icon(0), icon(6), icon(12), icon(18)];
+    // The game's defaults: base 7, 3 intervals, a yellow range of 5.
+    let mut game = ZeroHourRules::default();
+    let bar = GameWrite::power_bar(&game, &icons).unwrap();
+    assert_eq!(
+        (bar.base(), bar.intervals(), bar.margin()),
+        (7, Num::int(3), 5)
+    );
+    assert_eq!(bar.fills().near, icon(6));
+    assert_eq!(bar.needle(), &icon(18));
+    // Three icons, a base of 1 or past a byte, or a range below 0 give none.
+    assert_eq!(GameWrite::power_bar(&game, &icons[..3]), None);
+    game.game_data.power_bar.base = 1;
+    assert_eq!(GameWrite::power_bar(&game, &icons), None);
+    game.game_data.power_bar.base = 300;
+    assert_eq!(GameWrite::power_bar(&game, &icons), None);
+    game.game_data.power_bar.base = 7;
+    game.game_data.power_bar.yellow_range = -1;
+    assert_eq!(GameWrite::power_bar(&game, &icons), None);
+}
+
+#[test]
+fn a_disabled_unit_is_marked_dark_gray_over_a_second_and_stilled() {
+    // `DARK_GRAY_DISABLED_COLOR`, −0.5 on each channel, over the tint envelope's 30 frames.
+    let names = RulesNames::default();
+    let mark = GameWrite::disabled_mark(&names);
+    assert_eq!(mark.tag, names.disabled);
+    assert_eq!(mark.tint, [Num::int(-1) / Num::int(2); 3]);
+    assert_eq!((mark.fade_ms, mark.stills), (1000, true));
 }

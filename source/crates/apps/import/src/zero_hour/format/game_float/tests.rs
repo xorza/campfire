@@ -35,3 +35,22 @@ fn a_float_converts_exactly_or_rounds_once_below_a_step() {
     assert_eq!(num(f32::NAN), Err(FloatError::NotFinite));
     assert_eq!(num(f32::NEG_INFINITY), Err(FloatError::NotFinite));
 }
+
+#[test]
+fn a_float_share_is_its_nearest_billionth_from_0_to_1() {
+    let parts = |value: f32| to_share(value).map(Share::parts);
+    // 0.8 in `f32` is 0.800000011920929, 800,000,011.92 billionths: 800,000,012; 0.1 is
+    // 0.100000001490116, 100,000,001. 0, 1 and 0.5 are exact; below 0, past 1 by a millionth and
+    // not a number are none.
+    assert_eq!(parts(0.8), Some(800_000_012));
+    assert_eq!(parts(0.1), Some(100_000_001));
+    assert_eq!(parts(1.000_001), None);
+    assert_eq!(
+        [parts(0.0), parts(1.0), parts(0.5)],
+        [Some(0), Some(1_000_000_000), Some(500_000_000)]
+    );
+    assert_eq!(
+        [parts(-0.1), parts(1.01), parts(f32::NAN)],
+        [None, None, None]
+    );
+}

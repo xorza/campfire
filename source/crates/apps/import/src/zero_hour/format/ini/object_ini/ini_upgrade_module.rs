@@ -27,8 +27,9 @@ pub(crate) enum UpgradeEffect {
     /// `PowerPlantUpgrade`: its player's power rises and its object's rods extend, as its
     /// `PowerPlantUpdate` sets `POWER_PLANT_UPGRADED`.
     PowerPlant,
-    /// `RadarUpgrade`: its object gives its player a radar (`Player::hasRadar`).
-    Radar,
+    /// `RadarUpgrade`: its object gives its player a radar (`Player::hasRadar`), which its
+    /// player's shortage of power turns off unless it is `DisableProof` (`Player::disableRadar`).
+    Radar { disable_proof: bool },
     /// `ModelConditionUpgrade`: its object holds the model condition `flag`, its
     /// `ConditionFlag`, none for none named.
     ModelCondition { flag: Option<String> },
@@ -78,7 +79,9 @@ impl IniUpgradeModule {
                 change: HealthChange::SameCurrent,
             },
             "powerplantupgrade" => UpgradeEffect::PowerPlant,
-            "radarupgrade" => UpgradeEffect::Radar,
+            "radarupgrade" => UpgradeEffect::Radar {
+                disable_proof: false,
+            },
             "modelconditionupgrade" => UpgradeEffect::ModelCondition { flag: None },
             "subobjectsupgrade" => UpgradeEffect::SubObjects {
                 show: Vec::new(),
@@ -109,7 +112,7 @@ impl IniUpgradeModule {
             UpgradeEffect::WeaponBonus => "WeaponBonusUpgrade",
             UpgradeEffect::MaxHealth { .. } => "MaxHealthUpgrade",
             UpgradeEffect::PowerPlant => "PowerPlantUpgrade",
-            UpgradeEffect::Radar => "RadarUpgrade",
+            UpgradeEffect::Radar { .. } => "RadarUpgrade",
             UpgradeEffect::ModelCondition { .. } => "ModelConditionUpgrade",
             UpgradeEffect::SubObjects { .. } => "SubObjectsUpgrade",
             UpgradeEffect::ObjectCreation { .. } => "ObjectCreationUpgrade",
@@ -130,6 +133,9 @@ impl IniUpgradeModule {
             ("conflictswith", _) => self.conflicts = names(),
             ("requiresalltriggers", _) => self.all = at.yes()?,
             ("addmaxhealth", UpgradeEffect::MaxHealth { add, .. }) => *add = at.real()?,
+            ("disableproof", UpgradeEffect::Radar { disable_proof }) => {
+                *disable_proof = at.yes()?;
+            }
             ("conditionflag", UpgradeEffect::ModelCondition { flag }) => {
                 *flag = Some(at.value()?.to_ascii_lowercase());
             }

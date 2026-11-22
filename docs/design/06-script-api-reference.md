@@ -165,6 +165,8 @@ Generated from the script API's registry ([One source](06-script-api.md#one-sour
 | `is_out` | read | core | since 1.0 | whether it is out of play, as the last tick's end derived it |
 | `perk_points` | read | progression | since 1.0 | its unspent points to learn perks, which a player of a track of points has |
 | `player_slot` | read | core | since 1.0 | its player slot's place, from 0 |
+| `power_given` | read | production | since 1.0 | what its living, complete units give of power |
+| `power_used` | read | production | since 1.0 | what its living, complete units take of power |
 | `resource` | `(name: text)`, `name` a player resource | core | since 1.0 | the amount of the player resource `name` it holds, with the call's changes |
 | `state` | read | core | since 1.0 | its script state, by name, as the mode's `[player_state]` declares it, which a call may write and read back |
 | `supply_cap` | read | production | since 1.0 | what its living, complete units give of supply, at most the mode's `max` |
@@ -354,6 +356,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `combat` | combat | since 1.0 |
 | `navigation` | navigation | since 1.0 |
 | `supply` | production | since 1.0 |
+| `power` | production | since 1.0 |
 | `items` | items | since 1.0 |
 | `retaliation` | orders | since 1.0 |
 | `name` | core | since 1.0 |
@@ -648,6 +651,24 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | Field | Capability | Status |
 | --- | --- | --- |
 | `max` | production | since 1.0 |
+
+### The mode's `[power]`
+
+| Field | Capability | Status |
+| --- | --- | --- |
+| `stat` | production | since 1.0 |
+| `short` | production | since 1.0 |
+| `speed` | production | since 1.0 |
+
+### The mode's `[power] speed`
+
+| Field | Capability | Status |
+| --- | --- | --- |
+| `penalty` | production | since 1.0 |
+| `min` | production | since 1.0 |
+| `max` | production | since 1.0 |
+| `empty` | production | since 1.0 |
+| `slows` | production | since 1.0 |
 
 ### A train's `requires`
 

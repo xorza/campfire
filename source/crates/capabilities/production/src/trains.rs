@@ -6,13 +6,13 @@ use bevy_ecs::query::{Added, QueryFilter, QueryState, Without};
 use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionCheck, ActionKind, ActionProgress, ActionSlots, Caster, Payer, ProgressIndexes, Purse,
-    SlotCommit, SlotTimes, StartChecked,
+    ActionBook, ActionCheck, ActionKind, ActionProgress, ActionSlots, Caster, Payer,
+    ProgressIndexes, Purse, SlotCommit, SlotTimes, StartChecked,
 };
 use campfire_common::Tick;
 use campfire_declarations::{ById, RoleForm};
 use campfire_math::{Num, Vec3};
-use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut};
+use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut, PlayersWorld};
 use campfire_sim::{
     DueIndex, DueUnit, EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, SimWorld,
     StableId, UnitDues,
@@ -36,8 +36,11 @@ use crate::held_places::HeldPlaces;
 use crate::holdings::{Holdings, OwnedUnits};
 use crate::made_at::MadeAt;
 use crate::node_book::NodeBook;
+use crate::player_power::PlayerPower;
+use crate::power_book::PowerBook;
 use crate::producer_spec::ProducerSpec;
 use crate::production_books::{ProductionBooks, TrainAdmission, TrainAsk};
+use crate::queue_pace::{QueuePace, QueuePaces};
 use crate::rally::Rally;
 use crate::rally_target::RallyTarget;
 use crate::research_data::ResearchHolder;
@@ -130,7 +133,7 @@ impl Trains {
         >,
         mut held: Local<'_, Vec<DueUnit>>,
         mut holdings: ResMut<'_, Holdings>,
-        (mut indexes, mut queues): (ProgressIndexes<'_>, QueueIndex<'_>),
+        (mut indexes, mut queues, paces): (ProgressIndexes<'_>, QueueIndex<'_>, QueuePaces<'_, '_>),
     ) {
         let book = &books.actions;
         let now = tick.start();
@@ -254,7 +257,8 @@ impl Trains {
                 },
                 None,
             );
-            queue.push(queued, paid, now, &mut queues.of(id, entity));
+            let pace = paces.of(owner);
+            queue.push(queued, paid, now, pace, &mut queues.of(id, entity));
             if let TrainAdmission::Holds { owner, supply } = admission {
                 holdings.reserve(entity, owner, supply);
             }
@@ -343,12 +347,25 @@ impl Trains {
                     Self::give(world, entity, trainer, head.action);
                 }
                 world.resource_scope(|world, mut index: Mut<'_, DueIndex<TrainQueue>>| {
-                    let mut queue = world.get_mut::<TrainQueue>(entity).expect("a producer");
-                    let dues = &mut UnitDues::new(&mut index, trainer, entity);
-                    queue.remove(0, now, dues);
+                    world.resource_scope(|world, actions: Mut<'_, ActionBook>| {
+                        let pace = Self::pace(world, &actions, entity);
+                        let mut queue = world.get_mut::<TrainQueue>(entity).expect("a producer");
+                        let dues = &mut UnitDues::new(&mut index, trainer, entity);
+                        queue.remove(0, now, pace, dues);
+                    });
                 });
             }
         }
+    }
+
+    /// The pace of the queue of the producer `entity` in `world`, of its owner's power, with the
+    /// match's `actions`, which a caller takes out of the world to change the queue.
+    fn pace<'a>(world: &World, actions: &'a ActionBook, entity: Entity) -> QueuePace<'a> {
+        let power = world
+            .get::<Owner>(entity)
+            .and_then(|owner| world.player_entity(owner.player_slot()))
+            .and_then(|player| world.get::<PlayerPower>(player));
+        QueuePace::of(*world.resource::<PowerBook>(), actions, power.copied())
     }
 
     /// Pushes the queue of the producer `trainer` of `entity` due again at `at`.

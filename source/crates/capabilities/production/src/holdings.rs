@@ -3,17 +3,20 @@ use bevy_ecs::entity::{Entities, Entity};
 use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::lifecycle::{Insert, Remove};
 use bevy_ecs::observer::On;
-use bevy_ecs::query::Allow;
+use bevy_ecs::query::{Allow, With};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, Res, ResMut, SystemChangeTick, SystemParam};
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_declarations::Cache;
+use campfire_math::Num;
 use campfire_sim::Unpredicted;
-use campfire_stats::PlayerModifiers;
+use campfire_stats::{PlayerModifiers, UnitStats};
 use campfire_units::{Dead, Owner};
-use campfire_values::UnitType;
+use campfire_values::{NameId, UnitType};
 
+use crate::player_power::PlayerPower;
+use crate::power_book::PowerBook;
 use crate::requirement_book::Required;
 use crate::site::Site;
 use crate::supply::{SupplyParts, SupplyPartsItem, SupplySums};
@@ -21,10 +24,11 @@ use crate::supply_book::SupplyBook;
 use crate::supply_cost_book::{SupplyCostBook, UnitSupply};
 use crate::train_queue::TrainQueue;
 
-/// What the players hold: each one's supply, and the types of its living, complete units, which
-/// a requirement finds. It keeps what each unit counts for, and follows only the units that
-/// changed since: those whose owner, type, death, site or presence came or went, as its
-/// observers mark them, and those whose queue changed, by its change tick. Derived, never state:
+/// What the players hold: each one's supply and power, and the types of its living, complete
+/// units, which a requirement finds. It keeps what each unit counts for, and follows only the
+/// units that changed since: those whose owner, type, death, site or presence came or went, as
+/// its observers mark them, and those whose queue or, in a mode that counts power, whose stats
+/// changed, by its change tick. Derived, never state:
 /// a following reader finds it as a count of the match would (04-capabilities/production.md,
 /// Supply and holdings follow what changed).
 #[derive(Resource, Debug, Default)]
@@ -33,6 +37,8 @@ pub(crate) struct Holdings {
     units: Vec<Option<Share>>,
     /// Each player's supply, by slot.
     players: Vec<SupplySums>,
+    /// Each player's power, by slot.
+    power: Vec<PowerSums>,
     /// The types of the living, complete units each player holds, each with its count, by owner,
     /// then type.
     held: Vec<HeldCount>,
@@ -42,13 +48,23 @@ pub(crate) struct Holdings {
     followed: Option<Tick>,
 }
 
-/// What a unit counts for: its owner's supply and, living and complete, its type.
+/// What a unit counts for: its owner's supply and, living and complete, its type and its stat
+/// of power, 0 in a mode that counts none.
 #[derive(Debug, Clone, Copy)]
 struct Share {
     entity: Entity,
     owner: PlayerSlot,
     supply: UnitSupply,
     held: Option<UnitType>,
+    power: Num,
+}
+
+/// A player's power: the bits of what its units give and take, each a sum of `Num`s, so no count
+/// of the units' power overflows.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct PowerSums {
+    given: i128,
+    used: i128,
 }
 
 /// How many living, complete units of a type a player holds.
@@ -61,32 +77,41 @@ struct HeldCount {
 
 /// The units the players own as the holdings follow them, riders among them, which leave the world
 /// but not their player's count: what supply counts of each, in a mode that counts it, the queues,
-/// by change tick, and whether an entity a share names still stands (04-capabilities/production.md,
-/// A rider counts for its player).
+/// by change tick, the owned units' stats, which power counts by, in a mode that counts it, and
+/// whether an entity a share names still stands (04-capabilities/production.md, A rider counts for
+/// its player).
 #[derive(SystemParam, Debug)]
 pub(crate) struct OwnedUnits<'w, 's> {
     rules: Res<'w, SupplyBook>,
     costs: Res<'w, SupplyCostBook>,
+    power: Res<'w, PowerBook>,
     units: Query<'w, 's, (Entity, &'static Owner, SupplyParts), Allow<Disabled>>,
     queues: Query<'w, 's, (Entity, Ref<'static, TrainQueue>), Allow<Disabled>>,
+    stats: Query<'w, 's, (Entity, Ref<'static, UnitStats>), (With<Owner>, Allow<Disabled>)>,
     entities: &'w Entities,
     ticks: SystemChangeTick,
 }
 
 impl Holdings {
-    /// Follows `owned`: counts again each unit marked or whose queue changed since the last
-    /// follow, or every unit at the first, and after a supply book changed.
+    /// Follows `owned`: counts again each unit marked, or whose queue changed since the last
+    /// follow, or whose stats did in a mode that counts power; or every unit at the first, and
+    /// after a supply or power book changed.
     pub(crate) fn follow(&mut self, owned: &OwnedUnits<'_, '_>) {
         let now = owned.ticks.this_run();
         // A change in the last follow's own run may have come after it read.
         let changed = |at: Tick, last: Tick| at == last || at.is_newer_than(last, now);
-        let books = [owned.rules.last_changed(), owned.costs.last_changed()];
+        let books = [
+            owned.rules.last_changed(),
+            owned.costs.last_changed(),
+            owned.power.last_changed(),
+        ];
         let last = self
             .followed
             .filter(|&last| !books.iter().any(|&book| changed(book, last)));
         let Some(last) = last else {
             self.units.clear();
             self.players.clear();
+            self.power.clear();
             self.held.clear();
             self.marked.clear();
             for (entity, owner, parts) in &owned.units {
@@ -102,6 +127,15 @@ impl Holdings {
                 .filter(|(_, queue)| changed(queue.last_changed(), last))
                 .map(|(entity, _)| entity),
         );
+        if owned.power.counts() {
+            self.marked.extend(
+                owned
+                    .stats
+                    .iter()
+                    .filter(|(_, stats)| changed(stats.last_changed(), last))
+                    .map(|(entity, _)| entity),
+            );
+        }
         self.marked.sort_unstable();
         self.marked.dedup();
         let mut marked = std::mem::take(&mut self.marked);
@@ -124,6 +158,14 @@ impl Holdings {
     pub(crate) fn cap(&self, player_slot: PlayerSlot, max: u64) -> u64 {
         let sums = self.players.get(player_slot.index()).copied();
         sums.unwrap_or_default().cap(max)
+    }
+
+    /// What `player_slot`'s units give and take of power, each at most the most a `Num` holds.
+    pub(crate) fn power(&self, player_slot: PlayerSlot) -> PlayerPower {
+        let sums = self.power.get(player_slot.index()).copied();
+        let sums = sums.unwrap_or_default();
+        let num = |bits: i128| Num::from_bits(i64::try_from(bits).unwrap_or(i64::MAX));
+        PlayerPower::new(num(sums.given), num(sums.used))
     }
 
     /// Whether `player_slot` has room for `cost` more under its cap of at most `max`.
@@ -243,11 +285,23 @@ impl Holdings {
         } else {
             UnitSupply::default()
         };
+        // A unit's stats are empty until their first refresh, which marks it for the next
+        // follow, as a restore and a spawn in the tick leave them.
+        let held = parts.held();
+        let stats = owned.stats.get(entity).ok();
+        let power = owned
+            .power
+            .stat()
+            .filter(|_| held.is_some())
+            .zip(stats)
+            .and_then(|(stat, (_, stats))| stats.values().get(stat.index()).copied())
+            .unwrap_or(Num::ZERO);
         let share = Share {
             entity,
             owner,
             supply,
-            held: parts.held(),
+            held,
+            power,
         };
         let at = Self::index(entity);
         if self.units.len() <= at {
@@ -259,6 +313,7 @@ impl Holdings {
         );
         self.units[at] = Some(share);
         self.sums_mut(owner).add(share.supply);
+        self.power_mut(owner).add(share.power);
         if let Some(unit_type) = share.held {
             match self.held_at(owner, unit_type) {
                 Ok(found) => self.held[found].count += 1,
@@ -277,6 +332,7 @@ impl Holdings {
     /// Takes out what `share` counted for.
     fn take(&mut self, share: Share) {
         self.sums_mut(share.owner).take(share.supply);
+        self.power_mut(share.owner).take(share.power);
         if let Some(unit_type) = share.held {
             let found = self
                 .held_at(share.owner, unit_type)
@@ -303,8 +359,41 @@ impl Holdings {
         &mut self.players[at]
     }
 
+    /// `player_slot`'s power, to change, the players grown to hold it.
+    fn power_mut(&mut self, player_slot: PlayerSlot) -> &mut PowerSums {
+        let at = player_slot.index();
+        if self.power.len() <= at {
+            self.power.resize(at + 1, PowerSums::default());
+        }
+        &mut self.power[at]
+    }
+
     fn index(entity: Entity) -> usize {
         usize::try_from(entity.index_u32()).expect("an entity's index fits usize")
+    }
+}
+
+impl PowerSums {
+    /// Counts a unit's `power`: given above 0, taken below.
+    fn add(&mut self, power: Num) {
+        let bits = i128::from(power.to_bits());
+        if bits > 0 {
+            self.given += bits;
+        } else {
+            self.used -= bits;
+        }
+    }
+
+    /// Takes out a unit's `power`, as `add` counted it.
+    fn take(&mut self, power: Num) {
+        let bits = i128::from(power.to_bits());
+        if bits > 0 {
+            self.given -= bits;
+        } else {
+            self.used += bits;
+        }
+        debug_assert!(self.given >= 0, "a power given and taken out was counted");
+        debug_assert!(self.used >= 0, "a power used and taken out was counted");
     }
 }
 
@@ -352,6 +441,7 @@ mod tests {
         let mut world = World::new();
         world.insert_resource(SupplyBook(Some(ModeSupplyData { max: 10 })));
         world.insert_resource(SupplyCostBook::new(types.build(), &ById::default()));
+        world.insert_resource(PowerBook(None));
         world.init_resource::<Holdings>();
         world.add_observer(Holdings::inserted);
         world.add_observer(Holdings::removed);
@@ -414,6 +504,7 @@ mod tests {
                     owner: first,
                     supply: UnitSupply { used: 7, given: 30 },
                     held: None,
+                    power: Num::ZERO,
                 }),
             ],
             ..Holdings::default()

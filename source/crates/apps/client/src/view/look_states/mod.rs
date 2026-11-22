@@ -33,6 +33,7 @@ use crate::view::match_colors::Paint;
 use crate::view::model_scenes::ModelScenes;
 use crate::view::producer_doors::ProducerDoors;
 use crate::view::slot_shots::{AttackParts, ClipLack, SlotShots};
+use crate::view::tag_marks::TagMarks;
 use crate::view::unit_looks::{LookDraws, UnitFacts, UnitLooks};
 use crate::view::unit_models::DressSystems;
 use crate::view::unit_models::{Dressed, Replaces};
@@ -157,6 +158,16 @@ type PickReads<'w> = (
     Res<'w, UnitLooks>,
     Res<'w, SimTick>,
     Res<'w, WeaponClips>,
+);
+
+/// What a play reads beside the units: the app's time and the fixed step's, the looks, the sim's
+/// tick, and the tag marks, which still a unit's clips.
+type PlayReads<'w> = (
+    Res<'w, Time>,
+    Res<'w, Time<Fixed>>,
+    Res<'w, UnitLooks>,
+    Res<'w, SimTick>,
+    Option<Res<'w, TagMarks>>,
 );
 
 /// What a producer's doors read: each producer's doors, and its type's door times.
@@ -465,7 +476,8 @@ impl LookStatesPlugin {
         attacks
     }
 
-    /// Moves the clip of each draw of each drawing by the frame's time, its drawing's walk setting
+    /// Moves the clip of each draw of each drawing by the frame's time, but a draw a mark of its
+    /// unit stills (02-engine-core.md, A tag marks its unit), its drawing's walk setting
     /// the rate of a clip of a stride, and poses its models by it: each model's player plays the
     /// clip's graph, held at the clip's time, and each pivot's own meshes the clip hides at its
     /// frame are hidden, but those its look hides. A state that rises sinks its models by its rise
@@ -474,12 +486,7 @@ impl LookStatesPlugin {
     /// (04-capabilities/production.md, A building rises with its site;
     /// 04-capabilities/production.md, A building may be sold).
     fn play(
-        (time, fixed, looks, tick): (
-            Res<'_, Time>,
-            Res<'_, Time<Fixed>>,
-            Res<'_, UnitLooks>,
-            Res<'_, SimTick>,
-        ),
+        (time, fixed, looks, tick, marks): PlayReads<'_>,
         (mut scenes, mut clips, timings, mut graphs, assets): ShowAssets<'_>,
         (units, sales): (UnitParts<'_, '_>, Query<'_, '_, &Sold, Allow<Unpredicted>>),
         (replacing, mut roots): (
@@ -496,9 +503,10 @@ impl LookStatesPlugin {
             fraction: fixed.overstep_fraction(),
         };
         for (root, &DrawingOf(unit), glide, mut states) in &mut roots {
-            let Ok((_, _, _, site, _, &team)) = units.get(unit) else {
+            let Ok((_, tags, _, site, _, &team)) = units.get(unit) else {
                 continue;
             };
+            let stilled = marks.as_ref().is_some_and(|marks| marks.stills(tags.tags));
             let unbuilt = match (site, sales.get(unit)) {
                 (Some((site, progress)), _) => (Num::ONE - progress.share(site)).float(),
                 (None, Ok(&sold)) => sold_share(sold, tick.start(), clock.fraction),
@@ -530,6 +538,7 @@ impl LookStatesPlugin {
                 commands: &mut commands,
             };
             for (draw, show) in draws.draws().iter().zip(shows.iter_mut()) {
+                let seconds = if draw.stands(stilled) { 0.0 } else { seconds };
                 show.advance(draw, ClipStep { seconds, speed }, &mut cx);
                 let sunk = -show.rise(draw).map_or(0.0, |rise| rise * unbuilt);
                 for &model in show.models() {

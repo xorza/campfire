@@ -597,6 +597,15 @@ pub(crate) struct DefenseTicks {
     pub(crate) death: u64,
 }
 
+/// The power play's steps (09-zero-hour.md, A disabled unit is the rules package's): the ticks each
+/// of its four buildings took, and whether its first Patriot battery stood disabled after each.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PowerSteps {
+    pub(crate) built: [u64; 4],
+    pub(crate) disabled: [bool; 4],
+}
+
 /// The ticks of the missile play's steps no closed form gives: the barracks' and the Tank
 /// Hunter's, and from the bot dozer's order to the first steered missile, which the hunter fires
 /// ordered nothing, to the dozer's first damage, and to its death.
@@ -833,13 +842,14 @@ pub(crate) struct Fingerprints {
 
 impl ProductionSteps {
     /// The steps with the barracks' ticks `barracks_ticks`: the dozer's 5 s and its door's opening,
-    /// and the ranger's 5 s, of a barracks of no door, the order's tick among them, and the money
-    /// after each.
+    /// and the ranger's 5 s, of a barracks of no door, the order's tick among them, each at half
+    /// speed, as a player of no power and no use builds (04-capabilities/production.md, The speed
+    /// by the ratio), and the money after each.
     pub(crate) const fn expected(barracks_ticks: u64) -> Self {
         Self {
-            dozer_ticks: 5 * HZ + CENTER_OPENING,
+            dozer_ticks: 2 * 5 * HZ + CENTER_OPENING,
             barracks_ticks,
-            ranger_ticks: 5 * HZ,
+            ranger_ticks: 2 * 5 * HZ,
             money: PRODUCTION_MONEY,
         }
     }

@@ -127,13 +127,15 @@ impl ClientLoad {
         let map = packages.map_name();
         let heights = load.read_ground(mode, map, packages.heights().cloned());
         load.read_map(mode, map);
+        let hud: HudFile = Self::file(mode, &HudFile::path()).unwrap_or_default();
+        let teams = Self::file(mode, &TeamColors::path()).unwrap_or_default();
         ClientFiles {
             load,
             heights,
             metric: MapMetric(packages.map().metric()),
-            hud: MatchHud(Self::file(mode, &HudFile::path()).unwrap_or_default()),
+            colors: MatchColors::new(teams, &hud.tag_marks),
+            hud: MatchHud(hud),
             picking: MatchPicking(Self::file(mode, &PickingFile::path()).unwrap_or_default()),
-            colors: MatchColors::new(Self::file(mode, &TeamColors::path()).unwrap_or_default()),
             perks: MatchPerks(Self::file(mode, &PerksFile::path())),
         }
     }

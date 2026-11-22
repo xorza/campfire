@@ -16,6 +16,7 @@ use campfire_package::{
     BotData, BotList, Dependency, Language, ModeManifest, PackageHeader, ScriptOrder, TickRange,
 };
 use campfire_package_format::DependencyPath;
+use campfire_production::{ModePowerData, ModePowerPatch};
 use campfire_progression::{ModeExperienceData, ModePerksData, ModeTracksData};
 use campfire_script::{ApiVersion, ScriptLimits};
 use campfire_sim::Capability;
@@ -25,6 +26,7 @@ use campfire_values::{PackageName, PackagePath, Relation, Scalar, ScriptSource, 
 use crate::zero_hour::additions::Additions;
 use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::contain_import::ContainImport;
+use crate::zero_hour::energy_import::EnergyImport;
 use crate::zero_hour::error::{NameClash, NameError, ZeroHourError};
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::ini::ai_data_ini::AiRetaliation;
@@ -194,6 +196,7 @@ pub(crate) struct ModeImport<'a> {
     pub(crate) movers: &'a MoverImport,
     pub(crate) second_lives: &'a SecondLifeImport,
     pub(crate) propaganda: &'a PropagandaImport,
+    pub(crate) energy: &'a EnergyImport,
 }
 
 impl ModeImport<'_> {
@@ -225,6 +228,7 @@ impl ModeImport<'_> {
             movers,
             second_lives,
             propaganda,
+            energy,
         } = self;
         debug_assert!(
             combat.actions.keys().all(|name| {
@@ -259,6 +263,10 @@ impl ModeImport<'_> {
                 additions,
             };
             let base = FactionBase::of(sources, faction, perks);
+            let plants: Vec<DeclaredName> = (base.buildings.iter())
+                .filter(|building| energy.plants.contains(*building))
+                .cloned()
+                .collect();
             let fixed = [
                 (
                     param("start_building", faction),
@@ -274,6 +282,7 @@ impl ModeImport<'_> {
                 (param("army_units", faction), list(&base.army)),
                 (param("gatherers", faction), list(&base.gatherers)),
                 (param("drop_offs", faction), list(&base.drop_offs)),
+                (param("power_plants", faction), list(&plants)),
                 (param("perks", faction), list(perks)),
             ];
             // Each skill set its own list, `skill_set_<n>_<faction>` from 1, as a param holds no
@@ -353,6 +362,9 @@ impl ModeImport<'_> {
         });
         if let Some(retaliation) = retaliation {
             writer.patch::<ModeRetaliationData>(retaliation);
+        }
+        if energy.power != ModePowerPatch::default() {
+            writer.patch::<ModePowerData>(&energy.power);
         }
         if !combat.armors.is_empty() {
             writer.patch::<ModeCombatData>(&ModeCombatPatch {
@@ -451,6 +463,13 @@ impl ModeImport<'_> {
             .modifiers
             .iter()
             .map(|(id, modifier)| ("a propaganda tower", id, TomlValue::of(modifier)));
+        let shortage = (energy.shortage.as_ref()).map(|modifier| {
+            (
+                "a shortage of power",
+                &modifier.name,
+                TomlValue::of(modifier),
+            )
+        });
         // An upgrade and a science of one name are legal in the game; one modifier of the
         // package each, they would replace one another, so the import refuses them.
         let mut modifiers: BTreeMap<&DeclaredName, (&str, TomlValue)> = BTreeMap::new();
@@ -462,7 +481,8 @@ impl ModeImport<'_> {
             .chain(garrisons)
             .chain(hurts)
             .chain(lives)
-            .chain(towers);
+            .chain(towers)
+            .chain(shortage);
         for (from, id, value) in every {
             if let Some(&(taken, _)) = modifiers.get(id) {
                 return Err(NameError::Clash(NameClash {

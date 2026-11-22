@@ -30,6 +30,7 @@ use crate::local_keys::LocalKeysPlugin;
 use crate::orders::OrdersPlugin;
 use crate::perk_panel::PerkPanelPlugin;
 use crate::pointer::unit_picking::UnitPickingPlugin;
+use crate::power_bar::PowerBarPlugin;
 use crate::rally_click::RallyClickPlugin;
 use crate::report::ReportPlugin;
 use crate::selecting::SelectingPlugin;
@@ -48,6 +49,7 @@ use crate::view::player_camera::PlayerCameraPlugin;
 use crate::view::producer_doors::ProducerDoorsPlugin;
 use crate::view::shot_stand_ins::ShotStandInsPlugin;
 use crate::view::sounds::SoundsPlugin;
+use crate::view::tag_marks::TagMarksPlugin;
 use crate::view::terrain_view::TerrainViewPlugin;
 use crate::view::unit_models::UnitModelsPlugin;
 use crate::view::view_console::ViewConsolePlugin;
@@ -73,6 +75,7 @@ pub(crate) enum ClientModule {
     UnitPicking,
     UnitModels,
     LookStates,
+    TagMarks,
     WeaponClips,
     ProducerDoors,
     TerrainView,
@@ -94,6 +97,7 @@ pub(crate) enum ClientModule {
     InventoryBar,
     ActionNames,
     CommandPanel,
+    PowerBar,
     UpgradeConflicts,
     BuildPreview,
 }
@@ -142,9 +146,11 @@ impl ClientModule {
         match self {
             Self::AreaView => &[Capability::Areas],
             Self::ItemNames | Self::ShopPanel | Self::InventoryBar => &[Capability::Items],
-            Self::ActionNames | Self::CommandPanel | Self::GatherClick | Self::RallyClick => {
-                &[Capability::Production]
-            }
+            Self::ActionNames
+            | Self::CommandPanel
+            | Self::PowerBar
+            | Self::GatherClick
+            | Self::RallyClick => &[Capability::Production],
             Self::UseClick => &[Capability::Interaction],
             Self::DeathKeeps | Self::WeaponClips => &[Capability::Combat],
             Self::ProducerDoors => &[Capability::Production],
@@ -162,6 +168,7 @@ impl ClientModule {
             | Self::UnitPicking
             | Self::UnitModels
             | Self::LookStates
+            | Self::TagMarks
             | Self::TerrainView
             | Self::Minimap
             | Self::Effects
@@ -187,6 +194,7 @@ impl ClientModule {
             | Self::UnitPicking
             | Self::UnitModels
             | Self::LookStates
+            | Self::TagMarks
             | Self::WeaponClips
             | Self::ProducerDoors
             | Self::TerrainView
@@ -208,6 +216,7 @@ impl ClientModule {
             | Self::InventoryBar
             | Self::ActionNames
             | Self::CommandPanel
+            | Self::PowerBar
             | Self::UpgradeConflicts
             | Self::BuildPreview => true,
         }
@@ -341,6 +350,9 @@ impl ClientModule {
             Self::LookStates => {
                 app.add_plugins(LookStatesPlugin);
             }
+            Self::TagMarks => {
+                app.add_plugins(TagMarksPlugin);
+            }
             Self::WeaponClips => {
                 app.add_plugins(WeaponClipsPlugin);
             }
@@ -405,6 +417,9 @@ impl ClientModule {
             }
             Self::CommandPanel => {
                 app.add_plugins(CommandPanelPlugin);
+            }
+            Self::PowerBar => {
+                app.add_plugins(PowerBarPlugin);
             }
             Self::UpgradeConflicts => {
                 app.add_plugins(UpgradeConflictsPlugin);
@@ -474,6 +489,7 @@ mod tests {
             ClientModule::UnitPicking,
             ClientModule::UnitModels,
             ClientModule::LookStates,
+            ClientModule::TagMarks,
             ClientModule::TerrainView,
             ClientModule::Minimap,
             ClientModule::Effects,
@@ -510,6 +526,7 @@ mod tests {
             ClientModule::RallyClick,
             ClientModule::ActionNames,
             ClientModule::CommandPanel,
+            ClientModule::PowerBar,
         ];
         assert_eq!(of(remote, &[Capability::Production]), with(&panel, remote));
         let built = [Capability::Production, Capability::Navigation];

@@ -5,7 +5,7 @@ use campfire_math::Num;
 
 use super::*;
 use crate::client_model::{ModelScale, ModelTop};
-use crate::client_unit::{BarrelFlash, DeathLook, FireBarrel, FireBone, UnitVoices};
+use crate::client_unit::{BarrelFlash, DeathLook, FireBarrel, FireBone, MarkedClips, UnitVoices};
 use crate::condition_test::{LifeShare, SiteStage};
 use crate::death_fall::{DeathFall, FallStage, GroundDeath, SelfSpin, Spiral};
 use crate::keys_file::Key;
@@ -518,7 +518,7 @@ fn a_states_animation_and_a_draws_transitions_write_and_read_back_and_refuse_wha
             { from = "stand", to = "walk", models = [], rise = "2.5", animation = { clips = [
                 { animation = "client/animations/a.step.glb" },
             ], mode = "once_backwards" } },
-        ] }]
+        ], marked = "played" }]
 
         [conditions]
         moving = { test = "moving", still_ms = 250 }
@@ -591,9 +591,14 @@ fn a_states_animation_and_a_draws_transitions_write_and_read_back_and_refuse_wha
         (shown.animation.as_ref().unwrap().mode(), shown.rise),
         (AnimationMode::OnceBackwards, Some(two_and_a_half))
     );
-    // The defaults are not written.
+    // Its clips play on under a mark that stills others'.
+    assert_eq!(draw.marked(), MarkedClips::Played);
+    // The defaults are not written: a draw stilled by a mark is one of no `marked`.
     let written = Toml::write(&units);
     assert!(!written.contains("natural") && !written.contains("idle = false"));
+    let stilled = "[units.a]\ndraws = [{ states = [{ sets = [[]], models = [] }] }]";
+    let stilled: ClientUnits = Toml::parse(stilled).unwrap();
+    assert!(!Toml::write(&stilled).contains("marked"));
 
     // No clip; groups past four; a stride of none; a speed of none, or out of order; a
     // transition from a key to itself, of a loop, or that rises by less than 0, or a pair's twice.

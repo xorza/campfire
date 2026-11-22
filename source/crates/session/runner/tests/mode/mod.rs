@@ -413,6 +413,7 @@ mod inputs;
 mod match_end;
 mod modifiers;
 mod player_state;
+mod power;
 mod production;
 mod progression;
 mod restore;

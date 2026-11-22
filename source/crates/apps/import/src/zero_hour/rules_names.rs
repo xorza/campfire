@@ -31,6 +31,14 @@ pub(crate) struct RulesNames {
     /// (09-zero-hour.md, A propaganda tower is an aura).
     pub(crate) propaganda_rate: Stat,
     pub(crate) life_regen_share: Stat,
+    /// The stat of the power a unit gives above 0 and takes below, its object's `EnergyProduction`,
+    /// the tag of an object of `KindOf = POWERED`, and the modifier a short player holds, which
+    /// disables its units of that tag (09-zero-hour.md, A disabled unit is the rules package's).
+    pub(crate) power: Stat,
+    pub(crate) powered: DeclaredName,
+    pub(crate) underpowered: DeclaredName,
+    /// The tag of a disabled unit, which the shortage's modifier gives its powered units.
+    pub(crate) disabled: DeclaredName,
     /// The tag of a type that counts for a multiplayer victory (09-zero-hour.md, Defeat by the
     /// last building that counts).
     pub(crate) counts_for_victory: DeclaredName,
@@ -112,7 +120,7 @@ pub(crate) struct RulesNames {
 impl RulesNames {
     /// The tag of each kind of `KindOf` that a tag of its own says, which a type of the kind
     /// holds and a container's filters test.
-    pub(crate) const fn kind_tags(&self) -> [(ObjectKind, &DeclaredName); 7] {
+    pub(crate) const fn kind_tags(&self) -> [(ObjectKind, &DeclaredName); 8] {
         [
             (ObjectKind::Structure, &self.structure),
             (ObjectKind::FsBaseDefense, &self.base_defense),
@@ -121,6 +129,7 @@ impl RulesNames {
             (ObjectKind::Aircraft, &self.aircraft),
             (ObjectKind::HugeVehicle, &self.huge_vehicle),
             (ObjectKind::NoGarrison, &self.no_garrison),
+            (ObjectKind::Powered, &self.powered),
         ]
     }
 }
@@ -163,6 +172,10 @@ impl Default for RulesNames {
             garrisoned: name("garrisoned"),
             propaganda_rate: stat(&name("propaganda_rate")),
             life_regen_share: stat(&name("life_regen_share")),
+            power: stat(&name("power")),
+            powered: name("powered"),
+            underpowered: name("underpowered"),
+            disabled: name("disabled"),
             huge_vehicle: name("huge_vehicle"),
             no_garrison: name("no_garrison"),
             use_slot: name("use"),

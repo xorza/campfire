@@ -7,7 +7,7 @@ use campfire_players::{
     OrderedUnits, PlayerResources, PlayerRowsMut, ResourceAmount, TickCommands,
 };
 use campfire_sim::{DueIndex, SimTick, StableId, UnitDues, Unpredicted};
-use campfire_units::{Dead, GroundPoint, MapBook, OrderKind, UnitOrdered};
+use campfire_units::{Dead, GroundPoint, MapBook, OrderKind, Owner, UnitOrdered};
 use campfire_values::Team;
 use campfire_vision::{ByVision, SeenTargets, TeamSight};
 
@@ -15,6 +15,7 @@ use crate::build_book::BuildBook;
 use crate::builder::{BuildOrder, Builder};
 use crate::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
 use crate::production_directive::ProductionDirective;
+use crate::queue_pace::QueuePaces;
 use crate::rally::Rally;
 use crate::rally_target::RallyTarget;
 use crate::site::Site;
@@ -93,10 +94,19 @@ impl ProductionOrders {
             Res<'_, BuildBook>,
         ),
         mut resources: PlayerRowsMut<'_, '_, PlayerResources>,
-        mut units: OrderedUnits<'_, '_, (Option<&mut TrainQueue>, Option<&Site>, Has<Dead>)>,
+        mut units: OrderedUnits<
+            '_,
+            '_,
+            (
+                Option<&mut TrainQueue>,
+                Option<&Site>,
+                Has<Dead>,
+                Option<&Owner>,
+            ),
+        >,
         mut commands: Commands<'_, '_>,
         (mut refund, mut cancelled): (Local<'_, Vec<ResourceAmount>>, Local<'_, Vec<Entity>>),
-        mut queues: QueueIndex<'_>,
+        (mut queues, paces): (QueueIndex<'_>, QueuePaces<'_, '_>),
     ) {
         let now = tick.start();
         cancelled.clear();
@@ -112,7 +122,7 @@ impl ProductionOrders {
                     .refund(amounts)
         };
         orders.for_each(|order| {
-            units.for_each_mut(&order, |unit, entity, (queue, site, dead)| {
+            units.for_each_mut(&order, |unit, entity, (queue, site, dead, owner)| {
                 match (order.directive, queue, site) {
                     (ProductionDirective::CancelTrain { place }, Some(mut queue), _) => {
                         let place = usize::from(place);
@@ -120,7 +130,8 @@ impl ProductionOrders {
                             return;
                         };
                         if refunds(paid, order.player_slot) {
-                            queue.remove(place, now, &mut queues.of(unit, entity));
+                            let pace = paces.of(owner.map(|owner| owner.player_slot()));
+                            queue.remove(place, now, pace, &mut queues.of(unit, entity));
                         }
                     }
                     (ProductionDirective::CancelBuild, _, Some(site))

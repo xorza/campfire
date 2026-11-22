@@ -48,7 +48,7 @@ fn a_model_s_meshes_take_its_paint_s_tag_and_follow_its_unit_s_team() {
     // team 1, the second place.
     let mut app = App::new();
     let teams = TeamColors::new(vec![[255, 0, 0], [0, 0, 255]]).unwrap();
-    app.insert_resource(MatchColors::new(teams));
+    app.insert_resource(MatchColors::new(teams, &[]));
     app.add_systems(
         Update,
         (UnitModelsPlugin::follow_teams, UnitModelsPlugin::repaint).chain(),
@@ -127,7 +127,7 @@ fn a_model_that_replaces_another_shows_as_it_is_dressed_and_a_new_state_hides_ag
     );
     let (mut app, model) = loaded(&named);
     let teams = TeamColors::new(vec![[255, 0, 0]]).unwrap();
-    app.insert_resource(MatchColors::new(teams));
+    app.insert_resource(MatchColors::new(teams, &[]));
     app.add_observer(UnitModelsPlugin::dress);
     app.add_systems(Update, UnitModelsPlugin::redress);
     app.register_type::<MeshMaterial3d<FileMaterial>>();

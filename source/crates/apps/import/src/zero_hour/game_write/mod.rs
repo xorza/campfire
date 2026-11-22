@@ -6,9 +6,9 @@ use bevy_math::UVec2;
 use campfire_client_files::{
     ActionLook, ButtonLook, CameraFile, ClientFile, ClientObjects, ClientUnit, ClientUnits,
     EffectsFile, FogFile, FogLevel, HitMark, HudFile, KeysFile, MapConditions, MapLights, Minimap,
-    ObjectLook, PanelGrid, PanelPlaces, PerkPage, PerkPlace, PerksFile, PickingFile, PixelRadius,
-    PlaceOrder, RadarShown, ShownBars, SoundFile, SpeedScale, TeamColors, TerrainFile, TrackMarks,
-    TreadDust, WreckGround,
+    ObjectLook, PanelGrid, PanelIcon, PanelPlaces, PerkPage, PerkPlace, PerksFile, PickingFile,
+    PixelRadius, PlaceOrder, PowerBar, PowerFills, RadarShown, ShownBars, SoundFile, SpeedScale,
+    TagMark, TeamColors, TerrainFile, TrackMarks, TreadDust, WreckGround,
 };
 use campfire_codec::{Toml, TomlValue};
 use campfire_common::{DeclaredName, MapName, PackageFingerprint};
@@ -32,7 +32,9 @@ use crate::zero_hour::contain_import::ContainImport;
 use crate::zero_hour::dropped::{Dropped, Losses};
 use crate::zero_hour::effect_drop_cause::EffectDropCause;
 use crate::zero_hour::effects_import::{EffectSources, EffectsImport};
+use crate::zero_hour::energy_import::EnergyImport;
 use crate::zero_hour::error::ZeroHourError;
+use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::game_frames;
 use crate::zero_hour::format::ini::object_ini::ini_object::{IniObject, RadarPriority};
 use crate::zero_hour::format::ini::terrain_ini::TerrainIni;
@@ -57,6 +59,7 @@ use crate::zero_hour::production_cx::ProductionCx;
 use crate::zero_hour::production_import::ProductionImport;
 use crate::zero_hour::propaganda_import::PropagandaImport;
 use crate::zero_hour::road_pieces::RoadPieces;
+use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::rules_package;
 use crate::zero_hour::rules_package::{FACTION, ModeImport};
 use crate::zero_hour::science_import::ScienceImport;
@@ -198,6 +201,7 @@ impl<'r> GameWrite<'r> {
         };
         let mut upgrades = UpgradeImport::of(sources, names.types(), &mut additions)?;
         let propaganda = PropagandaImport::of(game, names.types(), &mut additions)?;
+        let energy = EnergyImport::of(game.game_data.low_energy, &game.names, names.types())?;
         upgrades.take_propaganda(&propaganda);
         let veterancy = VeterancyImport::of(game, names.types(), &mut additions)?;
         let needed = production.sciences.iter().chain(&veterancy.sciences);
@@ -251,6 +255,7 @@ impl<'r> GameWrite<'r> {
             movers: &movers,
             second_lives: &second_lives,
             propaganda: &propaganda,
+            energy: &energy,
         };
         let modifiers = TypeModifiers {
             movers: &movers,
@@ -555,12 +560,49 @@ impl<'r> GameWrite<'r> {
                 ..Minimap::default()
             },
             level_icons: panel.level_icons.clone(),
+            power_bar: Self::power_bar(game, &panel.power_icons),
+            tag_marks: vec![Self::disabled_mark(&game.names)],
         };
         self.writer.write(HudFile::path(), &hud.encode())?;
         Ok(WrittenPanel {
             import: panel,
             dropped,
         })
+    }
+
+    /// The mark of a disabled unit, as `Drawable` tints one by `DARK_GRAY_DISABLED_COLOR`, −0.5 on
+    /// each channel, faded over its tint envelope's 30 frames, 1 s, and pauses the animations of
+    /// its draws that need power (02-engine-core.md, A tag marks its unit).
+    fn disabled_mark(names: &RulesNames) -> TagMark {
+        let dark = -Num::HALF;
+        TagMark {
+            tag: names.disabled.clone(),
+            tint: [dark; 3],
+            fade_ms: 1000,
+            stills: true,
+        }
+    }
+
+    /// The power bar of `game`'s `GameData.ini` and the icons `icons` of its fills and needle, as
+    /// `W3DPowerDraw` draws it (02-engine-core.md, The panel shows the power bar); none of no
+    /// icons, or of a base, intervals or margin the bar holds none of.
+    fn power_bar(game: &ZeroHourRules, icons: &[PanelIcon]) -> Option<PowerBar> {
+        let [enough, near, short, needle] = icons else {
+            return None;
+        };
+        let bar = game.game_data.power_bar;
+        let fills = PowerFills {
+            enough: enough.clone(),
+            near: near.clone(),
+            short: short.clone(),
+        };
+        PowerBar::new(
+            u8::try_from(bar.base).ok()?,
+            game_float::to_num(bar.intervals).ok()?,
+            u32::try_from(bar.yellow_range).ok()?,
+            fills,
+            needle.clone(),
+        )
     }
 
     /// Writes the effects and the sounds, of the weapons, the deaths and the treads of

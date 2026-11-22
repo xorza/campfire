@@ -7,7 +7,7 @@ use campfire_common::Tick;
 use campfire_deliveries::DashDelivering;
 use campfire_navigation::{Party, PartyKey, RouteAsk};
 use campfire_orders::NextThink;
-use campfire_production::{Gatherer, NodeAt};
+use campfire_production::{Gatherer, NodeAt, QueuePace};
 use campfire_progression::{LevelUp, LevelUps, TrackBook};
 use campfire_sim::{
     HostRule, Position, SimWorld, SnapshotError, StateDelta, StateRegistry, UnitDues,
@@ -157,7 +157,13 @@ fn a_restore_check_refuses_what_the_match_lacks() {
         time: Ticks::new(1),
         paid: 0,
     };
-    queue.push(queued, &[], Tick::new(0), &mut UnitDues::loose());
+    queue.push(
+        queued,
+        &[],
+        Tick::new(0),
+        QueuePace::Own,
+        &mut UnitDues::loose(),
+    );
     assert!(
         !queue.check(&game, grunt),
         "a cast is no train, and a grunt trains none"

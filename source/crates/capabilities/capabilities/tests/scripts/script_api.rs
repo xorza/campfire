@@ -26,8 +26,8 @@ use campfire_mode::{
 use campfire_navigation::ModeNavigationData;
 use campfire_orders::AiData;
 use campfire_production::{
-    BuildData, DropOffData, GatherData, ModeSupplyData, NodeData, ProductionData, RequiresData,
-    SupplyData, TrainData,
+    BuildData, DropOffData, GatherData, ModePowerData, ModeSupplyData, NodeData, PowerSpeedData,
+    ProductionData, RequiresData, SupplyData, TrainData,
 };
 use campfire_progression::{PerkData, TrackData};
 use campfire_projectiles::{ProjectileData, ProjectileDeliveryData};
@@ -620,6 +620,8 @@ fn the_data_fields_are_the_schemas() {
         table::<ProductionData>(),
         table::<SupplyData>(),
         table::<ModeSupplyData>(),
+        table::<ModePowerData>(),
+        table::<PowerSpeedData>(),
         table::<RequiresData>(),
         table::<NodeData>(),
         table::<DropOffData>(),

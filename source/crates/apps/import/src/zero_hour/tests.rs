@@ -299,6 +299,11 @@ fn an_imported_mode_reads_its_types_its_start_and_its_choices() {
             // America starts with its science, which the mode's start grants, and its bot buys
             // its side's two skill sets, a list each.
             (declared("perks_america"), names(&["science_america"])),
+            // The power plant gives power, which its bot builds while short.
+            (
+                declared("power_plants_america"),
+                names(&["americapowerplant"])
+            ),
             (
                 declared("skill_sets_america"),
                 names(&["skill_set_1_america", "skill_set_2_america"])

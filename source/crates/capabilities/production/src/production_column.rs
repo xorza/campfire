@@ -6,6 +6,7 @@ use bevy_ecs::world::{World, WorldId};
 use campfire_common::PlayerSlot;
 use campfire_declarations::ById;
 use campfire_math::Num;
+use campfire_players::Player;
 use campfire_script::{
     AnyKeptRows, Checked, ColumnRows, IdNames, KeptRows, RowFill, ScriptText, ScriptValue, Unit,
     View, ViewColumn,
@@ -17,6 +18,8 @@ use campfire_values::{ActionId, Team, UnitType};
 use crate::gatherer::Gatherer;
 use crate::mode_supply_data::ModeSupplyData;
 use crate::node::Node;
+use crate::player_power::PlayerPower;
+use crate::power_book::PowerBook;
 use crate::site::{Site, SiteProgress};
 use crate::supply::{SupplyParts, SupplySums};
 use crate::supply_book::SupplyBook;
@@ -39,12 +42,15 @@ pub(crate) type RowReads = (
 /// what it carries, builds, trains and holds, a row each; what the riders, which leave the world
 /// and its rows, count for, by player (04-capabilities/production.md, A rider counts for its
 /// player); the mode's supply rules and costs, by which scripts read each player's supply as the
-/// view read the match; and the trains' unit types, by which they read a queue.
+/// view read the match; each player's power as the view read the match, none in a mode that
+/// counts none; and the trains' unit types, by which they read a queue.
 #[derive(Debug, Default)]
 pub struct ProductionColumn {
     rows: KeptRows<ProductionRows>,
     riding: Vec<SupplySums>,
     riders: Option<(WorldId, Riders)>,
+    power: Option<Vec<PlayerPower>>,
+    players: Option<(WorldId, Powers)>,
     costs: SupplyCostBook,
     rules: Option<ModeSupplyData>,
     trains: ById<ActionId, TrainSpec>,
@@ -53,6 +59,9 @@ pub struct ProductionColumn {
 /// The riders, units that leave the world as `Disabled`, with what supply counts of each, of the
 /// world the query was made for.
 type Riders = QueryState<(&'static Owner, SupplyParts), With<Disabled>>;
+
+/// Each player's power, of the world the query was made for.
+type Powers = QueryState<(&'static Player, &'static PlayerPower)>;
 
 /// A unit's row of the production column: its player, none for a unit no player owns, what it
 /// counts for, the amount it carries, the share of its site's time its progress reached, none
@@ -170,6 +179,7 @@ impl ViewColumn for ProductionColumn {
             self.costs = costs.clone();
         }
         self.count_riders(world);
+        self.read_power(world);
         refill
     }
 
@@ -247,6 +257,46 @@ impl ProductionColumn {
             })
         })
         .flatten()
+    }
+
+    /// `player_slot`'s power as `view` read the match; `None` in a mode that counts none.
+    pub(crate) fn power(view: &View, player_slot: PlayerSlot) -> Option<PlayerPower> {
+        view.column(|column: &Self| {
+            let power = column.power.as_ref()?;
+            Some(power.get(player_slot.index()).copied().unwrap_or_default())
+        })
+        .flatten()
+    }
+
+    /// Reads each player's power of `world`, by slot, in a mode that counts it; the query of the
+    /// players made again for another world.
+    fn read_power(&mut self, world: &World) {
+        let counts = world
+            .get_resource::<PowerBook>()
+            .is_some_and(|book| book.counts());
+        if !counts {
+            self.power = None;
+            return;
+        }
+        let power = self.power.get_or_insert_with(Vec::new);
+        power.clear();
+        if self
+            .players
+            .as_ref()
+            .is_none_or(|(id, _)| *id != world.id())
+        {
+            self.players = world.try_query().map(|players| (world.id(), players));
+        }
+        let Some((_, players)) = &mut self.players else {
+            return;
+        };
+        for (player, held) in players.iter(world) {
+            let at = player.player_slot().index();
+            if power.len() <= at {
+                power.resize(at + 1, PlayerPower::default());
+            }
+            power[at] = *held;
+        }
     }
 
     /// Counts what the riders of `world` count for, by player, as the column's costs say; the

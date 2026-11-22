@@ -62,6 +62,29 @@ pub(crate) struct GameDataIni {
     /// lines of `ENTHUSIASTIC` and of `SUBLIMINAL`, each 1 by default.
     pub(crate) enthusiastic_rate: f32,
     pub(crate) subliminal_rate: f32,
+    /// A short player's production speed: `MinLowEnergyProductionSpeed`,
+    /// `MaxLowEnergyProductionSpeed` and `LowEnergyPenaltyModifier` (`calcTimeToBuild`).
+    pub(crate) low_energy: LowEnergy,
+    /// The control bar's power bar: `PowerBarBase`, `PowerBarIntervals` and `PowerBarYellowRange`
+    /// (`W3DPowerDraw`).
+    pub(crate) power_bar: IniPowerBar,
+}
+
+/// A short player's production speed's bounds and its penalty, each 0 by default.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct LowEnergy {
+    pub(crate) min: f32,
+    pub(crate) max: f32,
+    pub(crate) penalty: f32,
+}
+
+/// The power bar's base of logarithm, its intervals over its width, and the margin within which
+/// it shows yellow, 7, 3 and 5 by default.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct IniPowerBar {
+    pub(crate) base: i32,
+    pub(crate) intervals: f32,
+    pub(crate) yellow_range: i32,
 }
 
 /// What a garrison multiplies its riders' weapons' range and damage by, each 1 by default.
@@ -134,6 +157,16 @@ impl Default for GameDataIni {
             },
             enthusiastic_rate: 1.0,
             subliminal_rate: 1.0,
+            low_energy: LowEnergy {
+                min: 0.0,
+                max: 0.0,
+                penalty: 0.0,
+            },
+            power_bar: IniPowerBar {
+                base: 7,
+                intervals: 3.0,
+                yellow_range: 5,
+            },
         }
     }
 }
@@ -168,6 +201,8 @@ impl GameDataIni {
                         self.box_value = value.ok_or(IniError::Range { line: line.number })?;
                     }
                     "maketrackmarks" => self.track_marks = line.yes()?,
+                    "powerbarbase" => self.power_bar.base = line.int()?,
+                    "powerbaryellowrange" => self.power_bar.yellow_range = line.int()?,
                     "maxterraintracks" => {
                         let count = u16::try_from(line.int()?).ok();
                         self.most_tracks = count.ok_or(IniError::Range { line: line.number })?;
@@ -247,6 +282,10 @@ impl GameDataIni {
                             "unitreallydamagedthreshold" => &mut self.really_damaged_threshold,
                             "gravity" => &mut self.gravity,
                             "groundstiffness" => &mut self.ground_stiffness,
+                            "minlowenergyproductionspeed" => &mut self.low_energy.min,
+                            "maxlowenergyproductionspeed" => &mut self.low_energy.max,
+                            "lowenergypenaltymodifier" => &mut self.low_energy.penalty,
+                            "powerbarintervals" => &mut self.power_bar.intervals,
                             _ => continue,
                         };
                         *field = line.real()?;

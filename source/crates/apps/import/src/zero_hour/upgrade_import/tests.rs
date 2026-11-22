@@ -7,6 +7,8 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
     let mut rules = ZeroHourRules {
         ..ZeroHourRules::of_objects(ObjectIni::of(&[
             "Object Bunker\n KindOf = PORTABLE_STRUCTURE\n Behavior = TransportContain M\n  Slots = 5\n End\nEnd\n",
+            "Object Plain\nEnd\nObject Plant\n EnergyBonus = 8\nEnd\n",
+            "Object Center\n Behavior = GrantUpgradeCreate M\n  UpgradeToGrant = Upgrade_A\n End\nEnd\n",
         ]))
     };
     rules
@@ -21,6 +23,8 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
               ObjectCreationList OCL_Out\n CreateObject\n  ObjectNames = Bunker\n End\nEnd\n",
         )
         .unwrap();
+    let object = |name: &str| rules.objects.object(name.as_bytes()).unwrap();
+    let (plain, plant, center) = (object("Plain"), object("Plant"), object("Center"));
     let bonuses = BTreeMap::new();
     let sources = ModuleSources {
         rules: &rules,
@@ -34,7 +38,7 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
     };
     let life = |add, change| UpgradeEffect::MaxHealth { add, change };
     let mut import = UpgradeImport::default();
-    let mut convert = |module| import.module(sources, &module, &[]);
+    let mut convert = |module| import.module(sources, plain, &module, &[]);
     // 50 more life by A, unless B; a conflict no file defines goes.
     let entry = convert(module(
         life(50.0, HealthChange::AddCurrentToo),
@@ -118,14 +122,14 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
     let mut held = vec![entry.unwrap()];
     let again = module(life(50.0, HealthChange::AddCurrentToo), &["Upgrade_A"]);
     for name in ["upgrade_a_life_50_2", "upgrade_a_life_50_3"] {
-        let next = import.module(sources, &again, &held).unwrap();
+        let next = import.module(sources, plain, &again, &held).unwrap();
         assert_eq!(next.modifier, declared(name));
         held.push(next);
     }
     // An armor of A's twice is one flag, of one modifier.
     let armor = module(UpgradeEffect::Armor, &["Upgrade_A"]);
-    let held = [import.module(sources, &armor, &[]).unwrap()];
-    let twice = import.module(sources, &armor, &held).unwrap();
+    let held = [import.module(sources, plain, &armor, &[]).unwrap()];
+    let twice = import.module(sources, plain, &armor, &held).unwrap();
     assert_eq!(twice.modifier, held[0].modifier);
     // A power plant's rods, a model condition and sub-objects each give the tag its look tests:
     // the condition's, or for sub-objects, which set none, one of the first trigger's; a radar
@@ -159,7 +163,7 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
     ] {
         let looked = module(effect, &["Upgrade_A"]);
         assert_eq!(upgrade_tag::of(&looked), Ok(Some(declared(tag))));
-        let entry = import.module(sources, &looked, &[]).unwrap();
+        let entry = import.module(sources, plain, &looked, &[]).unwrap();
         assert_eq!(entry.modifier, declared(modifier));
         assert_eq!(
             import.effects[&entry.modifier],
@@ -175,7 +179,7 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
         },
         &["Upgrade_A"],
     );
-    let entry = import.module(sources, &bunker, &[]).unwrap();
+    let entry = import.module(sources, plain, &bunker, &[]).unwrap();
     assert_eq!(entry.modifier, declared("upgrade_a_created"));
     assert_eq!(
         import.effects[&entry.modifier],
@@ -185,22 +189,68 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
     // tag suffixed `fire` (04-capabilities/interaction.md, A rider's fire follows its container's
     // tags).
     let fire = module(UpgradeEffect::PassengersFire, &["Upgrade_A"]);
-    let entry = import.module(sources, &fire, &[]).unwrap();
+    let entry = import.module(sources, plain, &fire, &[]).unwrap();
     assert_eq!(entry.modifier, declared("upgrade_a_fire"));
     assert_eq!(
         import.effects[&entry.modifier],
         EffectModifier::tagged(&declared("upgrade_a_fire"))
     );
-    // An armor's module sets no condition its look tests, nor a radar's, whose modifier gives
-    // the radar's tag.
-    assert_eq!(upgrade_tag::of(&armor), Ok(None));
-    let radar = module(UpgradeEffect::Radar, &["Upgrade_A"]);
-    assert_eq!(upgrade_tag::of(&radar), Ok(None));
-    let entry = import.module(sources, &radar, &[]).unwrap();
+    // The rods of an object of an `EnergyBonus` of 8 add 8 to its power beside the tag, of a
+    // modifier of that bonus (09-zero-hour.md, The Control Rods give power).
+    let rods = module(UpgradeEffect::PowerPlant, &["Upgrade_A"]);
+    let entry = import.module(sources, plant, &rods, &[]).unwrap();
+    assert_eq!(entry.modifier, declared("upgrade_a_power_8"));
+    let power = (rules.names.power.clone(), Number::from(8));
     assert_eq!(
         import.effects[&entry.modifier],
-        EffectModifier::tagged(&declared("radar"))
+        EffectModifier::tagged_adding(&declared("power_plant_upgraded"), BTreeMap::from([power]))
     );
+    // An armor's module sets no condition its look tests, nor a radar's, whose modifier gives
+    // the radar's tag. A radar conflicts with its player's shortage of power, but one
+    // `DisableProof`; one of an object that grants itself its trigger as it is made holds from its
+    // spawn, of no trigger (09-zero-hour.md, The radar falls by an upgrade's conflict).
+    assert_eq!(upgrade_tag::of(&armor), Ok(None));
+    let radar = |disable_proof| module(UpgradeEffect::Radar { disable_proof }, &["Upgrade_A"]);
+    assert_eq!(upgrade_tag::of(&radar(false)), Ok(None));
+    let short = declared("underpowered");
+    for (object, disable_proof, triggers, all, conflicts) in [
+        (
+            plain,
+            false,
+            vec![declared("upgrade_a")],
+            false,
+            vec![declared("upgrade_b"), short.clone()],
+        ),
+        (
+            plain,
+            true,
+            vec![declared("upgrade_a")],
+            false,
+            vec![declared("upgrade_b")],
+        ),
+        (
+            center,
+            false,
+            Vec::new(),
+            true,
+            vec![declared("upgrade_b"), short],
+        ),
+        (center, true, Vec::new(), true, vec![declared("upgrade_b")]),
+    ] {
+        let entry = import
+            .module(sources, object, &radar(disable_proof), &[])
+            .unwrap();
+        assert_eq!(
+            (entry.triggers, entry.all, entry.conflicts),
+            (triggers, all, conflicts),
+            "{} {disable_proof}",
+            object.name
+        );
+        assert_eq!(
+            import.effects[&entry.modifier],
+            EffectModifier::tagged(&declared("radar"))
+        );
+    }
     // What converted keeps its modifiers: A's and B's, and the effect's, of the life stat.
     assert_eq!(
         import.upgrades,

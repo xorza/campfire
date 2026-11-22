@@ -50,6 +50,7 @@ mod missile_play;
 mod pins;
 mod play;
 mod play_selection;
+mod power_play;
 mod probe_arg;
 mod science_play;
 mod skirmish_play;
