@@ -26,6 +26,7 @@ A slice's proposal. At its end, a player of a Zero Hour skirmish as America buil
 - **Sabotage and disabled producers.** No saboteur cuts a player's power, and a power plant that another cause disables still gives, as no such cause is imported.
 - **One tick late.** A shortage and a speed apply from the tick after the change, where the original applies them in its frame.
 - **Rounding.** A speed is exact from the counts, where the original computes it in `f32`.
+- **The bar of no power.** A player of a faction of no power, GLA, shows an empty power bar, where the original's GLA control bar draws none.
 - **Sounds and EVA.** The disabled and re-enabled sounds and EVA's low-power warning, as the sound losses count.
 
 ## Checks

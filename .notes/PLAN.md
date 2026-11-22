@@ -10,7 +10,6 @@ The slice of [Power](../docs/design/power.md): a player of a Zero Hour skirmish 
 
 It touches the client's HUD, panel and looks, and stands last but the player's check, as it shows what the engine now counts.
 
-- [ ] **PW7. The panel's power bar.** The panel shows the player's resources alone (`command_panel/mod.rs:99`). The HUD file's `power_bar` (`hud_file/mod.rs:18`) gives its images, base, intervals and margin, and the panel draws the received `PlayerPower` as its bar and needle in green, yellow or red. Check: a client test of the bar's length, needle and color at given counts, computed by hand.
 - [ ] **PW8. A tag marks its unit.** A unit's paint takes only the build preview's tint (`match_colors.rs:23`), no tag shows an icon over the bars but the level's (`hud/mod.rs:924`), and nothing stills a look's clips (`look_clips.rs:64`). The HUD file's `tag_marks` give a tag's tint faded over its time, its looping icon over the bars, and whether it stills animations, which a look may keep (Direction: one rendering pipeline for every game). Check: client tests of a marked unit's tint at points of its fade, its icon's frame at given times and its clips stilled, and of a look that keeps them.
 
 ### End of the slice
@@ -25,6 +24,8 @@ It touches the client's HUD, panel and looks, and stands last but the player's c
 
 - **PW5. The import gives power.** The shortage's modifier is the import's, as a rules package holds no modifier (`LoadProblem::RulesKey`), and so is `[power] short`; the rules package keeps the stat and the tags. A radar its object grants itself as it is made is an upgrade's entry of no trigger, in place of a tag of its type, so its conflict with the shortage reaches it. The Control Rods' modifiers are `<trigger>_power_<bonus>`, after the import's names of an upgrade's effects.
 - **PW6. A bot builds power while short.** The Zero Hour check plays power in a play of its own, a Patriot battery disabled by a second one past one plant's power and enabled by a second plant, as a Patriot needs a plant; the skirmish's builder fixture waits the 300 ticks more its first plant takes, as its timed orders took the dozer off a plant half built.
+
+- **PW7. The panel's power bar.** The bar stands at the window's top, its own node, not the command panel's, which shows only while a unit is selected, where Zero Hour's control bar always draws its bar; it shows a player's power once the server sends it, a GLA player's empty.
 
 ## Decisions
 

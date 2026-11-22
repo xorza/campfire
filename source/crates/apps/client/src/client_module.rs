@@ -30,6 +30,7 @@ use crate::local_keys::LocalKeysPlugin;
 use crate::orders::OrdersPlugin;
 use crate::perk_panel::PerkPanelPlugin;
 use crate::pointer::unit_picking::UnitPickingPlugin;
+use crate::power_bar::PowerBarPlugin;
 use crate::rally_click::RallyClickPlugin;
 use crate::report::ReportPlugin;
 use crate::selecting::SelectingPlugin;
@@ -94,6 +95,7 @@ pub(crate) enum ClientModule {
     InventoryBar,
     ActionNames,
     CommandPanel,
+    PowerBar,
     UpgradeConflicts,
     BuildPreview,
 }
@@ -142,9 +144,11 @@ impl ClientModule {
         match self {
             Self::AreaView => &[Capability::Areas],
             Self::ItemNames | Self::ShopPanel | Self::InventoryBar => &[Capability::Items],
-            Self::ActionNames | Self::CommandPanel | Self::GatherClick | Self::RallyClick => {
-                &[Capability::Production]
-            }
+            Self::ActionNames
+            | Self::CommandPanel
+            | Self::PowerBar
+            | Self::GatherClick
+            | Self::RallyClick => &[Capability::Production],
             Self::UseClick => &[Capability::Interaction],
             Self::DeathKeeps | Self::WeaponClips => &[Capability::Combat],
             Self::ProducerDoors => &[Capability::Production],
@@ -208,6 +212,7 @@ impl ClientModule {
             | Self::InventoryBar
             | Self::ActionNames
             | Self::CommandPanel
+            | Self::PowerBar
             | Self::UpgradeConflicts
             | Self::BuildPreview => true,
         }
@@ -406,6 +411,9 @@ impl ClientModule {
             Self::CommandPanel => {
                 app.add_plugins(CommandPanelPlugin);
             }
+            Self::PowerBar => {
+                app.add_plugins(PowerBarPlugin);
+            }
             Self::UpgradeConflicts => {
                 app.add_plugins(UpgradeConflictsPlugin);
             }
@@ -510,6 +518,7 @@ mod tests {
             ClientModule::RallyClick,
             ClientModule::ActionNames,
             ClientModule::CommandPanel,
+            ClientModule::PowerBar,
         ];
         assert_eq!(of(remote, &[Capability::Production]), with(&panel, remote));
         let built = [Capability::Production, Capability::Navigation];

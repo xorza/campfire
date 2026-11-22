@@ -114,7 +114,7 @@ End
         max: 0.0,
         penalty: 0.0,
     };
-    let bar = PowerBar {
+    let bar = IniPowerBar {
         base: 7,
         intervals: 3.0,
         yellow_range: 5,
@@ -131,7 +131,7 @@ End
         max: 0.8,
         penalty: 1.0,
     };
-    let set = PowerBar {
+    let set = IniPowerBar {
         base: 5,
         intervals: 4.0,
         yellow_range: 2,

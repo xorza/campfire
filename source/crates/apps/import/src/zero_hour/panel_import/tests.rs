@@ -99,7 +99,15 @@ fn a_set_places_its_converted_buttons_and_commands_with_their_images_and_keys() 
               MappedImage SCVETER2\n Texture = SAUserInterface512_005.tga\n \
               Coords = Left:16 Top:0 Right:32 Bottom:16\nEnd\n\
               MappedImage SCVETER3\n Texture = SAUserInterface512_005.tga\n \
-              Coords = Left:32 Top:0 Right:48 Bottom:16\nEnd\n",
+              Coords = Left:32 Top:0 Right:48 Bottom:16\nEnd\n\
+              MappedImage PowerPointG\n Texture = SAUserInterface512_005.tga\n \
+              Coords = Left:0 Top:20 Right:6 Bottom:26\nEnd\n\
+              MappedImage PowerPointY\n Texture = SAUserInterface512_005.tga\n \
+              Coords = Left:6 Top:20 Right:12 Bottom:26\nEnd\n\
+              MappedImage PowerPointR\n Texture = SAUserInterface512_005.tga\n \
+              Coords = Left:12 Top:20 Right:18 Bottom:26\nEnd\n\
+              MappedImage PowerBarSlider\n Texture = SAUserInterface512_005.tga\n \
+              Coords = Left:18 Top:20 Right:29 Bottom:26\nEnd\n",
         )
         .unwrap();
     let atlas = ArchivePath::of("art\\textures\\sauserinterface512_005.tga");
@@ -125,6 +133,15 @@ fn a_set_places_its_converted_buttons_and_commands_with_their_images_and_keys() 
         rect: IconRect::new(left, 0, left + 16, 16).unwrap(),
     };
     assert_eq!(panel.level_icons, [level(0), level(16), level(32)]);
+    // The power bar's tiles of power enough, near and short, 6 px each, and its needle of 11.
+    let power = |left, right| PanelIcon {
+        texture: game_path::texture(&atlas).unwrap(),
+        rect: IconRect::new(left, 20, right, 26).unwrap(),
+    };
+    assert_eq!(
+        panel.power_icons,
+        [power(0, 6), power(6, 12), power(12, 18), power(18, 29)]
+    );
     // The game's grid: 7 columns of 2, down each column.
     let grid = &panel.grid;
     assert_eq!(

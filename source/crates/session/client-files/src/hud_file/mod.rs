@@ -5,14 +5,16 @@ use crate::client_file::{ClientFile, ClientFormat};
 use crate::client_path;
 use crate::hud_file::minimap::Minimap;
 use crate::hud_file::panel_grid::PanelGrid;
+use crate::hud_file::power_bar::PowerBar;
 use crate::panel_icon::PanelIcon;
 
 /// A mode's `client/hud.toml`: which units show their bars, how a hit shows, the command panel's
-/// grid, the minimap, and the icon each level from 2 shows beside its unit's bars; a mode of no
-/// file, or a field the file does not give, shows every unit's bars, a ring for each hit, the
-/// default grid, the default minimap and no level (02-engine-core.md, Bars in screen space;
-/// 02-engine-core.md, The mode chooses its hit mark; 02-engine-core.md, A look places its buttons;
-/// 02-engine-core.md, A level shows its icon).
+/// grid, the minimap, the icon each level from 2 shows beside its unit's bars, and the power bar;
+/// a mode of no file, or a field the file does not give, shows every unit's bars, a ring for each
+/// hit, the default grid, the default minimap, no level and no power bar (02-engine-core.md, Bars
+/// in screen space; 02-engine-core.md, The mode chooses its hit mark; 02-engine-core.md, A look
+/// places its buttons; 02-engine-core.md, A level shows its icon; power.md, The panel shows the
+/// power bar).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct HudFile {
@@ -22,6 +24,8 @@ pub struct HudFile {
     pub minimap: Minimap,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub level_icons: Vec<PanelIcon>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub power_bar: Option<PowerBar>,
 }
 
 impl HudFile {
@@ -65,6 +69,7 @@ impl ClientFile for HudFile {
 
 pub(crate) mod minimap;
 pub(crate) mod panel_grid;
+pub(crate) mod power_bar;
 
 #[cfg(test)]
 mod tests;

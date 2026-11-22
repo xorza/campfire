@@ -51,6 +51,7 @@ mod own_player;
 mod perk_panel;
 mod placing;
 mod pointer;
+mod power_bar;
 mod rally_click;
 mod report;
 mod right_click;

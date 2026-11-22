@@ -16,6 +16,7 @@ fn a_hud_shows_every_unit_s_bars_and_hits_unless_its_file_says_otherwise() {
         panel: PanelGrid::default(),
         minimap: Minimap::default(),
         level_icons: Vec::new(),
+        power_bar: None,
     };
     assert_eq!(
         Toml::parse::<HudFile>("bars = \"selected\"").unwrap(),
@@ -50,7 +51,7 @@ fn a_hud_shows_every_unit_s_bars_and_hits_unless_its_file_says_otherwise() {
     );
     assert_eq!(
         refusal("rings = \"all\""),
-        "unknown field `rings`, expected one of `bars`, `hit_mark`, `panel`, `minimap`, `level_icons`"
+        "unknown field `rings`, expected one of `bars`, `hit_mark`, `panel`, `minimap`, `level_icons`, `power_bar`"
     );
 }
 

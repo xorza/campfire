@@ -4,6 +4,7 @@ use bevy::ecs::system::{Query, Res, SystemParam};
 use campfire_common::PlayerSlot;
 use campfire_host::JoinState;
 use campfire_players::{PlayerResources, PlayerRows, ResourceAmount};
+use campfire_production::PlayerPower;
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
 use campfire_stats::PlayerModifiers;
 use campfire_units::{Commanded, PlayerUnits};
@@ -11,7 +12,7 @@ use campfire_values::{ModifierId, Relation, Relations, ResourceId, Team, TeamSet
 use campfire_vision::{ExploredCells, SeenCells};
 
 /// The client's own player as a system reads it: its player slot and team, once the client plays,
-/// the avatar it commands, its amounts of the player resources, the modifiers it holds, how its
+/// the avatar it commands, its amounts of the player resources, its power, the modifiers it holds, how its
 /// side regards each team by the relations on the match's entity, the cells its team sees and
 /// explored, and, for a spectator, the teams it chose to watch.
 #[derive(SystemParam, Debug)]
@@ -19,6 +20,7 @@ pub(crate) struct OwnPlayer<'w, 's> {
     state: Res<'w, JoinState>,
     players: PlayerUnits<'w, 's>,
     resources: PlayerRows<'w, 's, PlayerResources>,
+    power: PlayerRows<'w, 's, PlayerPower>,
     modifiers: PlayerRows<'w, 's, PlayerModifiers>,
     relations: Query<'w, 's, &'static Relations, Allow<Unpredicted>>,
     index: Res<'w, EntityIndex>,
@@ -66,6 +68,13 @@ impl OwnPlayer<'_, '_> {
             .player_slot()
             .and_then(|player_slot| self.resources.of_player_slot(player_slot));
         held.map_or(0, |held| held.amount(resource))
+    }
+
+    /// The player's power; none before it plays, in a mode that counts none, or before its power
+    /// reaches the client.
+    pub(crate) fn power(&self) -> Option<PlayerPower> {
+        let player_slot = self.player_slot()?;
+        self.power.of_player_slot(player_slot).copied()
     }
 
     /// Whether the player holds each of `costs`, as `amount` gives its amounts.

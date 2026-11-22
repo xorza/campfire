@@ -67,7 +67,7 @@ pub(crate) struct GameDataIni {
     pub(crate) low_energy: LowEnergy,
     /// The control bar's power bar: `PowerBarBase`, `PowerBarIntervals` and `PowerBarYellowRange`
     /// (`W3DPowerDraw`).
-    pub(crate) power_bar: PowerBar,
+    pub(crate) power_bar: IniPowerBar,
 }
 
 /// A short player's production speed's bounds and its penalty, each 0 by default.
@@ -81,7 +81,7 @@ pub(crate) struct LowEnergy {
 /// The power bar's base of logarithm, its intervals over its width, and the margin within which
 /// it shows yellow, 7, 3 and 5 by default.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct PowerBar {
+pub(crate) struct IniPowerBar {
     pub(crate) base: i32,
     pub(crate) intervals: f32,
     pub(crate) yellow_range: i32,
@@ -162,7 +162,7 @@ impl Default for GameDataIni {
                 max: 0.0,
                 penalty: 0.0,
             },
-            power_bar: PowerBar {
+            power_bar: IniPowerBar {
                 base: 7,
                 intervals: 3.0,
                 yellow_range: 5,

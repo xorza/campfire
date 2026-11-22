@@ -76,6 +76,7 @@ pub use crate::error::{
 pub use crate::fog_file::{FogFile, FogLevel};
 pub use crate::hud_file::minimap::Minimap;
 pub use crate::hud_file::panel_grid::{ButtonLook, GridCell, PanelGrid, PlaceOrder};
+pub use crate::hud_file::power_bar::{PowerBar, PowerFills};
 pub use crate::hud_file::{HitMark, HudFile, ShownBars};
 pub use crate::keys_file::{Chord, ChordLabel, Key, KeyModifiers, KeysFile, Press};
 pub use crate::ktx2_image::Ktx2Image;

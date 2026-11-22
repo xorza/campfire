@@ -6,9 +6,9 @@ use bevy_math::UVec2;
 use campfire_client_files::{
     ActionLook, ButtonLook, CameraFile, ClientFile, ClientObjects, ClientUnit, ClientUnits,
     EffectsFile, FogFile, FogLevel, HitMark, HudFile, KeysFile, MapConditions, MapLights, Minimap,
-    ObjectLook, PanelGrid, PanelPlaces, PerkPage, PerkPlace, PerksFile, PickingFile, PixelRadius,
-    PlaceOrder, RadarShown, ShownBars, SoundFile, SpeedScale, TeamColors, TerrainFile, TrackMarks,
-    TreadDust, WreckGround,
+    ObjectLook, PanelGrid, PanelIcon, PanelPlaces, PerkPage, PerkPlace, PerksFile, PickingFile,
+    PixelRadius, PlaceOrder, PowerBar, PowerFills, RadarShown, ShownBars, SoundFile, SpeedScale,
+    TeamColors, TerrainFile, TrackMarks, TreadDust, WreckGround,
 };
 use campfire_codec::{Toml, TomlValue};
 use campfire_common::{DeclaredName, MapName, PackageFingerprint};
@@ -34,6 +34,7 @@ use crate::zero_hour::effect_drop_cause::EffectDropCause;
 use crate::zero_hour::effects_import::{EffectSources, EffectsImport};
 use crate::zero_hour::energy_import::EnergyImport;
 use crate::zero_hour::error::ZeroHourError;
+use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::game_frames;
 use crate::zero_hour::format::ini::object_ini::ini_object::{IniObject, RadarPriority};
 use crate::zero_hour::format::ini::terrain_ini::TerrainIni;
@@ -558,12 +559,35 @@ impl<'r> GameWrite<'r> {
                 ..Minimap::default()
             },
             level_icons: panel.level_icons.clone(),
+            power_bar: Self::power_bar(game, &panel.power_icons),
         };
         self.writer.write(HudFile::path(), &hud.encode())?;
         Ok(WrittenPanel {
             import: panel,
             dropped,
         })
+    }
+
+    /// The power bar of `game`'s `GameData.ini` and the icons `icons` of its fills and needle, as
+    /// `W3DPowerDraw` draws it (power.md, The panel shows the power bar); none of no icons, or of
+    /// a base, intervals or margin the bar holds none of.
+    fn power_bar(game: &ZeroHourRules, icons: &[PanelIcon]) -> Option<PowerBar> {
+        let [enough, near, short, needle] = icons else {
+            return None;
+        };
+        let bar = game.game_data.power_bar;
+        let fills = PowerFills {
+            enough: enough.clone(),
+            near: near.clone(),
+            short: short.clone(),
+        };
+        PowerBar::new(
+            u8::try_from(bar.base).ok()?,
+            game_float::to_num(bar.intervals).ok()?,
+            u32::try_from(bar.yellow_range).ok()?,
+            fills,
+            needle.clone(),
+        )
     }
 
     /// Writes the effects and the sounds, of the weapons, the deaths and the treads of

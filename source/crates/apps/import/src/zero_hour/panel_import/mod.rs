@@ -51,10 +51,22 @@ pub(crate) struct PanelImport {
     /// `SCVeter3`, none when one of them draws from no texture (02-engine-core.md, A level shows
     /// its icon).
     pub(crate) level_icons: Vec<PanelIcon>,
+    /// The tiles of the power bar's fill, of power enough, near and short, and its needle, as
+    /// `W3DPowerDraw` draws `PowerPointG`, `PowerPointY`, `PowerPointR` and `PowerBarSlider`,
+    /// none when one of them draws from no texture (power.md, The panel shows the power bar).
+    pub(crate) power_icons: Vec<PanelIcon>,
 }
 
 /// The images of a veteran's, an elite's and a heroic unit's icon, `Drawable::s_veterancyImage`.
 const LEVEL_IMAGES: [&str; 3] = ["SCVeter1", "SCVeter2", "SCVeter3"];
+
+/// The images of the power bar's tiles of power enough, near and short, and of its needle.
+const POWER_IMAGES: [&str; 4] = [
+    "PowerPointG",
+    "PowerPointY",
+    "PowerPointR",
+    "PowerBarSlider",
+];
 
 impl PanelButtons {
     /// The last place the game's control bar draws, as `ControlBar.wnd` lays 14 windows; places
@@ -213,20 +225,8 @@ impl PanelImport {
             ..Self::default()
         };
         let found = |name: Option<&str>| Self::found(images, &texture, name);
-        let mut levels = Vec::with_capacity(LEVEL_IMAGES.len());
-        for name in LEVEL_IMAGES {
-            match found(Some(name)) {
-                Ok((path, rect)) => levels.push((path, rect)),
-                Err(cause) => dropped.drop(name, cause),
-            }
-        }
-        if levels.len() == LEVEL_IMAGES.len() {
-            for (path, rect) in levels {
-                let texture = game_path::texture(&path)?;
-                panel.level_icons.push(PanelIcon { texture, rect });
-                panel.textures.insert(path);
-            }
-        }
+        panel.level_icons = panel.icons_of(&LEVEL_IMAGES, found, dropped)?;
+        panel.power_icons = panel.icons_of(&POWER_IMAGES, found, dropped)?;
         let mut look = |face: &ButtonFace| -> Result<ButtonLook, ZeroHourError> {
             if face.key.is_none() {
                 dropped.drop(&face.button, PanelDropCause::NoKey);
@@ -248,6 +248,34 @@ impl PanelImport {
         panel.actions = actions;
         panel.grid.commands = commands;
         Ok(panel)
+    }
+
+    /// The icons of each image of `names` as `found` finds them, their textures kept; none when
+    /// one of them draws from no texture, each such counted into `dropped`.
+    fn icons_of(
+        &mut self,
+        names: &[&str],
+        found: impl Fn(Option<&str>) -> Result<(ArchivePath, IconRect), PanelDropCause>,
+        dropped: &mut Losses<PanelDropCause>,
+    ) -> Result<Vec<PanelIcon>, ZeroHourError> {
+        let mut icons = Vec::with_capacity(names.len());
+        for &name in names {
+            match found(Some(name)) {
+                Ok(found) => icons.push(found),
+                Err(cause) => dropped.drop(name, cause),
+            }
+        }
+        if icons.len() < names.len() {
+            return Ok(Vec::new());
+        }
+        icons
+            .into_iter()
+            .map(|(path, rect)| {
+                let texture = game_path::texture(&path)?;
+                self.textures.insert(path);
+                Ok(PanelIcon { texture, rect })
+            })
+            .collect()
     }
 
     /// The icon of `found`, the image of an item named `item`, its texture among those the panel
