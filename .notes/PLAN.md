@@ -6,12 +6,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 The slice of [Power](../docs/design/power.md): a player of a Zero Hour skirmish as America builds past its power and sees the bar turn red, its Patriot batteries go dark and silent, its minimap go out and its trains and builds slow, then builds a power plant or buys the Control Rods and sees all of it come back; as GLA it trains a Rebel in the original's 10 s. Its facts are [Zero Hour's power](../docs/research/zero-hour-power.md); its checks are that document's.
 
-### Batch 4: the client
-
-It touches the client's HUD, panel and looks, and stands last but the player's check, as it shows what the engine now counts.
-
-- [ ] **PW8. A tag marks its unit.** A unit's paint takes only the build preview's tint (`match_colors.rs:23`), no tag shows an icon over the bars but the level's (`hud/mod.rs:924`), and nothing stills a look's clips (`look_clips.rs:64`). The HUD file's `tag_marks` give a tag's tint faded over its time, its looping icon over the bars, and whether it stills animations, which a look may keep (Direction: one rendering pipeline for every game). Check: client tests of a marked unit's tint at points of its fade, its icon's frame at given times and its clips stilled, and of a look that keeps them.
-
 ### End of the slice
 
 - [ ] A player of Tournament Desert as America against the China builder bot, then as GLA, does what the design's last check says, in the client; then the slice's decisions fold into `04-capabilities/production.md`, `02-engine-core.md`, `03-game-scripting.md` and `09-zero-hour.md`, its losses into `09-zero-hour.md`'s in place of the Power loss, and `power.md` goes.
@@ -26,6 +20,8 @@ It touches the client's HUD, panel and looks, and stands last but the player's c
 - **PW6. A bot builds power while short.** The Zero Hour check plays power in a play of its own, a Patriot battery disabled by a second one past one plant's power and enabled by a second plant, as a Patriot needs a plant; the skirmish's builder fixture waits the 300 ticks more its first plant takes, as its timed orders took the dozer off a plant half built.
 
 - **PW7. The panel's power bar.** The bar stands at the window's top, its own node, not the command panel's, which shows only while a unit is selected, where Zero Hour's control bar always draws its bar; it shows a player's power once the server sends it, a GLA player's empty.
+
+- **PW8. A tag marks its unit.** A mark tints and stills its unit, but draws no icon over its bars: Zero Hour's `Disabled` icon is an `Animation2D.ini` animation, a format the import does not read, and a looping billboard the HUD lacks, depth the slice does not need, as the tint and the stilled clips show the state; the icon is in the issue log. The tint's 30 steps are colors of the one buffer, as a mesh's tag names its color by place.
 
 ## Decisions
 

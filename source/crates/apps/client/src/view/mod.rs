@@ -83,6 +83,7 @@ pub(crate) mod shot_frame;
 pub(crate) mod shot_stand_ins;
 pub(crate) mod slot_shots;
 pub(crate) mod sounds;
+pub(crate) mod tag_marks;
 pub(crate) mod terrain_image;
 pub(crate) mod terrain_meshes;
 pub(crate) mod terrain_view;

@@ -579,3 +579,18 @@ fn model_file() -> ClientModel {
         bone: None,
     }
 }
+
+#[test]
+fn a_draw_stands_still_under_a_stilling_mark_unless_its_look_plays_it_on() {
+    let draw = |marked| DrawStates {
+        states: Box::new([]),
+        rest: 0,
+        transitions: Box::new([]),
+        marked,
+    };
+    let (stilled, played) = (draw(MarkedClips::Stilled), draw(MarkedClips::Played));
+    assert!(stilled.stands(true));
+    assert!(!stilled.stands(false));
+    assert!(!played.stands(true));
+    assert!(!played.stands(false));
+}

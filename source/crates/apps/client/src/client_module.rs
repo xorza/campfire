@@ -49,6 +49,7 @@ use crate::view::player_camera::PlayerCameraPlugin;
 use crate::view::producer_doors::ProducerDoorsPlugin;
 use crate::view::shot_stand_ins::ShotStandInsPlugin;
 use crate::view::sounds::SoundsPlugin;
+use crate::view::tag_marks::TagMarksPlugin;
 use crate::view::terrain_view::TerrainViewPlugin;
 use crate::view::unit_models::UnitModelsPlugin;
 use crate::view::view_console::ViewConsolePlugin;
@@ -74,6 +75,7 @@ pub(crate) enum ClientModule {
     UnitPicking,
     UnitModels,
     LookStates,
+    TagMarks,
     WeaponClips,
     ProducerDoors,
     TerrainView,
@@ -166,6 +168,7 @@ impl ClientModule {
             | Self::UnitPicking
             | Self::UnitModels
             | Self::LookStates
+            | Self::TagMarks
             | Self::TerrainView
             | Self::Minimap
             | Self::Effects
@@ -191,6 +194,7 @@ impl ClientModule {
             | Self::UnitPicking
             | Self::UnitModels
             | Self::LookStates
+            | Self::TagMarks
             | Self::WeaponClips
             | Self::ProducerDoors
             | Self::TerrainView
@@ -346,6 +350,9 @@ impl ClientModule {
             Self::LookStates => {
                 app.add_plugins(LookStatesPlugin);
             }
+            Self::TagMarks => {
+                app.add_plugins(TagMarksPlugin);
+            }
             Self::WeaponClips => {
                 app.add_plugins(WeaponClipsPlugin);
             }
@@ -482,6 +489,7 @@ mod tests {
             ClientModule::UnitPicking,
             ClientModule::UnitModels,
             ClientModule::LookStates,
+            ClientModule::TagMarks,
             ClientModule::TerrainView,
             ClientModule::Minimap,
             ClientModule::Effects,

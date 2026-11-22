@@ -2,6 +2,7 @@ use std::num::NonZeroU8;
 
 use campfire_codec::Toml;
 use campfire_common::DeclaredName;
+use campfire_math::Num;
 
 use super::*;
 use crate::hud_file::panel_grid::{ButtonLook, GridCell};
@@ -17,6 +18,7 @@ fn a_hud_shows_every_unit_s_bars_and_hits_unless_its_file_says_otherwise() {
         minimap: Minimap::default(),
         level_icons: Vec::new(),
         power_bar: None,
+        tag_marks: Vec::new(),
     };
     assert_eq!(
         Toml::parse::<HudFile>("bars = \"selected\"").unwrap(),
@@ -41,6 +43,28 @@ fn a_hud_shows_every_unit_s_bars_and_hits_unless_its_file_says_otherwise() {
         Toml::parse::<HudFile>(&Toml::write(&selected)).unwrap(),
         selected
     );
+    // A disabled unit's mark: −0.5 over 1 s, stilling clips; a mark stills none by default.
+    let text =
+        "[[tag_marks]]\ntag = \"disabled\"\ntint = [\"-0.5\", \"-0.5\", \"-0.5\"]\nfade_ms = 1000";
+    let marked = Toml::parse::<HudFile>(text).unwrap();
+    let mark = TagMark {
+        tag: DeclaredName::new("disabled").unwrap(),
+        tint: [-Num::HALF; 3],
+        fade_ms: 1000,
+        stills: false,
+    };
+    assert_eq!(marked.tag_marks, std::slice::from_ref(&mark));
+    let stilling = HudFile {
+        tag_marks: vec![TagMark {
+            stills: true,
+            ..mark
+        }],
+        ..HudFile::default()
+    };
+    assert_eq!(
+        Toml::parse::<HudFile>(&Toml::write(&stilling)).unwrap(),
+        stilling
+    );
     let refusal = |text: &str| {
         let refused = Toml::parse::<HudFile>(text).unwrap_err();
         refused.message().to_owned()
@@ -51,7 +75,7 @@ fn a_hud_shows_every_unit_s_bars_and_hits_unless_its_file_says_otherwise() {
     );
     assert_eq!(
         refusal("rings = \"all\""),
-        "unknown field `rings`, expected one of `bars`, `hit_mark`, `panel`, `minimap`, `level_icons`, `power_bar`"
+        "unknown field `rings`, expected one of `bars`, `hit_mark`, `panel`, `minimap`, `level_icons`, `power_bar`, `tag_marks`"
     );
 }
 

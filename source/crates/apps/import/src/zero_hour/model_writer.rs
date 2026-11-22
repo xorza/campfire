@@ -4,8 +4,9 @@ use std::collections::btree_map::Entry;
 use bevy_math::Vec3;
 use campfire_client_files::{
     AnimationMode, ClientModel, ClientUnit, ClipRounds, ConditionTest, FireBone, LookDraw,
-    LookShown, LookState, LookTransition, LookVariant, LookVariation, ModelScale, ModelTop,
-    NodeUpgrade, ObjectLook, SpeedRange, StartFrame, StateAnimation, StateClip, StatePlay,
+    LookShown, LookState, LookTransition, LookVariant, LookVariation, MarkedClips, ModelScale,
+    ModelTop, NodeUpgrade, ObjectLook, SpeedRange, StartFrame, StateAnimation, StateClip,
+    StatePlay,
 };
 use campfire_combat::{BarrelData, UnitOffset};
 use campfire_common::DeclaredName;
@@ -644,9 +645,17 @@ impl ModelWriter<'_> {
                         .expect("a transition the reader took plays once between two keys"),
                 );
             }
+            // A module of `AnimationsRequirePower = No` animates while its object is disabled by
+            // power (power.md, A tag marks its unit).
+            let marked = if draw.animations_require_power {
+                MarkedClips::Stilled
+            } else {
+                MarkedClips::Played
+            };
             look_draws.push(
                 LookDraw::new(states, ignore, transitions)
-                    .expect("a module's states each of a set, its transitions of a pair once"),
+                    .expect("a module's states each of a set, its transitions of a pair once")
+                    .with_marked(marked),
             );
         }
         Ok(Some(look_draws))

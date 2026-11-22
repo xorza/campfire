@@ -52,3 +52,13 @@ fn the_power_bar_is_the_game_datas_of_its_four_icons_or_none() {
     game.game_data.power_bar.yellow_range = -1;
     assert_eq!(GameWrite::power_bar(&game, &icons), None);
 }
+
+#[test]
+fn a_disabled_unit_is_marked_dark_gray_over_a_second_and_stilled() {
+    // `DARK_GRAY_DISABLED_COLOR`, −0.5 on each channel, over the tint envelope's 30 frames.
+    let names = RulesNames::default();
+    let mark = GameWrite::disabled_mark(&names);
+    assert_eq!(mark.tag, names.disabled);
+    assert_eq!(mark.tint, [Num::int(-1) / Num::int(2); 3]);
+    assert_eq!((mark.fade_ms, mark.stills), (1000, true));
+}

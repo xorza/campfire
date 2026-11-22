@@ -12,7 +12,8 @@ use bevy::transform::components::Transform;
 use bevy::world_serialization::WorldAssetRoot;
 use campfire_client_files::{
     AnimationMode, AttackPhase, ClientModel, ConditionTest, DoorStage, FireBone, LifeShare,
-    LookDraw, LookShown, ModelTop, SetMatch, SiteStage, StartFrame, StateAnimation, StateSet,
+    LookDraw, LookShown, MarkedClips, ModelTop, SetMatch, SiteStage, StartFrame, StateAnimation,
+    StateSet,
 };
 use campfire_common::DeclaredName;
 use campfire_declarations::ById;
@@ -71,12 +72,14 @@ pub(crate) struct LookDraws {
 }
 
 /// A draw's states, each its sets of conditions against its package's tests and the map; the one
-/// it draws for a unit of no condition of its own; and its transitions.
+/// it draws for a unit of no condition of its own; its transitions; and what its clips do under
+/// a mark that stills them.
 #[derive(Debug)]
 pub(crate) struct DrawStates {
     states: Box<[StateModels]>,
     rest: usize,
     transitions: Box<[TransitionModels]>,
+    marked: MarkedClips,
 }
 
 /// A state of a draw: its sets of conditions, what it shows, its key, which names it to a
@@ -541,11 +544,18 @@ impl DrawStates {
             states,
             rest,
             transitions,
+            marked: draw.marked(),
         }
     }
 
     pub(crate) fn states(&self) -> &[StateModels] {
         &self.states
+    }
+
+    /// Whether its clips stand still while its unit is `stilled` by a mark: unless it plays on
+    /// under one (power.md, A tag marks its unit).
+    pub(crate) const fn stands(&self, stilled: bool) -> bool {
+        stilled && matches!(self.marked, MarkedClips::Stilled)
     }
 
     /// What it shows at `showing`.

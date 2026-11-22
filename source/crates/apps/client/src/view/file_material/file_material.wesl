@@ -114,7 +114,9 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     let tint_place = tag >> 16u;
     if tint_place != 0u {
         let tint = colors[tint_place - 1u].rgb;
-        out.color = vec4(out.color.rgb + pbr_input.material.base_color.rgb * tint, out.color.a);
+        // A tint below 0 darkens, as a disabled object's, down to black at most.
+        let tinted = out.color.rgb + pbr_input.material.base_color.rgb * tint;
+        out.color = vec4(max(tinted, vec3(0.0)), out.color.a);
     }
     // The light the fog keeps at the fragment's point of the ground, multiplied in, as Zero Hour
     // multiplies its shroud's texture over the terrain and the objects.

@@ -213,6 +213,29 @@ pub struct LookDraw {
     ignore: Vec<DeclaredName>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     transitions: Vec<LookTransition>,
+    #[serde(skip_serializing_if = "MarkedClips::is_stilled")]
+    marked: MarkedClips,
+}
+
+/// What a draw's clips do while its unit holds a tag whose mark stills them: stop, or play on, as
+/// a Zero Hour draw module of `AnimationsRequirePower = No` animates disabled by power
+/// (power.md, A tag marks its unit).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarkedClips {
+    #[default]
+    Stilled,
+    Played,
+}
+
+impl MarkedClips {
+    #[expect(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "serde's `skip_serializing_if` passes a reference"
+    )]
+    const fn is_stilled(&self) -> bool {
+        matches!(self, Self::Stilled)
+    }
 }
 
 /// A state of a draw: the sets of conditions it is drawn for, each a set its unit may hold;
@@ -357,6 +380,7 @@ impl LookDraw {
             states,
             ignore,
             transitions,
+            marked: MarkedClips::Stilled,
         })
     }
 
@@ -374,7 +398,20 @@ impl LookDraw {
             states: vec![LookState::new(vec![StateSet::default()], models)],
             ignore: Vec::new(),
             transitions: Vec::new(),
+            marked: MarkedClips::Stilled,
         }
+    }
+
+    /// What its clips do under a mark that stills them.
+    pub const fn marked(&self) -> MarkedClips {
+        self.marked
+    }
+
+    /// The draw whose clips do `marked` under a mark that stills them.
+    #[must_use]
+    pub const fn with_marked(mut self, marked: MarkedClips) -> Self {
+        self.marked = marked;
+        self
     }
 
     pub fn states(&self) -> &[LookState] {
@@ -529,13 +566,17 @@ impl<'de> Deserialize<'de> for LookDraw {
             ignore: Vec<DeclaredName>,
             #[serde(default)]
             transitions: Vec<LookTransition>,
+            #[serde(default)]
+            marked: MarkedClips,
         }
         let Fields {
             states,
             ignore,
             transitions,
+            marked,
         } = Fields::deserialize(deserializer)?;
-        Self::new(states, ignore, transitions).ok_or_else(|| {
+        let draw = Self::new(states, ignore, transitions).map(|draw| draw.with_marked(marked));
+        draw.ok_or_else(|| {
             D::Error::custom(
                 "a draw has no state, a state of no set or that sinks, or a pair's transition twice",
             )

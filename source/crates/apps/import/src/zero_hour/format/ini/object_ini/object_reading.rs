@@ -315,6 +315,9 @@ impl Reading {
                         }
                         module.rounds_shown = shown;
                     }
+                    "animationsrequirepower" if *kind == DrawKind::Family => {
+                        module.animations_require_power = at.yes()?;
+                    }
                     "attachtoboneincontainer" if *kind == DrawKind::Family => {
                         module.container_bone = Some(at.value()?.to_ascii_lowercase());
                     }

@@ -8,7 +8,7 @@ use campfire_client_files::{
     EffectsFile, FogFile, FogLevel, HitMark, HudFile, KeysFile, MapConditions, MapLights, Minimap,
     ObjectLook, PanelGrid, PanelIcon, PanelPlaces, PerkPage, PerkPlace, PerksFile, PickingFile,
     PixelRadius, PlaceOrder, PowerBar, PowerFills, RadarShown, ShownBars, SoundFile, SpeedScale,
-    TeamColors, TerrainFile, TrackMarks, TreadDust, WreckGround,
+    TagMark, TeamColors, TerrainFile, TrackMarks, TreadDust, WreckGround,
 };
 use campfire_codec::{Toml, TomlValue};
 use campfire_common::{DeclaredName, MapName, PackageFingerprint};
@@ -59,6 +59,7 @@ use crate::zero_hour::production_cx::ProductionCx;
 use crate::zero_hour::production_import::ProductionImport;
 use crate::zero_hour::propaganda_import::PropagandaImport;
 use crate::zero_hour::road_pieces::RoadPieces;
+use crate::zero_hour::rules_names::RulesNames;
 use crate::zero_hour::rules_package;
 use crate::zero_hour::rules_package::{FACTION, ModeImport};
 use crate::zero_hour::science_import::ScienceImport;
@@ -560,12 +561,26 @@ impl<'r> GameWrite<'r> {
             },
             level_icons: panel.level_icons.clone(),
             power_bar: Self::power_bar(game, &panel.power_icons),
+            tag_marks: vec![Self::disabled_mark(&game.names)],
         };
         self.writer.write(HudFile::path(), &hud.encode())?;
         Ok(WrittenPanel {
             import: panel,
             dropped,
         })
+    }
+
+    /// The mark of a disabled unit, as `Drawable` tints one by `DARK_GRAY_DISABLED_COLOR`, −0.5 on
+    /// each channel, faded over its tint envelope's 30 frames, 1 s, and pauses the animations of
+    /// its draws that need power (power.md, A tag marks its unit).
+    fn disabled_mark(names: &RulesNames) -> TagMark {
+        let dark = -Num::HALF;
+        TagMark {
+            tag: names.disabled.clone(),
+            tint: [dark; 3],
+            fade_ms: 1000,
+            stills: true,
+        }
     }
 
     /// The power bar of `game`'s `GameData.ini` and the icons `icons` of its fills and needle, as

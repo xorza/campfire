@@ -95,7 +95,7 @@ pub(crate) fn add_match(app: &mut App) {
     Unpredicted::register(app.world_mut());
     app.init_resource::<ClientLoad>();
     app.insert_resource(MapMetric(Metric::Planar));
-    app.insert_resource(MatchColors::new(TeamColors::default()));
+    app.insert_resource(MatchColors::new(TeamColors::default(), &[]));
     app.insert_resource(MatchHud(HudFile::default()));
     app.insert_resource(MatchPicking(PickingFile::default()));
 }

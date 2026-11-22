@@ -62,7 +62,7 @@ pub use crate::client_model::{ClientModel, ClipRounds, ModelScale, ModelTop, Nod
 pub use crate::client_objects::{ClientObject, ClientObjects};
 pub use crate::client_unit::{
     BarrelFlash, ClientUnit, DeathLook, DeathWrecks, FireBarrel, FireBone, LookDraw, LookShown,
-    LookState, LookTransition, LookVariation, RadarShown, UnitVoices,
+    LookState, LookTransition, LookVariation, MarkedClips, RadarShown, UnitVoices,
 };
 pub use crate::client_units::ClientUnits;
 pub use crate::condition_test::{AttackPhase, ConditionTest, DoorStage, LifeShare, SiteStage};
@@ -77,6 +77,7 @@ pub use crate::fog_file::{FogFile, FogLevel};
 pub use crate::hud_file::minimap::Minimap;
 pub use crate::hud_file::panel_grid::{ButtonLook, GridCell, PanelGrid, PlaceOrder};
 pub use crate::hud_file::power_bar::{PowerBar, PowerFills};
+pub use crate::hud_file::tag_mark::TagMark;
 pub use crate::hud_file::{HitMark, HudFile, ShownBars};
 pub use crate::keys_file::{Chord, ChordLabel, Key, KeyModifiers, KeysFile, Press};
 pub use crate::ktx2_image::Ktx2Image;

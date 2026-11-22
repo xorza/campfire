@@ -25,6 +25,9 @@ pub(crate) struct DrawModule {
     /// The weapon slots whose clips its models show the rounds of,
     /// `ProjectileBoneFeedbackEnabledSlots`.
     pub(crate) rounds_shown: [bool; 3],
+    /// Whether its object's disabling by power pauses its animations, its
+    /// `AnimationsRequirePower`, yes by default (`Drawable::getShouldAnimate`).
+    pub(crate) animations_require_power: bool,
     pub(crate) recoil: IniRecoil,
     /// The particle systems its treads throw as its object moves, as a `W3DTankDraw`, the
     /// `W3DOverlordTankDraw` that extends it and a `W3DTankTruckDraw` do, `TreadDebrisLeft` and
@@ -132,6 +135,7 @@ impl DrawModule {
             turret_pitch: None,
             container_bone: None,
             rounds_shown: [false; 3],
+            animations_require_power: true,
             recoil: IniRecoil::default(),
             tread_dust: None,
             track_marks: None,
