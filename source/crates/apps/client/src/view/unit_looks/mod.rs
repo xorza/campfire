@@ -553,7 +553,7 @@ impl DrawStates {
     }
 
     /// Whether its clips stand still while its unit is `stilled` by a mark: unless it plays on
-    /// under one (power.md, A tag marks its unit).
+    /// under one (02-engine-core.md, A tag marks its unit).
     pub(crate) const fn stands(&self, stilled: bool) -> bool {
         stilled && matches!(self.marked, MarkedClips::Stilled)
     }

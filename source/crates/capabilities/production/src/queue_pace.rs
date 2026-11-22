@@ -9,7 +9,8 @@ use crate::power_book::PowerBook;
 use crate::power_speed::PowerSpeed;
 
 /// How long a queue's entries take: each its own time, or, in a mode whose power speed slows its
-/// kind, its time at its player's power (power.md, A train's end follows the speed).
+/// kind, its time at its player's power (04-capabilities/production.md, A train's end follows the
+/// speed).
 #[derive(Debug, Clone, Copy)]
 pub enum QueuePace<'a> {
     Own,

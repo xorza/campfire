@@ -14,8 +14,8 @@ use crate::power_book::PowerBook;
 use crate::queue_pace::QueuePace;
 use crate::train_queue::{QueueIndex, TrainQueue};
 
-/// The count of each player's power as each tick ends, on the server (power.md, The count runs
-/// as each tick ends).
+/// The count of each player's power as each tick ends, on the server
+/// (04-capabilities/production.md, The count runs as each tick ends).
 #[derive(Debug)]
 pub(crate) struct PowerCount;
 
@@ -23,10 +23,11 @@ impl PowerCount {
     /// Writes each player's power on its entity, where it changed, as the holdings follow the
     /// units; gives the mode's shortage modifier to each player that is short and takes it from
     /// each that is not, so the modifier holds as the count does whatever the snapshot a match
-    /// restored from held (power.md, A shortage is a player modifier); and, in a mode whose power
-    /// slows production, times again the head of each queue of a player whose power changed, so
-    /// one that passed its new end ends in the next tick (power.md, A train's end follows the
-    /// speed). Only the server counts it, which a client receives.
+    /// restored from held (04-capabilities/production.md, A shortage is a player modifier); and, in
+    /// a mode whose power slows production, times again the head of each queue of a player whose
+    /// power changed, so one that passed its new end ends in the next tick
+    /// (04-capabilities/production.md, A train's end follows the speed). Only the server counts it,
+    /// which a client receives.
     pub(super) fn refresh(
         (book, actions): (Res<'_, PowerBook>, Res<'_, ActionBook>),
         mut units: ParamSet<

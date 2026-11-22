@@ -9,7 +9,7 @@ use crate::mode_power_data::ModePowerData;
 use crate::power_speed::PowerSpeed;
 
 /// The mode's `[power]`, its names resolved; none in a mode that counts no power. Package data,
-/// not state (power.md, Power is production's).
+/// not state (04-capabilities/production.md, Power is production's).
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 #[component(immutable)]
 pub struct PowerBook(pub(crate) Option<PowerRules>);

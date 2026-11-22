@@ -477,7 +477,7 @@ impl LookStatesPlugin {
     }
 
     /// Moves the clip of each draw of each drawing by the frame's time, but a draw a mark of its
-    /// unit stills (power.md, A tag marks its unit), its drawing's walk setting
+    /// unit stills (02-engine-core.md, A tag marks its unit), its drawing's walk setting
     /// the rate of a clip of a stride, and poses its models by it: each model's player plays the
     /// clip's graph, held at the clip's time, and each pivot's own meshes the clip hides at its
     /// frame are hidden, but those its look hides. A state that rises sinks its models by its rise

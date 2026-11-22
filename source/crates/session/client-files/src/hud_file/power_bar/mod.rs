@@ -4,10 +4,10 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::panel_icon::PanelIcon;
 
-/// The panel's power bar (power.md, The panel shows the power bar): the base of the logarithm its
-/// lengths take, the intervals of it its width holds, the margin of use under the power given
-/// within which it turns yellow, the fill of each state, and the needle of the power used, as
-/// `W3DPowerDraw` draws Zero Hour's of `PowerBarBase`, `PowerBarIntervals` and
+/// The panel's power bar (02-engine-core.md, The panel shows the power bar): the base of the
+/// logarithm its lengths take, the intervals of it its width holds, the margin of use under the
+/// power given within which it turns yellow, the fill of each state, and the needle of the power
+/// used, as `W3DPowerDraw` draws Zero Hour's of `PowerBarBase`, `PowerBarIntervals` and
 /// `PowerBarYellowRange`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PowerBar {

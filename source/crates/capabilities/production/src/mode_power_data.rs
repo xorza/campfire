@@ -7,8 +7,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 /// The mode's `[power]`: the unit stat whose value a unit gives above 0 and takes below, the
 /// modifier its player holds while short, none for no effect, and the speed of a short player's
-/// production, none for none slowed (power.md, Power is production's; power.md, A unit's power is
-/// a stat).
+/// production, none for none slowed (04-capabilities/production.md, Power is production's;
+/// 04-capabilities/production.md, A unit's power is a stat).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ModePowerData {
     pub stat: Stat,
@@ -28,10 +28,10 @@ pub struct ModePowerPatch {
     pub speed: Option<PowerSpeedData>,
 }
 
-/// The mode's `[power] speed`: a short player's speed `1 − (1 − share) × penalty`, at least
-/// `min` and at most `max`; the share of a player that gives and takes no power; and the kinds
-/// of action whose time the speed changes (power.md, The speed by the ratio; power.md, What
-/// power slows is the mode's).
+/// The mode's `[power] speed`: a short player's speed `1 − (1 − share) × penalty`, at least `min`
+/// and at most `max`; the share of a player that gives and takes no power; and the kinds of action
+/// whose time the speed changes (04-capabilities/production.md, The speed by the ratio;
+/// 04-capabilities/production.md, What power slows is the mode's).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PowerSpeedData {

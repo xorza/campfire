@@ -259,8 +259,8 @@ impl ImportedType {
         if let Some(life) = life {
             stats.push((names.life_stat.clone(), StatValue::flat(life)));
         }
-        // A unit gives its `EnergyProduction` above 0 and takes it below (power.md, A unit's power
-        // is a stat).
+        // A unit gives its `EnergyProduction` above 0 and takes it below
+        // (04-capabilities/production.md, A unit's power is a stat).
         if object.energy() != 0 {
             let power = Num::from_int(i64::from(object.energy())).expect("an `Int` is a `Num`");
             stats.push((names.power.clone(), StatValue::flat(power)));
@@ -509,7 +509,7 @@ impl ImportedType {
     }
 
     /// The tags of `object`'s kinds that the rules data declares, and a wall's; a radar is its
-    /// upgrade's (power.md, The radar falls by an upgrade's conflict).
+    /// upgrade's (09-zero-hour.md, The radar falls by an upgrade's conflict).
     fn tags(object: &IniObject, names: &RulesNames) -> Option<TypeTagsData> {
         let kinds = object.kinds();
         let of_kinds = names

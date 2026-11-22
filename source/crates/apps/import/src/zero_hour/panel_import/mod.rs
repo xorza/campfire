@@ -52,8 +52,8 @@ pub(crate) struct PanelImport {
     /// its icon).
     pub(crate) level_icons: Vec<PanelIcon>,
     /// The tiles of the power bar's fill, of power enough, near and short, and its needle, as
-    /// `W3DPowerDraw` draws `PowerPointG`, `PowerPointY`, `PowerPointR` and `PowerBarSlider`,
-    /// none when one of them draws from no texture (power.md, The panel shows the power bar).
+    /// `W3DPowerDraw` draws `PowerPointG`, `PowerPointY`, `PowerPointR` and `PowerBarSlider`, none
+    /// when one of them draws from no texture (02-engine-core.md, The panel shows the power bar).
     pub(crate) power_icons: Vec<PanelIcon>,
 }
 

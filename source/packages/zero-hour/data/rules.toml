@@ -110,7 +110,7 @@ life = "life"
 
 # A unit its player's shortage of power disables, of `KindOf = POWERED`, and a disabled unit, which
 # neither moves, attacks, casts, uses nor produces, as `AIUpdate` runs under no disabling but
-# `HELD` (power.md, A disabled unit is the rules package's).
+# `HELD` (09-zero-hour.md, A disabled unit is the rules package's).
 [tags.powered]
 
 [tags.disabled]

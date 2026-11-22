@@ -181,7 +181,7 @@ impl UpgradeImport {
     /// file defines is no upgrade any player or object holds, so it keeps nothing from triggering,
     /// and goes. A radar of triggers its object grants itself as it is made holds from its spawn,
     /// of no trigger, and one not `DisableProof` conflicts with its player's shortage of power,
-    /// as `Player::disableRadar` turns it off (power.md, The radar falls by an upgrade's
+    /// as `Player::disableRadar` turns it off (09-zero-hour.md, The radar falls by an upgrade's
     /// conflict). A life its type holds an entry of already takes the next of `_2`, `_3` and so on
     /// after its name, as each `MaxHealthUpgrade` adds its own, where a tag or a weapon's bonus
     /// is a flag the original sets once however many modules set it.
@@ -255,7 +255,7 @@ impl UpgradeImport {
                 )
             }
             // The Control Rods add their object's `EnergyBonus` to its power, one modifier of each
-            // bonus (power.md, The Control Rods give power).
+            // bonus (09-zero-hour.md, The Control Rods give power).
             UpgradeEffect::PowerPlant => match object.energy_bonus() {
                 0 => ("power".to_owned(), EffectModifier::tagged(&tag()?)),
                 bonus => {

@@ -12,15 +12,15 @@ use crate::zero_hour::format::ini::game_data_ini::LowEnergy;
 use crate::zero_hour::import_names::NamedType;
 use crate::zero_hour::rules_names::RulesNames;
 
-/// Zero Hour's power (power.md, Power is production's): the mode's `[power]` of the speed of a
-/// short player's production, of `GameData.ini`'s low-energy fields, over the rules package's
-/// stat and shortage, as `ThingTemplate::calcTimeToBuild` slows a unit's and a structure's time
-/// and not an upgrade's, and a player of no power and no use has a share of none
+/// Zero Hour's power (04-capabilities/production.md, Power is production's): the mode's `[power]`
+/// of the speed of a short player's production, of `GameData.ini`'s low-energy fields, over the
+/// rules package's stat and shortage, as `ThingTemplate::calcTimeToBuild` slows a unit's and a
+/// structure's time and not an upgrade's, and a player of no power and no use has a share of none
 /// (`Energy::getEnergySupplyRatio`); the modifier a short player holds, which gives its powered
-/// units the tag `disabled`, as `Player::onPowerBrownOutChange` disables each object of
-/// `KindOf = POWERED` (power.md, A disabled unit is the rules package's), the mode's own as a
-/// rules package holds no modifier; and the types whose objects give power, which its bots build
-/// while short.
+/// units the tag `disabled`, as `Player::onPowerBrownOutChange` disables each object of `KindOf =
+/// POWERED` (09-zero-hour.md, A disabled unit is the rules package's), the mode's own as a rules
+/// package holds no modifier; and the types whose objects give power, which its bots build while
+/// short.
 #[derive(Debug, Default)]
 pub(crate) struct EnergyImport {
     pub(crate) power: ModePowerPatch,

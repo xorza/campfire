@@ -21,7 +21,7 @@ fn on_input(ctx, player, name, value) {
 /// `disabled`, which blocks moving and attacks; `underpowered`, the modifier a short player holds
 /// on its powered units; `rods`, a player modifier that adds 5 to its grunts' power; the mode's
 /// `[power]` of `speed`, a line of its own or none; a plant of the grunt's tag that gives 5, and
-/// a cannon, powered, that takes 3 (power.md, Power is production's).
+/// a cannon, powered, that takes 3 (04-capabilities/production.md, Power is production's).
 fn powered(script: &str, speed: &str) -> PackageTree {
     let mut set = mode_packages(script);
     set.edit(DATA, Edit::Set("stats.power", "{}"));

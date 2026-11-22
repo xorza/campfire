@@ -22,9 +22,9 @@ use crate::view::float_num::FloatNum;
 use crate::view::match_hud::MatchHud;
 use crate::view::package_source::PackageAssets;
 
-/// The power bar, of a mode whose HUD file gives one: the player's power given as its fill, and
-/// its power used as its needle, as `W3DPowerDraw` draws Zero Hour's (power.md, The panel shows the
-/// power bar); hidden until the player's power reaches the client.
+/// The power bar, of a mode whose HUD file gives one: the player's power given as its fill, and its
+/// power used as its needle, as `W3DPowerDraw` draws Zero Hour's (02-engine-core.md, The panel
+/// shows the power bar); hidden until the player's power reaches the client.
 #[derive(Debug)]
 pub(crate) struct PowerBarPlugin;
 

@@ -418,7 +418,8 @@ impl Construction {
                 (Style::Builder, None) => 0,
                 (Style::Alone | Style::Builders(_), _) => builders,
             };
-            // A slowed build grows at its player's power (power.md, A site grows at the speed).
+            // A slowed build grows at its player's power (04-capabilities/production.md, A site
+            // grows at the speed).
             let rate = spec.rate(count);
             let slowed = power.speed().filter(|speed| speed.slows(ActionKind::Build));
             let rate = match (slowed, players.of(owner)) {

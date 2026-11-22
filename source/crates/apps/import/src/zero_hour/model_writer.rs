@@ -646,7 +646,7 @@ impl ModelWriter<'_> {
                 );
             }
             // A module of `AnimationsRequirePower = No` animates while its object is disabled by
-            // power (power.md, A tag marks its unit).
+            // power (02-engine-core.md, A tag marks its unit).
             let marked = if draw.animations_require_power {
                 MarkedClips::Stilled
             } else {

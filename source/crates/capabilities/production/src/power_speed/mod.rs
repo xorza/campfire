@@ -8,7 +8,7 @@ use crate::mode_power_data::{EmptyPower, PowerSpeedData};
 use crate::player_power::PlayerPower;
 
 /// A short player's speed of production, checked: `min` above 0 and at most `max`, and the kinds
-/// it slows production's timed ones (power.md, The speed by the ratio).
+/// it slows production's timed ones (04-capabilities/production.md, The speed by the ratio).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PowerSpeed {
     penalty: Share,
@@ -77,9 +77,9 @@ impl PowerSpeed {
     }
 
     /// What a site of `time` ticks, a whole count, grows a tick at its builders' `rate` for a
-    /// player of `power`: the rate times its time over its time at that power, rounded up, so at
-    /// a constant power it completes in that time, never later (power.md, A site grows at the
-    /// speed).
+    /// player of `power`: the rate times its time over its time at that power, rounded up, so at a
+    /// constant power it completes in that time, never later (04-capabilities/production.md, A site
+    /// grows at the speed).
     pub(crate) fn site_rate(self, rate: Num, time: Num, power: PlayerPower) -> Num {
         let whole = time.to_int().expect("a site's time is whole ticks");
         let ticks = Ticks::new(u64::try_from(whole).expect("a site's time is at least 0"));

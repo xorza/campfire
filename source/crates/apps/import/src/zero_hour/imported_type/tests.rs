@@ -752,8 +752,8 @@ End
 #[test]
 fn an_object_gives_its_energy_as_its_power_and_a_powered_one_its_tag_but_no_radar_its_own() {
     // A plant gives 5; a cannon, `POWERED`, takes 3; an object of no energy has no power. A radar
-    // made with its object is its upgrade's, no tag of its type (power.md, The radar falls by an
-    // upgrade's conflict).
+    // made with its object is its upgrade's, no tag of its type (09-zero-hour.md, The radar falls
+    // by an upgrade's conflict).
     let ini = ObjectIni::of(&["Object Plant
   EnergyProduction = 5
 End

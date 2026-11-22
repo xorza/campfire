@@ -219,7 +219,7 @@ pub struct LookDraw {
 
 /// What a draw's clips do while its unit holds a tag whose mark stills them: stop, or play on, as
 /// a Zero Hour draw module of `AnimationsRequirePower = No` animates disabled by power
-/// (power.md, A tag marks its unit).
+/// (02-engine-core.md, A tag marks its unit).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MarkedClips {

@@ -572,7 +572,7 @@ impl<'r> GameWrite<'r> {
 
     /// The mark of a disabled unit, as `Drawable` tints one by `DARK_GRAY_DISABLED_COLOR`, −0.5 on
     /// each channel, faded over its tint envelope's 30 frames, 1 s, and pauses the animations of
-    /// its draws that need power (power.md, A tag marks its unit).
+    /// its draws that need power (02-engine-core.md, A tag marks its unit).
     fn disabled_mark(names: &RulesNames) -> TagMark {
         let dark = -Num::HALF;
         TagMark {
@@ -584,8 +584,8 @@ impl<'r> GameWrite<'r> {
     }
 
     /// The power bar of `game`'s `GameData.ini` and the icons `icons` of its fills and needle, as
-    /// `W3DPowerDraw` draws it (power.md, The panel shows the power bar); none of no icons, or of
-    /// a base, intervals or margin the bar holds none of.
+    /// `W3DPowerDraw` draws it (02-engine-core.md, The panel shows the power bar); none of no
+    /// icons, or of a base, intervals or margin the bar holds none of.
     fn power_bar(game: &ZeroHourRules, icons: &[PanelIcon]) -> Option<PowerBar> {
         let [enough, near, short, needle] = icons else {
             return None;

@@ -29,9 +29,9 @@ use crate::queue_pace::QueuePace;
 /// A unit's train queue: the trains it was ordered, in order, at most as many as its type's
 /// `production` section holds, and the player resources each paid, one run after another in the
 /// entries' order. It makes one at a time, the head, whose time runs from the tick it reached the
-/// head at its pace, which its player's power may change while it runs (power.md, A train's end
-/// follows the speed). Its hook pushes its unit into the index of the queues at each insert, a
-/// spawn's and a restore's alike.
+/// head at its pace, which its player's power may change while it runs
+/// (04-capabilities/production.md, A train's end follows the speed). Its hook pushes its unit into
+/// the index of the queues at each insert, a spawn's and a restore's alike.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[component(on_insert = DueIndex::<Self>::pushed)]
 pub struct TrainQueue {

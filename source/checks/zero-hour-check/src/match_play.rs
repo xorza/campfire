@@ -722,7 +722,7 @@ impl<'p> MatchPlay<'p> {
     }
 
     /// Whether `unit` holds a tag that blocks its attacks, as a disabled unit does; false once it
-    /// is gone (power.md, A disabled unit is the rules package's).
+    /// is gone (09-zero-hour.md, A disabled unit is the rules package's).
     pub(crate) fn blocks_attacks(&self, unit: StableId) -> bool {
         let Some(entity) = self.game().entity_of(unit) else {
             return false;

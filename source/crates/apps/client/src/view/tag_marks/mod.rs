@@ -18,7 +18,7 @@ use crate::view::match_hud::MatchHud;
 use crate::view::{DrawSystems, ViewSystems};
 
 /// Marks each drawn unit by the tags it holds, as the HUD file's tag marks say: tints its models,
-/// faded in and out, and stills its clips (power.md, A tag marks its unit).
+/// faded in and out, and stills its clips (02-engine-core.md, A tag marks its unit).
 #[derive(Debug)]
 pub(crate) struct TagMarksPlugin;
 

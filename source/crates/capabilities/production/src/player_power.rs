@@ -8,10 +8,11 @@ use campfire_states::{Replication, SentOnChange};
 use campfire_visibility::DataKind;
 use serde::{Deserialize, Serialize};
 
-/// A player's power, on its entity, as its kind's audience sees it: what its living, complete
-/// units give and take, each at least 0 (power.md, A unit's power is a stat). The server derives
-/// it as each tick ends and sends it on each change; no hash or snapshot holds it, and a client
-/// reads its own as the server sent it (power.md, The count runs as each tick ends).
+/// A player's power, on its entity, as its kind's audience sees it: what its living, complete units
+/// give and take, each at least 0 (04-capabilities/production.md, A unit's power is a stat). The
+/// server derives it as each tick ends and sends it on each change; no hash or snapshot holds it,
+/// and a client reads its own as the server sent it (04-capabilities/production.md, The count runs
+/// as each tick ends).
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlayerPower {
     given: Num,
@@ -34,8 +35,8 @@ impl PlayerPower {
         self.used
     }
 
-    /// Whether its units take more than they give (power.md, Short while it uses more than it
-    /// gives).
+    /// Whether its units take more than they give (04-capabilities/production.md, Short while it
+    /// uses more than it gives).
     pub fn is_short(self) -> bool {
         self.used > self.given
     }

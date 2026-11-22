@@ -12,14 +12,13 @@ const DOZER: &str = "americavehicledozer";
 /// The Patriot battery, a defense of `KindOf = POWERED`.
 const PATRIOT: &str = "americapatriotbattery";
 
-/// The power play on Tournament Desert (power.md, A disabled unit is the rules package's): player 1,
-/// America, builds a power plant, which gives 5; a Patriot battery, which takes 3, its
-/// prerequisite the plant; a second, which takes 3 more, 6 of 5, so the player falls short and
-/// both batteries stand disabled; and a second plant, 10 of 6, under which both stand again.
-/// Each building takes its time at its player's power, the first plant at half speed, as a
-/// player of no power and no use builds; whether the first battery stands disabled after each
-/// building's tick and the next, as power counts as a tick ends and its modifier holds from the
-/// next tick's grants.
+/// The power play on Tournament Desert (09-zero-hour.md, A disabled unit is the rules package's):
+/// player 1, America, builds a power plant, which gives 5; a Patriot battery, which takes 3, its
+/// prerequisite the plant; a second, which takes 3 more, 6 of 5, so the player falls short and both
+/// batteries stand disabled; and a second plant, 10 of 6, under which both stand again. Each
+/// building takes its time at its player's power, the first plant at half speed, as a player of no
+/// power and no use builds; whether the first battery stands disabled after each building's tick
+/// and the next, as power counts as a tick ends and its modifier holds from the next tick's grants.
 #[derive(Debug)]
 pub(crate) struct PowerPlay;
 

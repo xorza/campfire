@@ -31,10 +31,9 @@ pub(crate) struct RulesNames {
     /// (09-zero-hour.md, A propaganda tower is an aura).
     pub(crate) propaganda_rate: Stat,
     pub(crate) life_regen_share: Stat,
-    /// The stat of the power a unit gives above 0 and takes below, its object's
-    /// `EnergyProduction`, the tag of an object of `KindOf = POWERED`, and the modifier a short
-    /// player holds, which disables its units of that tag (power.md, A disabled unit is the rules
-    /// package's).
+    /// The stat of the power a unit gives above 0 and takes below, its object's `EnergyProduction`,
+    /// the tag of an object of `KindOf = POWERED`, and the modifier a short player holds, which
+    /// disables its units of that tag (09-zero-hour.md, A disabled unit is the rules package's).
     pub(crate) power: Stat,
     pub(crate) powered: DeclaredName,
     pub(crate) underpowered: DeclaredName,

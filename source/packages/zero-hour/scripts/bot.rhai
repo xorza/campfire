@@ -12,7 +12,7 @@
 // enemy start; its idle units out with the army go on so whatever its count: by attack-move, and
 // within `reach` by an attack (09-zero-hour.md, A builder and an attacker;
 // 04-capabilities/control.md, A bot gathers; 04-capabilities/control.md, An army attack-moves;
-// power.md, A bot builds power while short).
+// 09-zero-hour.md, A bot builds power while short).
 fn on_bot_think(ctx) {
     let me = ctx.player;
     let chosen = ctx.chosen(me, "faction");

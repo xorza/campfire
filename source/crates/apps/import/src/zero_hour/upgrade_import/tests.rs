@@ -196,7 +196,7 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
         EffectModifier::tagged(&declared("upgrade_a_fire"))
     );
     // The rods of an object of an `EnergyBonus` of 8 add 8 to its power beside the tag, of a
-    // modifier of that bonus (power.md, The Control Rods give power).
+    // modifier of that bonus (09-zero-hour.md, The Control Rods give power).
     let rods = module(UpgradeEffect::PowerPlant, &["Upgrade_A"]);
     let entry = import.module(sources, plant, &rods, &[]).unwrap();
     assert_eq!(entry.modifier, declared("upgrade_a_power_8"));
@@ -208,7 +208,7 @@ fn a_module_converts_by_its_triggers_effect_and_life_change_or_drops_by_the_firs
     // An armor's module sets no condition its look tests, nor a radar's, whose modifier gives
     // the radar's tag. A radar conflicts with its player's shortage of power, but one
     // `DisableProof`; one of an object that grants itself its trigger as it is made holds from its
-    // spawn, of no trigger (power.md, The radar falls by an upgrade's conflict).
+    // spawn, of no trigger (09-zero-hour.md, The radar falls by an upgrade's conflict).
     assert_eq!(upgrade_tag::of(&armor), Ok(None));
     let radar = |disable_proof| module(UpgradeEffect::Radar { disable_proof }, &["Upgrade_A"]);
     assert_eq!(upgrade_tag::of(&radar(false)), Ok(None));

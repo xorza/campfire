@@ -14,7 +14,7 @@ use crate::view::float_num::FloatNum;
 /// team colors, then each tint, in linear light: the build preview's, then each step of each tag
 /// mark's fade, from its first to its whole tint. A mesh's tag names its team's place and its
 /// tint's in it, so one material serves every team (02-engine-core.md, Team colors in the one
-/// material; power.md, A tag marks its unit).
+/// material; 02-engine-core.md, A tag marks its unit).
 #[derive(Resource, Debug, Clone, PartialEq)]
 pub(crate) struct MatchColors {
     teams: TeamColors,

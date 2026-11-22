@@ -11,12 +11,11 @@ use crate::panel_icon::PanelIcon;
 
 /// A mode's `client/hud.toml`: which units show their bars, how a hit shows, the command panel's
 /// grid, the minimap, the icon each level from 2 shows beside its unit's bars, the power bar, and
-/// the marks of tags;
-/// a mode of no file, or a field the file does not give, shows every unit's bars, a ring for each
-/// hit, the default grid, the default minimap, no level and no power bar (02-engine-core.md, Bars
-/// in screen space; 02-engine-core.md, The mode chooses its hit mark; 02-engine-core.md, A look
-/// places its buttons; 02-engine-core.md, A level shows its icon; power.md, The panel shows the
-/// power bar).
+/// the marks of tags; a mode of no file, or a field the file does not give, shows every unit's
+/// bars, a ring for each hit, the default grid, the default minimap, no level and no power bar
+/// (02-engine-core.md, Bars in screen space; 02-engine-core.md, The mode chooses its hit mark;
+/// 02-engine-core.md, A look places its buttons; 02-engine-core.md, A level shows its icon;
+/// 02-engine-core.md, The panel shows the power bar).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct HudFile {
